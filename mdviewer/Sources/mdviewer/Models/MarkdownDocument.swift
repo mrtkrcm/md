@@ -1,6 +1,12 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+extension UTType {
+    static var markdownType: UTType {
+        UTType.types(tag: "md", tagClass: .filenameExtension, conformingTo: nil).first ?? .plainText
+    }
+}
+
 struct MarkdownDocument: FileDocument {
     var text: String
 
@@ -8,7 +14,13 @@ struct MarkdownDocument: FileDocument {
         self.text = text
     }
 
-    static var readableContentTypes: [UTType] { [.markdown, .plainText] }
+    static var readableContentTypes: [UTType] {
+        if #available(macOS 11.0, iOS 14.0, *) {
+            return [.markdown, .plainText]
+        } else {
+            return [.plainText]
+        }
+    }
 
     init(configuration: ReadConfiguration) throws {
         guard let data = configuration.file.regularFileContents,

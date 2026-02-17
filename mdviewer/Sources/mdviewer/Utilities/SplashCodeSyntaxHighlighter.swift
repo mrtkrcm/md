@@ -2,6 +2,12 @@ import SwiftUI
 import MarkdownUI
 import Splash
 
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
+
 struct SplashCodeSyntaxHighlighter: CodeSyntaxHighlighter {
     private let syntaxHighlighter: SyntaxHighlighter<AttributedStringOutputFormat>
 
@@ -41,26 +47,38 @@ extension AttributedStringOutputFormat {
         mutating func addToken(_ token: String, ofType type: TokenType) {
             let color = theme.tokenColors[type] ?? theme.plainTextColor
             var attributedString = AttributedString(token)
-            attributedString.foregroundColor = SwiftUI.Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
+            attributedString.foregroundColor = color.swiftUIColor
             accumulatedText.append(attributedString)
         }
 
         mutating func addPlainText(_ text: String) {
             var attributedString = AttributedString(text)
             let color = theme.plainTextColor
-            attributedString.foregroundColor = SwiftUI.Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
+            attributedString.foregroundColor = color.swiftUIColor
             accumulatedText.append(attributedString)
         }
 
         mutating func addWhitespace(_ whitespace: String) {
             var attributedString = AttributedString(whitespace)
             let color = theme.plainTextColor
-            attributedString.foregroundColor = SwiftUI.Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
+            attributedString.foregroundColor = color.swiftUIColor
             accumulatedText.append(attributedString)
         }
 
         func build() -> AttributedString {
             accumulatedText
         }
+    }
+}
+
+extension Splash.Color {
+    var swiftUIColor: SwiftUI.Color {
+        #if os(macOS)
+        return SwiftUI.Color(nsColor: self)
+        #elseif os(iOS)
+        return SwiftUI.Color(uiColor: self)
+        #else
+        return SwiftUI.Color.black
+        #endif
     }
 }

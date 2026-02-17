@@ -41,21 +41,21 @@ extension AttributedStringOutputFormat {
         mutating func addToken(_ token: String, ofType type: TokenType) {
             let color = theme.tokenColors[type] ?? theme.plainTextColor
             var attributedString = AttributedString(token)
-            attributedString.foregroundColor = Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
+            attributedString.foregroundColor = SwiftUI.Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
             accumulatedText.append(attributedString)
         }
 
         mutating func addPlainText(_ text: String) {
             var attributedString = AttributedString(text)
             let color = theme.plainTextColor
-            attributedString.foregroundColor = Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
+            attributedString.foregroundColor = SwiftUI.Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
             accumulatedText.append(attributedString)
         }
 
         mutating func addWhitespace(_ whitespace: String) {
             var attributedString = AttributedString(whitespace)
             let color = theme.plainTextColor
-            attributedString.foregroundColor = Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
+            attributedString.foregroundColor = SwiftUI.Color(red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
             accumulatedText.append(attributedString)
         }
 

@@ -4,8 +4,7 @@ import PackageDescription
 let package = Package(
     name: "mdviewer",
     platforms: [
-        .macOS(.v13),
-        .iOS(.v16)
+        .macOS(.v13)
     ],
     products: [
         .executable(name: "mdviewer", targets: ["mdviewer"])

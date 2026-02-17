@@ -14,7 +14,7 @@ struct ContentView: View {
 
         var id: String { rawValue }
 
-        var theme: Theme {
+        var theme: MarkdownUI.Theme {
             switch self {
             case .basic: return .basic
             case .gitHub: return .gitHub

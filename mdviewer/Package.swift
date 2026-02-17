@@ -20,9 +20,7 @@ let package = Package(
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
                 .product(name: "Splash", package: "Splash")
             ],
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency")
-            ]
+            exclude: ["Info.plist"]
         ),
         .testTarget(
             name: "mdviewerTests",

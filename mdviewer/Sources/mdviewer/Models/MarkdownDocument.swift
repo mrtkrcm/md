@@ -2,9 +2,11 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UTType {
-    // Avoid name collision with system type if it exists in future/other contexts
-    static var customMarkdown: UTType {
-        UTType.types(tag: "md", tagClass: .filenameExtension, conformingTo: nil).first ?? .plainText
+    static var markdownDocument: UTType {
+        if #available(macOS 11.0, iOS 14.0, *) {
+            return UTType(importedAs: "net.daringfireball.markdown")
+        }
+        return UTType(filenameExtension: "md") ?? .plainText
     }
 }
 
@@ -16,27 +18,28 @@ struct MarkdownDocument: FileDocument {
     }
 
     static var readableContentTypes: [UTType] {
-        if #available(macOS 11.0, iOS 14.0, *) {
-            // Check if UTType.markdown is available, otherwise fallback
-            // Since the compiler complains about .markdown missing, we use our custom type directly.
-            // This ensures compilation regardless of SDK version nuances.
-            return [.customMarkdown, .plainText]
-        } else {
-            return [.plainText]
-        }
+        [.markdownDocument, .plainText]
     }
 
     init(configuration: ReadConfiguration) throws {
-        guard let data = configuration.file.regularFileContents,
-              let string = String(data: data, encoding: .utf8)
-        else {
+        guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        text = string
+
+        // Support the most common encodings used by markdown files.
+        let candidateEncodings: [String.Encoding] = [.utf8, .utf16, .utf16LittleEndian, .utf16BigEndian, .ascii]
+        if let decoded = candidateEncodings.lazy.compactMap({ String(data: data, encoding: $0) }).first {
+            text = decoded
+            return
+        }
+
+        throw CocoaError(.fileReadInapplicableStringEncoding)
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        let data = text.data(using: .utf8)!
+        guard let data = text.data(using: .utf8) else {
+            throw CocoaError(.fileWriteInapplicableStringEncoding)
+        }
         return FileWrapper(regularFileWithContents: data)
     }
 }

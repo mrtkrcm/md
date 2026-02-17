@@ -1,11 +1,12 @@
+#if canImport(XCTest)
 import XCTest
 @testable import mdviewer
 
 final class mdviewerTests: XCTestCase {
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct
-        // results.
-        XCTAssertTrue(true)
+    func testAppThemeRawValuesRemainStable() {
+        XCTAssertEqual(AppTheme.basic.rawValue, "Basic")
+        XCTAssertEqual(AppTheme.gitHub.rawValue, "GitHub")
+        XCTAssertEqual(AppTheme.docC.rawValue, "DocC")
     }
 }
+#endif

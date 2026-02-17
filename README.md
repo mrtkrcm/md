@@ -44,3 +44,5 @@ You can still run release builds.
 - Dependencies are pinned in `mdviewer/Package.resolved`.
 - `Info.plist` is excluded from SwiftPM compilation to keep builds warning-free.
 - File save/load handles common markdown text encodings and reports write/read errors clearly.
+- Markdown document support includes `.md`, `.markdown`, `.mdown`, and `.mkd` on open.
+- New documents start blank and save as markdown by default.

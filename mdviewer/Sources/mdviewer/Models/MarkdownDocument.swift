@@ -8,6 +8,16 @@ extension UTType {
         }
         return UTType(filenameExtension: "md") ?? .plainText
     }
+
+    static var markdownExtensions: [UTType] {
+        let types = [
+            UTType(filenameExtension: "md"),
+            UTType(filenameExtension: "markdown"),
+            UTType(filenameExtension: "mdown"),
+            UTType(filenameExtension: "mkd")
+        ]
+        return types.compactMap { $0 }
+    }
 }
 
 struct MarkdownDocument: FileDocument {
@@ -18,7 +28,13 @@ struct MarkdownDocument: FileDocument {
     }
 
     static var readableContentTypes: [UTType] {
-        [.markdownDocument, .plainText]
+        var seen = Set<String>()
+        let types = [UTType.markdownDocument] + UTType.markdownExtensions + [.plainText]
+        return types.filter { seen.insert($0.identifier).inserted }
+    }
+
+    static var writableContentTypes: [UTType] {
+        [.markdownDocument]
     }
 
     init(configuration: ReadConfiguration) throws {

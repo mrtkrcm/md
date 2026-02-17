@@ -20,9 +20,6 @@ let package = Package(
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
                 .product(name: "Splash", package: "Splash")
             ],
-            resources: [
-                .process("Info.plist")
-            ],
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency")
             ]

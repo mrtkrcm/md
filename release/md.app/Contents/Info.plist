@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>md</string>
+	<string>Markdown Viewer</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -27,7 +27,7 @@
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.example.md</string>
+	<string>com.mrtkrcm.mdviewer</string>
 	<key>CFBundleName</key>
 	<string>md</string>
 	<key>CFBundlePackageType</key>
@@ -35,9 +35,13 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>15</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>

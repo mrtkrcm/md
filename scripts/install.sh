@@ -1,12 +1,12 @@
 #!/bin/bash
+# install.sh — build, package, and install md.app to /Applications
+#
+# Usage:
+#   scripts/install.sh [--open] [--no-tests]
+#
+# Delegates to build.sh with --install. All build.sh flags and environment
+# variables (INSTALL_DIR, BUNDLE_ID, APP_VERSION) are supported.
+
 set -euo pipefail
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
-INSTALL_APP=true \
-QUIT_RUNNING_APP="${QUIT_RUNNING_APP:-true}" \
-OPEN_APP_AFTER_INSTALL="${OPEN_APP_AFTER_INSTALL:-false}" \
-INSTALL_DIR="${INSTALL_DIR:-/Applications}" \
-RUN_TESTS="${RUN_TESTS:-auto}" \
-bash "$ROOT_DIR/scripts/build.sh"
-
+exec bash "$ROOT_DIR/scripts/build.sh" --install "$@"

@@ -253,77 +253,14 @@ actor MarkdownRenderService {
 
     private func parseMarkdown(_ markdown: String) -> NSAttributedString {
         let parsed = FrontmatterParser.parse(markdown)
-        let normalizedMarkdown = preserveAuthorLineBreaks(in: parsed.renderedMarkdown)
         return (try? NSAttributedString(
-            markdown: Data(normalizedMarkdown.utf8),
+            markdown: Data(parsed.renderedMarkdown.utf8),
             options: AttributedString.MarkdownParsingOptions(
                 interpretedSyntax: .full,
                 failurePolicy: .returnPartiallyParsedIfPossible
             ),
             baseURL: nil
-        )) ?? NSAttributedString(string: normalizedMarkdown)
-    }
-
-    private func preserveAuthorLineBreaks(in markdown: String) -> String {
-        var lines = markdown.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
-        guard lines.count > 1 else { return markdown }
-
-        // Track backtick and tilde fences independently so mixed fences don't corrupt state.
-        var inBacktickFence = false
-        var inTildeFence = false
-
-        for index in lines.indices {
-            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("```") {
-                inBacktickFence.toggle()
-            } else if trimmed.hasPrefix("~~~") {
-                inTildeFence.toggle()
-            }
-
-            let inFence = inBacktickFence || inTildeFence
-            guard index + 1 < lines.count, !inFence else { continue }
-            let next = lines[index + 1]
-            if shouldInsertHardBreak(after: lines[index], before: next) {
-                lines[index] += "  "
-            }
-        }
-
-        return lines.joined(separator: "\n")
-    }
-
-    private func shouldInsertHardBreak(after currentLine: String, before nextLine: String) -> Bool {
-        let currentTrimmed = currentLine.trimmingCharacters(in: .whitespaces)
-        let nextTrimmed = nextLine.trimmingCharacters(in: .whitespaces)
-
-        guard !currentTrimmed.isEmpty, !nextTrimmed.isEmpty else { return false }
-        guard !currentLine.hasSuffix("  "), !currentLine.hasSuffix("\\") else { return false }
-        guard !isStructuralBoundaryLine(currentTrimmed), !isStructuralBoundaryLine(nextTrimmed) else { return false }
-
-        return true
-    }
-
-    private func isStructuralBoundaryLine(_ line: String) -> Bool {
-        guard !line.isEmpty else { return false }
-        if line.hasPrefix("#")
-            || line.hasPrefix("- ")
-            || line.hasPrefix("* ")
-            || line.hasPrefix("+ ")
-            || line.hasPrefix("|")
-            || line.hasPrefix("```")
-            || line.hasPrefix("~~~")
-        {
-            return true
-        }
-
-        if line.range(of: #"^\d+[\.\)]\s"#, options: .regularExpression) != nil {
-            return true
-        }
-
-        if line.range(of: #"^([-*_]\s*){3,}$"#, options: .regularExpression) != nil {
-            return true
-        }
-
-        return false
+        )) ?? NSAttributedString(string: parsed.renderedMarkdown)
     }
 
     // NSAttributedString key names for semantic markdown intents (Foundation, macOS 12+).
@@ -336,50 +273,21 @@ actor MarkdownRenderService {
     private func applyTypography(_ text: NSMutableAttributedString, request: RenderRequest) {
         let fullRange = NSRange(location: 0, length: text.length)
 
-        // Pre-compute the two font objects shared across all runs.
         let bodyFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
         let codeFont = request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true)
+        let themePalette = NativeThemePalette(theme: request.appTheme, scheme: request.colorScheme)
 
-        // Detect whether the markdown parser pre-baked NSFont attributes (pre-macOS 26) or
-        // only emitted semantic NSPresentationIntent attributes (macOS 26+).
-        var usedPreBakedFonts = false
-        text.enumerateAttribute(.font, in: fullRange, options: [.longestEffectiveRangeNotRequired]) { value, _, stop in
-            if value is NSFont { usedPreBakedFonts = true; stop.pointee = true }
-        }
+        // Build fonts from NSPresentationIntent (macOS 12+ semantic path).
+        applyFontsFromPresentationIntents(text, bodyFont: bodyFont, codeFont: codeFont, request: request)
 
-        if usedPreBakedFonts {
-            // Classic path (pre-macOS 26): preserve hierarchy from parser-set NSFont attributes.
-            text.enumerateAttribute(.font, in: fullRange) { value, range, _ in
-                guard let existing = value as? NSFont else {
-                    text.addAttribute(.font, value: bodyFont, range: range)
-                    return
-                }
-                let traits = existing.fontDescriptor.symbolicTraits
-                if traits.contains(.monoSpace) {
-                    text.addAttribute(.font, value: codeFont, range: range)
-                    return
-                }
-                let scaledSize = max(12, existing.pointSize * (request.readerFontSize / 13))
-                let base = request.readerFontFamily.nsFont(size: scaledSize)
-                let desc = base.fontDescriptor.withSymbolicTraits(traits)
-                let target = NSFont(descriptor: desc, size: base.pointSize) ?? base
-                text.addAttribute(.font, value: target, range: range)
-            }
-        } else {
-            // Semantic-only path (macOS 26+): build fonts from NSPresentationIntent.
-            applyFontsFromPresentationIntents(text, bodyFont: bodyFont, codeFont: codeFont, request: request)
-        }
+        // Baseline text colour for the full range. applyCodeStyling overwrites code spans.
+        text.addAttribute(.foregroundColor, value: themePalette.textPrimary, range: fullRange)
 
-        // Apply label color as the default text color across the full range. applyCodeStyling
-        // will overwrite this with syntax colors on code spans afterwards.
-        text.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
-
-        // User spacing kern is a display preference — apply uniformly.
+        // Letter spacing — applied uniformly, does not affect paragraph structure.
         text.addAttribute(.kern, value: request.textSpacing.kern, range: fullRange)
 
-        // Merge spacing into each paragraph style in a single pass. This preserves list
-        // indentation (headIndent, firstLineHeadIndent, NSTextList) and blockquote structure
-        // that the markdown parser set, rather than overwriting them.
+        // Merge spacing values into each existing paragraph style. Enumeration preserves
+        // list indentation, blockquote margins, and NSTextList attributes set by the parser.
         let lineSpacing      = request.textSpacing.lineSpacing
         let paragraphSpacing = request.textSpacing.paragraphSpacing
         let hyphenation      = request.textSpacing.hyphenationFactor
@@ -393,8 +301,6 @@ actor MarkdownRenderService {
         }
     }
 
-    /// Applies fonts when the markdown parser only emitted semantic presentation intents
-    /// (macOS 26+) instead of pre-baked NSFont attributes.
     private func applyFontsFromPresentationIntents(
         _ text: NSMutableAttributedString,
         bodyFont: NSFont,

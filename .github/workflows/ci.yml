@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -13,53 +12,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  format:
-    name: Format Check
-    runs-on: macos-15
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Cache Swift build artifacts
-        uses: actions/cache@v4
-        with:
-          path: mdviewer/.build
-          key: ${{ runner.os }}-swift-fmt-${{ hashFiles('mdviewer/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swift-fmt-
-
-      - name: Check formatting
-        shell: bash
-        run: bash scripts/format.sh --check
-
   build-and-test:
     name: Build & Test
     runs-on: macos-15
-    needs: format
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # full history for git describe (version derivation)
+
+      - name: Get Swift version
+        id: swift-version
+        run: echo "version=$(swift --version | head -n 1 | awk '{print $3}')" >> "$GITHUB_OUTPUT"
 
       - name: Cache Swift build artifacts
         uses: actions/cache@v4
         with:
           path: mdviewer/.build
-          key: ${{ runner.os }}-swift-${{ hashFiles('mdviewer/Package.resolved') }}
+          key: ${{ runner.os }}-swift-${{ steps.swift-version.outputs.version }}-${{ hashFiles('mdviewer/Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-swift-
+            ${{ runner.os }}-swift-${{ steps.swift-version.outputs.version }}-
 
       - name: Run tests
-        shell: bash
         run: cd mdviewer && swift test -Xswiftc -warnings-as-errors
 
       - name: Build and package app
-        shell: bash
-        env:
-          CI: "1"  # tells RendererPerformanceTests to skip budget assertions
         run: bash scripts/build.sh --no-tests
 
       - name: Upload md.app artifact
@@ -69,52 +48,3 @@ jobs:
           path: release/md.app
           retention-days: 7
           if-no-files-found: error
-
-  release:
-    name: GitHub Release
-    runs-on: macos-15
-    needs: build-and-test
-    if: startsWith(github.ref, 'refs/tags/v')
-
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: md-app
-          path: release/md.app
-
-      - name: Zip app bundle
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          ZIP="md-${VERSION}.zip"
-          ditto -c -k --sequesterRsrc --keepParent release/md.app "$ZIP"
-          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-
-      - name: Create GitHub Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          cat > notes.md << 'NOTES'
-          ## md ${{ env.VERSION }}
-
-          Standalone macOS markdown viewer. Drag `md.app` to `/Applications`.
-
-          **Requirements:** macOS 14+
-          **Architecture:** arm64
-          NOTES
-
-          gh release create "$GITHUB_REF_NAME" "$ZIP" \
-            --title "md ${{ env.VERSION }}" \
-            --notes-file notes.md \
-            --verify-tag

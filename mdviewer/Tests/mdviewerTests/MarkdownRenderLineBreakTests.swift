@@ -4,7 +4,9 @@ import XCTest
 @testable import mdviewer
 
 final class MarkdownRenderLineBreakTests: XCTestCase {
-    func testRenderPreservesSingleLineBreaksBetweenPlainTextLines() async {
+    func testRenderMergesSoftWrappedLinesIntoOneParagraph() async {
+        // CommonMark: a single newline within a paragraph is a soft break — the parser
+        // joins the lines with a space. Hard breaks require trailing "  " or "\".
         let markdown = "Line one\nLine two"
         let request = RenderRequest(
             markdown: markdown,
@@ -19,7 +21,11 @@ final class MarkdownRenderLineBreakTests: XCTestCase {
         )
 
         let rendered = await MarkdownRenderService.shared.render(request)
-        XCTAssertEqual(rendered.attributedString.string, "Line one\nLine two")
+        let text = rendered.attributedString.string
+        XCTAssertTrue(text.contains("Line one") && text.contains("Line two"),
+                      "Both lines must appear in output")
+        XCTAssertFalse(text.contains("Line one\nLine two"),
+                       "Soft-wrapped lines must not produce a hard newline in rendered output")
     }
 
     func testRenderDoesNotForceLineBreaksBeforeListItems() async {
@@ -49,7 +55,9 @@ final class MarkdownRenderLineBreakTests: XCTestCase {
         XCTAssertFalse(text.contains("\n\n- "), "preserveAuthorLineBreaks must not inject hard breaks before list markers")
     }
 
-    func testRenderPreservesLineBreaksInsideBlockquotes() async {
+    func testRenderBlockquoteLinesArePresentInOutput() async {
+        // CommonMark: "> line1\n> line2" is a single blockquote paragraph; the parser
+        // joins them with a space, not a newline. Both lines must appear in output.
         let markdown = """
         > First quoted line
         > Second quoted line
@@ -67,7 +75,9 @@ final class MarkdownRenderLineBreakTests: XCTestCase {
         )
 
         let rendered = await MarkdownRenderService.shared.render(request)
-        XCTAssertTrue(rendered.attributedString.string.contains("First quoted line\nSecond quoted line"))
+        let text = rendered.attributedString.string
+        XCTAssertTrue(text.contains("First quoted line"), "First blockquote line must appear")
+        XCTAssertTrue(text.contains("Second quoted line"), "Second blockquote line must appear")
     }
 
     func testHardBreakNotInjectedInsideCodeFence() async {

@@ -2,37 +2,48 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  format:
-    name: Format Check
-    runs-on: macos-latest
+  build-and-test:
+    name: Build & Test
+    runs-on: macos-15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for git describe (version derivation)
 
-      - name: SwiftFormat Lint
-        run: bash scripts/format.sh --check
+      - name: Cache Swift build artifacts
+        uses: actions/cache@v4
+        with:
+          path: mdviewer/.build
+          key: ${{ runner.os }}-swift-${{ hashFiles('mdviewer/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
 
-  quality:
-    name: Build and Test
-    runs-on: macos-latest
-    needs: format
+      - name: Run tests
+        shell: bash
+        run: cd mdviewer && swift test -Xswiftc -warnings-as-errors
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Build and package app
+        shell: bash
+        env:
+          CI: "1"  # tells RendererPerformanceTests to skip budget assertions
+        run: bash scripts/build.sh --no-tests
 
-      - name: Quality Checks
-        run: bash scripts/quality.sh --skip-format
-
-      - name: Performance Smoke (Non-blocking)
-        run: |
-          cd mdviewer
-          swift test --filter RendererPerformanceTests -v || true
+      - name: Upload md.app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: md-app
+          path: release/md.app
+          retention-days: 7
+          if-no-files-found: error

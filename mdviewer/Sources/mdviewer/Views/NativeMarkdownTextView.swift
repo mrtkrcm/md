@@ -494,6 +494,24 @@ actor MarkdownRenderService {
         // ── Colour and kern: full-range baseline ──────────────────────────────
         text.addAttribute(.foregroundColor, value: palette.textPrimary, range: fullRange)
         text.addAttribute(.kern,            value: spacing.kern,        range: fullRange)
+
+        // ── Theme-aware link colors ──────────────────────────────────────────
+        // NSAttributedString(markdown:) applies system linkColor; we override with theme.
+        text.enumerateAttribute(.link, in: fullRange, options: []) { _, range, _ in
+            text.addAttribute(.foregroundColor, value: palette.link, range: range)
+        }
+
+        // ── Heading colors ───────────────────────────────────────────────────
+        text.enumerateAttribute(Self.presentationIntentKey, in: fullRange, options: []) { value, range, _ in
+            guard let intent = value as? PresentationIntent else { return }
+            let isHeading = intent.components.contains { component in
+                if case .header = component.kind { return true }
+                return false
+            }
+            if isHeading {
+                text.addAttribute(.foregroundColor, value: palette.heading, range: range)
+            }
+        }
     }
 
     /// Builds a complete NSParagraphStyle for one PresentationIntent run.
@@ -614,6 +632,25 @@ actor MarkdownRenderService {
     private func applyCodeStyling(_ text: NSMutableAttributedString, request: RenderRequest) {
         let syntax = request.syntaxPalette.nativeSyntax
         let themePalette = NativeThemePalette(theme: request.appTheme, scheme: request.colorScheme)
+        let fullRange = NSRange(location: 0, length: text.length)
+
+        // Collect fenced code block ranges (identified by PresentationIntent.codeBlock)
+        var fencedCodeRanges: [NSRange] = []
+        text.enumerateAttribute(Self.presentationIntentKey, in: fullRange, options: []) { value, range, _ in
+            guard let intent = value as? PresentationIntent else { return }
+            let isCodeBlock = intent.components.contains { component in
+                if case .codeBlock = component.kind { return true }
+                return false
+            }
+            if isCodeBlock {
+                fencedCodeRanges.append(range)
+            }
+        }
+
+        // Helper to check if a range is within any fenced code block
+        func isFencedCode(_ range: NSRange) -> Bool {
+            fencedCodeRanges.contains { NSIntersectionRange($0, range).length > 0 }
+        }
 
         var location = 0
         while location < text.length {
@@ -627,13 +664,14 @@ actor MarkdownRenderService {
                 font.fontDescriptor.symbolicTraits.contains(.monoSpace)
             else { continue }
 
-            // Apply background to all mono runs (both fenced code blocks and inline code).
-            // For fenced code blocks, ReaderLayoutManager reads .backgroundColor and draws
-            // a single unified rounded rect; the per-character attribute is suppressed during
-            // super.drawBackground so it produces no visible per-line pills.
-            // Inline code spans get the standard character-level background pill.
-            text.addAttribute(.backgroundColor, value: themePalette.codeBackground, range: effectiveRange)
-            applySyntaxHighlight(to: text, in: effectiveRange, syntax: syntax)
+            if isFencedCode(effectiveRange) {
+                // Fenced code blocks: use unified background, let ReaderLayoutManager draw it
+                text.addAttribute(.backgroundColor, value: themePalette.codeBackground, range: effectiveRange)
+                applySyntaxHighlight(to: text, in: effectiveRange, syntax: syntax)
+            } else {
+                // Inline code: use subtle background pill
+                text.addAttribute(.backgroundColor, value: themePalette.inlineCodeBackground, range: effectiveRange)
+            }
         }
     }
 
@@ -667,50 +705,99 @@ actor MarkdownRenderService {
 
 private struct NativeThemePalette {
     let textPrimary: NSColor
+    let textSecondary: NSColor
+    let link: NSColor
+    let heading: NSColor
     let codeBackground: NSColor
+    let codeBorder: NSColor
     let blockquoteAccent: NSColor
     let blockquoteBackground: NSColor
+    let inlineCodeBackground: NSColor
 
     init(theme: AppTheme, scheme: ColorScheme) {
         switch (theme, scheme) {
         case (.github, .light):
-            textPrimary          = NSColor(calibratedRed: 0.14, green: 0.16, blue: 0.20, alpha: 1)
-            codeBackground       = NSColor(calibratedWhite: 0.96, alpha: 1)
-            blockquoteAccent     = NSColor(calibratedRed: 0.22, green: 0.51, blue: 0.82, alpha: 1)
-            blockquoteBackground = NSColor(calibratedRed: 0.22, green: 0.51, blue: 0.82, alpha: 0.06)
+            textPrimary          = NSColor(red: 0.14, green: 0.16, blue: 0.20, alpha: 1)
+            textSecondary        = NSColor(red: 0.40, green: 0.42, blue: 0.46, alpha: 1)
+            link                 = NSColor(red: 0.10, green: 0.46, blue: 0.82, alpha: 1)
+            heading              = NSColor(red: 0.06, green: 0.08, blue: 0.12, alpha: 1)
+            codeBackground       = NSColor(red: 0.96, green: 0.96, blue: 0.96, alpha: 1)
+            codeBorder           = NSColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1)
+            blockquoteAccent     = NSColor(red: 0.22, green: 0.51, blue: 0.82, alpha: 1)
+            blockquoteBackground = NSColor(red: 0.22, green: 0.51, blue: 0.82, alpha: 0.06)
+            inlineCodeBackground = NSColor(red: 0.22, green: 0.51, blue: 0.82, alpha: 0.08)
         case (.github, .dark):
-            textPrimary          = NSColor(calibratedWhite: 0.90, alpha: 1)
-            codeBackground       = NSColor(calibratedRed: 0.17, green: 0.18, blue: 0.20, alpha: 1)
-            blockquoteAccent     = NSColor(calibratedRed: 0.35, green: 0.62, blue: 0.90, alpha: 1)
-            blockquoteBackground = NSColor(calibratedRed: 0.35, green: 0.62, blue: 0.90, alpha: 0.08)
+            textPrimary          = NSColor(red: 0.90, green: 0.90, blue: 0.90, alpha: 1)
+            textSecondary        = NSColor(red: 0.60, green: 0.62, blue: 0.66, alpha: 1)
+            link                 = NSColor(red: 0.53, green: 0.75, blue: 0.98, alpha: 1)
+            heading              = NSColor(red: 0.95, green: 0.96, blue: 0.98, alpha: 1)
+            codeBackground       = NSColor(red: 0.17, green: 0.18, blue: 0.20, alpha: 1)
+            codeBorder           = NSColor(red: 0.28, green: 0.29, blue: 0.32, alpha: 1)
+            blockquoteAccent     = NSColor(red: 0.35, green: 0.62, blue: 0.90, alpha: 1)
+            blockquoteBackground = NSColor(red: 0.35, green: 0.62, blue: 0.90, alpha: 0.08)
+            inlineCodeBackground = NSColor(red: 0.35, green: 0.62, blue: 0.90, alpha: 0.10)
         case (.docC, .light):
-            textPrimary          = NSColor(calibratedRed: 0.12, green: 0.12, blue: 0.14, alpha: 1)
-            codeBackground       = NSColor(calibratedWhite: 0.95, alpha: 1)
-            blockquoteAccent     = NSColor(calibratedRed: 0.00, green: 0.48, blue: 1.00, alpha: 1)
-            blockquoteBackground = NSColor(calibratedRed: 0.00, green: 0.48, blue: 1.00, alpha: 0.05)
+            textPrimary          = NSColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1)
+            textSecondary        = NSColor(red: 0.38, green: 0.38, blue: 0.42, alpha: 1)
+            link                 = NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 1)
+            heading              = NSColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1)
+            codeBackground       = NSColor(red: 0.95, green: 0.95, blue: 0.96, alpha: 1)
+            codeBorder           = NSColor(red: 0.88, green: 0.88, blue: 0.90, alpha: 1)
+            blockquoteAccent     = NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 1)
+            blockquoteBackground = NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 0.05)
+            inlineCodeBackground = NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 0.08)
         case (.docC, .dark):
-            textPrimary          = NSColor(calibratedWhite: 0.93, alpha: 1)
-            codeBackground       = NSColor(calibratedRed: 0.14, green: 0.15, blue: 0.17, alpha: 1)
-            blockquoteAccent     = NSColor(calibratedRed: 0.25, green: 0.60, blue: 1.00, alpha: 1)
-            blockquoteBackground = NSColor(calibratedRed: 0.25, green: 0.60, blue: 1.00, alpha: 0.08)
+            textPrimary          = NSColor(red: 0.93, green: 0.93, blue: 0.94, alpha: 1)
+            textSecondary        = NSColor(red: 0.60, green: 0.60, blue: 0.64, alpha: 1)
+            link                 = NSColor(red: 0.25, green: 0.60, blue: 1.00, alpha: 1)
+            heading              = NSColor(red: 0.97, green: 0.97, blue: 0.98, alpha: 1)
+            codeBackground       = NSColor(red: 0.14, green: 0.15, blue: 0.17, alpha: 1)
+            codeBorder           = NSColor(red: 0.26, green: 0.27, blue: 0.30, alpha: 1)
+            blockquoteAccent     = NSColor(red: 0.25, green: 0.60, blue: 1.00, alpha: 1)
+            blockquoteBackground = NSColor(red: 0.25, green: 0.60, blue: 1.00, alpha: 0.08)
+            inlineCodeBackground = NSColor(red: 0.25, green: 0.60, blue: 1.00, alpha: 0.10)
         case (.basic, .light):
             textPrimary          = .labelColor
-            codeBackground       = NSColor(calibratedWhite: 0.95, alpha: 1)
-            blockquoteAccent     = NSColor(calibratedWhite: 0.55, alpha: 1)
-            blockquoteBackground = NSColor(calibratedWhite: 0.00, alpha: 0.04)
+            textSecondary        = .secondaryLabelColor
+            link                 = .linkColor
+            heading              = .labelColor
+            codeBackground       = NSColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1)
+            codeBorder           = NSColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1)
+            blockquoteAccent     = NSColor(red: 0.55, green: 0.55, blue: 0.55, alpha: 1)
+            blockquoteBackground = NSColor(red: 0.00, green: 0.00, blue: 0.00, alpha: 0.04)
+            inlineCodeBackground = NSColor(red: 0.55, green: 0.55, blue: 0.55, alpha: 0.08)
         case (.basic, .dark):
             textPrimary          = .labelColor
-            codeBackground       = NSColor(calibratedWhite: 0.20, alpha: 1)
-            blockquoteAccent     = NSColor(calibratedWhite: 0.45, alpha: 1)
-            blockquoteBackground = NSColor(calibratedWhite: 1.00, alpha: 0.05)
+            textSecondary        = .secondaryLabelColor
+            link                 = .linkColor
+            heading              = .labelColor
+            codeBackground       = NSColor(red: 0.20, green: 0.20, blue: 0.20, alpha: 1)
+            codeBorder           = NSColor(red: 0.30, green: 0.30, blue: 0.30, alpha: 1)
+            blockquoteAccent     = NSColor(red: 0.45, green: 0.45, blue: 0.45, alpha: 1)
+            blockquoteBackground = NSColor(red: 1.00, green: 1.00, blue: 1.00, alpha: 0.05)
+            inlineCodeBackground = NSColor(red: 0.45, green: 0.45, blue: 0.45, alpha: 0.08)
         @unknown default:
             textPrimary          = .labelColor
+            textSecondary        = .secondaryLabelColor
+            link                 = .linkColor
+            heading              = .labelColor
             codeBackground       = scheme == .dark
-                ? NSColor(calibratedWhite: 0.20, alpha: 1)
-                : NSColor(calibratedWhite: 0.95, alpha: 1)
-            blockquoteAccent     = NSColor(calibratedWhite: scheme == .dark ? 0.45 : 0.55, alpha: 1)
-            blockquoteBackground = NSColor(calibratedWhite: scheme == .dark ? 1.0 : 0.0,
+                ? NSColor(red: 0.20, green: 0.20, blue: 0.20, alpha: 1)
+                : NSColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1)
+            codeBorder           = scheme == .dark
+                ? NSColor(red: 0.30, green: 0.30, blue: 0.30, alpha: 1)
+                : NSColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1)
+            blockquoteAccent     = NSColor(red: scheme == .dark ? 0.45 : 0.55,
+                                           green: scheme == .dark ? 0.45 : 0.55,
+                                           blue: scheme == .dark ? 0.45 : 0.55, alpha: 1)
+            blockquoteBackground = NSColor(red: scheme == .dark ? 1.0 : 0.0,
+                                           green: scheme == .dark ? 1.0 : 0.0,
+                                           blue: scheme == .dark ? 1.0 : 0.0,
                                            alpha: scheme == .dark ? 0.05 : 0.04)
+            inlineCodeBackground = NSColor(red: scheme == .dark ? 0.45 : 0.55,
+                                           green: scheme == .dark ? 0.45 : 0.55,
+                                           blue: scheme == .dark ? 0.45 : 0.55,
+                                           alpha: 0.08)
         }
     }
 }

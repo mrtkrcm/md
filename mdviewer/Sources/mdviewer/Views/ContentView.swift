@@ -70,6 +70,7 @@ struct ContentView: View {
                     } else {
                         RawMarkdownEditor(
                             text: $document.text,
+                            fontFamily: readerFontFamily,
                             fontSize: readerFontSize.points,
                             syntaxPalette: syntaxPalette,
                             colorScheme: effectiveColorScheme
@@ -371,6 +372,7 @@ struct ContentView: View {
 
 private struct RawMarkdownEditor: View {
     @Binding var text: String
+    let fontFamily: ReaderFontFamily
     let fontSize: CGFloat
     let syntaxPalette: SyntaxPalette
     let colorScheme: ColorScheme
@@ -378,6 +380,7 @@ private struct RawMarkdownEditor: View {
     var body: some View {
         RawMarkdownTextView(
             text: $text,
+            fontFamily: fontFamily,
             fontSize: fontSize,
             syntaxPalette: syntaxPalette,
             colorScheme: colorScheme
@@ -396,6 +399,7 @@ private struct RawMarkdownEditor: View {
 #if os(macOS)
 private struct RawMarkdownTextView: NSViewRepresentable {
     @Binding var text: String
+    let fontFamily: ReaderFontFamily
     let fontSize: CGFloat
     let syntaxPalette: SyntaxPalette
     let colorScheme: ColorScheme
@@ -427,6 +431,7 @@ private struct RawMarkdownTextView: NSViewRepresentable {
         context.coordinator.applyTextIfNeeded(text, to: textView)
         context.coordinator.applyHighlighting(
             to: textView,
+            fontFamily: fontFamily,
             fontSize: fontSize,
             syntaxPalette: syntaxPalette,
             colorScheme: colorScheme
@@ -441,6 +446,7 @@ private struct RawMarkdownTextView: NSViewRepresentable {
         context.coordinator.applyTextIfNeeded(text, to: textView)
         context.coordinator.applyHighlighting(
             to: textView,
+            fontFamily: fontFamily,
             fontSize: fontSize,
             syntaxPalette: syntaxPalette,
             colorScheme: colorScheme
@@ -454,6 +460,7 @@ private struct RawMarkdownTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding private var text: String
         private var isApplyingProgrammaticChange = false
+        private var currentFontFamily: ReaderFontFamily = .newYork
         private var currentFontSize: CGFloat = 14
         private var currentSyntaxPalette: SyntaxPalette = .midnight
         private var currentColorScheme: ColorScheme = .light
@@ -484,6 +491,7 @@ private struct RawMarkdownTextView: NSViewRepresentable {
             text = textView.string
             applyHighlighting(
                 to: textView,
+                fontFamily: currentFontFamily,
                 fontSize: currentFontSize,
                 syntaxPalette: currentSyntaxPalette,
                 colorScheme: currentColorScheme
@@ -501,11 +509,13 @@ private struct RawMarkdownTextView: NSViewRepresentable {
         @MainActor
         func applyHighlighting(
             to textView: NSTextView,
+            fontFamily: ReaderFontFamily,
             fontSize: CGFloat,
             syntaxPalette: SyntaxPalette,
             colorScheme: ColorScheme
         ) {
             guard let storage = textView.textStorage else { return }
+            currentFontFamily = fontFamily
             currentFontSize = fontSize
             currentSyntaxPalette = syntaxPalette
             currentColorScheme = colorScheme
@@ -519,8 +529,9 @@ private struct RawMarkdownTextView: NSViewRepresentable {
             let secondaryForeground: NSColor = colorScheme == .dark
                 ? NSColor(calibratedWhite: 0.65, alpha: 1)
                 : NSColor(calibratedWhite: 0.40, alpha: 1)
-            let baseFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-            let boldFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
+            let baseFont = fontFamily.nsFont(size: fontSize)
+            let boldFont = fontFamily.nsFont(size: fontSize, traits: .bold)
+            let codeFont = fontFamily.nsFont(size: fontSize, monospaced: true)
             let codeBackground: NSColor = colorScheme == .dark
                 ? NSColor(calibratedWhite: 0.16, alpha: 1)
                 : NSColor(calibratedWhite: 0.95, alpha: 1)
@@ -562,7 +573,8 @@ private struct RawMarkdownTextView: NSViewRepresentable {
                 storage: storage,
                 regexRange: fullRange,
                 syntax: syntax,
-                codeBackground: codeBackground
+                codeBackground: codeBackground,
+                codeFont: codeFont
             )
 
             storage.endEditing()
@@ -574,7 +586,8 @@ private struct RawMarkdownTextView: NSViewRepresentable {
             storage: NSTextStorage,
             regexRange: NSRange,
             syntax: NativeSyntaxStyle,
-            codeBackground: NSColor
+            codeBackground: NSColor,
+            codeFont: NSFont
         ) {
             guard let fencedCodeRegex else { return }
 
@@ -589,6 +602,7 @@ private struct RawMarkdownTextView: NSViewRepresentable {
                 guard bodyRange.location != NSNotFound, bodyRange.length > 0 else { return }
 
                 storage.addAttribute(.backgroundColor, value: codeBackground, range: bodyRange)
+                storage.addAttribute(.font, value: codeFont, range: bodyRange)
 
                 let language = languageRange.location == NSNotFound
                     ? ""

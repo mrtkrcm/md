@@ -83,9 +83,8 @@ enum ReaderFontFamily: String, CaseIterable, Identifiable {
             return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
 
         case .sfPro:
-            if let f = NSFont(name: "SFProText-Regular", size: size) { return f }
-            if let f = NSFont(name: "SF Pro Text", size: size) { return f }
-            return NSFont.systemFont(ofSize: size)
+            // Use system font with default design for SF Pro Text
+            return NSFont.systemFont(ofSize: size, weight: .regular)
 
         case .newYork:
             // "New York" is not accessible via NSFont(name:) — use descriptor design.

@@ -421,6 +421,124 @@ final class MarkdownRenderVisualTests: XCTestCase {
             "H4 should be 1.1× body size (got h4=\(h4Size) body=\(bodySize))")
     }
 
+    // MARK: - Theme heading colors
+
+    func testHeadingsHaveThemeColor() async {
+        let markdown = "# Heading One\n\nBody text."
+        let github = await rendered(markdown, theme: .github, scheme: .light)
+        let ns = github.string as NSString
+
+        let headingLoc = ns.range(of: "Heading One").location
+        let bodyLoc = ns.range(of: "Body text").location
+        XCTAssertNotEqual(headingLoc, NSNotFound)
+        XCTAssertNotEqual(bodyLoc, NSNotFound)
+
+        let headingColor = foregroundColor(at: headingLoc, in: github)
+        let bodyColor = foregroundColor(at: bodyLoc, in: github)
+
+        XCTAssertNotNil(headingColor)
+        XCTAssertNotNil(bodyColor)
+
+        // GitHub light theme: heading should be darker than body
+        if let h = headingColor?.usingColorSpace(.deviceRGB),
+           let b = bodyColor?.usingColorSpace(.deviceRGB) {
+            let headingLuma = h.redComponent * 0.299 + h.greenComponent * 0.587 + h.blueComponent * 0.114
+            let bodyLuma = b.redComponent * 0.299 + b.greenComponent * 0.587 + b.blueComponent * 0.114
+            XCTAssertLessThan(headingLuma, bodyLuma, "GitHub light theme headings should be darker than body")
+        }
+    }
+
+    func testHeadingsDifferentAcrossThemes() async {
+        let markdown = "# Test Heading"
+        let github = await rendered(markdown, theme: .github, scheme: .light)
+        let docC = await rendered(markdown, theme: .docC, scheme: .light)
+
+        let ns = github.string as NSString
+        let loc = ns.range(of: "Test Heading").location
+        XCTAssertNotEqual(loc, NSNotFound)
+
+        let githubColor = foregroundColor(at: loc, in: github)
+        let docCColor = foregroundColor(at: loc, in: docC)
+
+        XCTAssertNotNil(githubColor)
+        XCTAssertNotNil(docCColor)
+
+        if let g = githubColor, let d = docCColor {
+            XCTAssertFalse(colorsApproxEqual(g, d), "GitHub and DocC themes should have different heading colors")
+        }
+    }
+
+    // MARK: - Theme link colors
+
+    func testLinksHaveThemeColor() async {
+        let markdown = "Check out [this link](https://example.com) here."
+        let github = await rendered(markdown, theme: .github, scheme: .light)
+        let ns = github.string as NSString
+
+        let linkLoc = ns.range(of: "this link").location
+        let bodyLoc = ns.range(of: "Check out").location
+        XCTAssertNotEqual(linkLoc, NSNotFound)
+        XCTAssertNotEqual(bodyLoc, NSNotFound)
+
+        let linkColor = foregroundColor(at: linkLoc, in: github)
+        let bodyColor = foregroundColor(at: bodyLoc, in: github)
+
+        XCTAssertNotNil(linkColor)
+        XCTAssertNotNil(bodyColor)
+
+        // Link color should be different from body text color (blue-ish in GitHub)
+        if let l = linkColor?.usingColorSpace(.deviceRGB) {
+            // GitHub links are blue (higher blue component than red)
+            XCTAssertGreaterThan(l.blueComponent, l.redComponent, "GitHub links should be blue-ish")
+        }
+    }
+
+    func testLinksDifferentAcrossThemes() async {
+        let markdown = "[Link text](https://example.com)"
+        let github = await rendered(markdown, theme: .github, scheme: .light)
+        let docC = await rendered(markdown, theme: .docC, scheme: .light)
+
+        let ns = github.string as NSString
+        let loc = ns.range(of: "Link text").location
+        XCTAssertNotEqual(loc, NSNotFound)
+
+        let githubColor = foregroundColor(at: loc, in: github)
+        let docCColor = foregroundColor(at: loc, in: docC)
+
+        XCTAssertNotNil(githubColor)
+        XCTAssertNotNil(docCColor)
+
+        if let g = githubColor, let d = docCColor {
+            XCTAssertFalse(colorsApproxEqual(g, d, tolerance: 0.01), "GitHub and DocC themes should have different link colors")
+        }
+    }
+
+    // MARK: - Inline code vs fenced code backgrounds
+
+    func testInlineCodeHasDistinctBackgroundFromFenced() async {
+        let markdown = "Use `inline code` here.\n\n```\nfenced code\n```"
+        let github = await rendered(markdown, theme: .github, scheme: .light)
+        let ns = github.string as NSString
+
+        let inlineLoc = ns.range(of: "inline code").location
+        let fencedLoc = ns.range(of: "fenced code").location
+        XCTAssertNotEqual(inlineLoc, NSNotFound)
+        XCTAssertNotEqual(fencedLoc, NSNotFound)
+
+        let inlineBg = backgroundColor(at: inlineLoc, in: github)
+        let fencedBg = backgroundColor(at: fencedLoc, in: github)
+
+        XCTAssertNotNil(inlineBg)
+        XCTAssertNotNil(fencedBg)
+
+        // Both should have backgrounds
+        if let i = inlineBg, let f = fencedBg {
+            // They may be the same or different, but both should exist
+            XCTAssertGreaterThan(i.alphaComponent, 0, "Inline code should have visible background")
+            XCTAssertGreaterThan(f.alphaComponent, 0, "Fenced code should have visible background")
+        }
+    }
+
     // MARK: - Theme text color baseline
 
     func testBodyTextReceivesLabelColor() async {

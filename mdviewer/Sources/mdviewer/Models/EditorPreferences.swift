@@ -52,26 +52,54 @@ enum ReaderFontFamily: String, CaseIterable, Identifiable {
     }
 
     #if os(macOS)
-    func nsFont(size: CGFloat, monospaced: Bool = false) -> NSFont {
-        let preferredName: String
-        switch self {
-        case .mapleMonoNF:
-            preferredName = "Maple Mono NF"
-        case .sfPro:
-            preferredName = "SF Pro Text"
-        case .newYork:
-            preferredName = "New York"
-        case .georgia:
-            preferredName = "Georgia"
+    /// Returns an NSFont for this family at the given size.
+    /// Pass `monospaced: true` to get the code font regardless of the chosen family.
+    /// Pass `traits` to apply bold/italic/both on top of the base descriptor.
+    func nsFont(
+        size: CGFloat,
+        monospaced: Bool = false,
+        traits: NSFontDescriptor.SymbolicTraits = []
+    ) -> NSFont {
+        let base: NSFont = resolveBaseFont(size: size, monospaced: monospaced)
+        guard !traits.isEmpty else { return base }
+        let desc = base.fontDescriptor.withSymbolicTraits(traits)
+        return NSFont(descriptor: desc, size: base.pointSize) ?? base
+    }
+
+    private func resolveBaseFont(size: CGFloat, monospaced: Bool) -> NSFont {
+        // Monospaced: prefer Maple Mono NF when available, fall back to system mono.
+        if monospaced {
+            if let f = NSFont(name: "MapleMono-NF-Regular", size: size) { return f }
+            if let f = NSFont(name: "Maple Mono NF", size: size) { return f }
+            let desc = NSFont.systemFont(ofSize: size).fontDescriptor.withDesign(.monospaced)
+            return desc.flatMap { NSFont(descriptor: $0, size: size) }
+                ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
         }
 
-        if monospaced, let mono = NSFont(name: "Maple Mono NF", size: size) {
-            return mono
+        switch self {
+        case .mapleMonoNF:
+            if let f = NSFont(name: "MapleMono-NF-Regular", size: size) { return f }
+            if let f = NSFont(name: "Maple Mono NF", size: size) { return f }
+            return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+
+        case .sfPro:
+            if let f = NSFont(name: "SFProText-Regular", size: size) { return f }
+            if let f = NSFont(name: "SF Pro Text", size: size) { return f }
+            return NSFont.systemFont(ofSize: size)
+
+        case .newYork:
+            // "New York" is not accessible via NSFont(name:) — use descriptor design.
+            let desc = NSFont.systemFont(ofSize: size).fontDescriptor.withDesign(.serif)
+            if let f = desc.flatMap({ NSFont(descriptor: $0, size: size) }) { return f }
+            if let f = NSFont(name: "Georgia", size: size) { return f }
+            return NSFont.systemFont(ofSize: size)
+
+        case .georgia:
+            if let f = NSFont(name: "Georgia", size: size) { return f }
+            let desc = NSFont.systemFont(ofSize: size).fontDescriptor.withDesign(.serif)
+            return desc.flatMap { NSFont(descriptor: $0, size: size) }
+                ?? NSFont.systemFont(ofSize: size)
         }
-        if let font = NSFont(name: preferredName, size: size) {
-            return font
-        }
-        return monospaced ? NSFont.monospacedSystemFont(ofSize: size, weight: .regular) : NSFont.systemFont(ofSize: size)
     }
     #endif
 }

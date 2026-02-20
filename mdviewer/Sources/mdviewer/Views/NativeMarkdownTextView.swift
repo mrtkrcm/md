@@ -263,87 +263,60 @@ actor MarkdownRenderService {
         )) ?? NSAttributedString(string: parsed.renderedMarkdown)
     }
 
-    // NSAttributedString key names for semantic markdown intents (Foundation, macOS 12+).
-    // On macOS 26+ the markdown parser stopped pre-baking NSFont attributes and switched to
-    // emitting only these semantic intent attributes, leaving visual rendering to the framework.
-    // We interpret them here so the renderer stays correct across OS versions.
-    private static let presentationIntentKey = NSAttributedString.Key("NSPresentationIntent")
+    // Foundation key names for markdown semantic intents (macOS 12+).
+    // NSAttributedString(markdown:) does not emit NSFont attributes on macOS 14+;
+    // all structure is conveyed via these two keys only.
+    private static let presentationIntentKey   = NSAttributedString.Key("NSPresentationIntent")
     private static let inlinePresentationIntentKey = NSAttributedString.Key("NSInlinePresentationIntent")
+
+    // Heading font scales relative to body size.
+    private static let headingScales: [Int: CGFloat] = [1: 2.0, 2: 1.5, 3: 1.25, 4: 1.1, 5: 1.0, 6: 1.0]
 
     private func applyTypography(_ text: NSMutableAttributedString, request: RenderRequest) {
         let fullRange = NSRange(location: 0, length: text.length)
+        let palette   = NativeThemePalette(theme: request.appTheme, scheme: request.colorScheme)
+        let spacing   = request.textSpacing
 
-        let bodyFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
-        let codeFont = request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true)
-        let themePalette = NativeThemePalette(theme: request.appTheme, scheme: request.colorScheme)
+        // ── Fonts: one pass over PresentationIntent runs ─────────────────────
+        // The parser emits zero NSFont attributes; we must derive every font
+        // from the semantic intent stack attached to each run.
+        let bodySize = request.readerFontSize
+        let codeSize = request.codeFontSize
+        let family   = request.readerFontFamily
 
-        // Build fonts from NSPresentationIntent (macOS 12+ semantic path).
-        applyFontsFromPresentationIntents(text, bodyFont: bodyFont, codeFont: codeFont, request: request)
+        let bodyFont = family.nsFont(size: bodySize)
+        let codeFont = family.nsFont(size: codeSize, monospaced: true)
 
-        // Baseline text colour for the full range. applyCodeStyling overwrites code spans.
-        text.addAttribute(.foregroundColor, value: themePalette.textPrimary, range: fullRange)
-
-        // Letter spacing — applied uniformly, does not affect paragraph structure.
-        text.addAttribute(.kern, value: request.textSpacing.kern, range: fullRange)
-
-        // Merge spacing values into each existing paragraph style. Enumeration preserves
-        // list indentation, blockquote margins, and NSTextList attributes set by the parser.
-        let lineSpacing      = request.textSpacing.lineSpacing
-        let paragraphSpacing = request.textSpacing.paragraphSpacing
-        let hyphenation      = request.textSpacing.hyphenationFactor
-        text.enumerateAttribute(.paragraphStyle, in: fullRange) { value, range, _ in
-            let base = (value as? NSParagraphStyle) ?? NSParagraphStyle.default
-            guard let merged = base.mutableCopy() as? NSMutableParagraphStyle else { return }
-            merged.lineSpacing = lineSpacing
-            merged.paragraphSpacing = paragraphSpacing
-            merged.hyphenationFactor = hyphenation
-            text.addAttribute(.paragraphStyle, value: merged, range: range)
-        }
-    }
-
-    private func applyFontsFromPresentationIntents(
-        _ text: NSMutableAttributedString,
-        bodyFont: NSFont,
-        codeFont: NSFont,
-        request: RenderRequest
-    ) {
-        let fullRange = NSRange(location: 0, length: text.length)
-
-        // Baseline: every run starts at body size.
-        text.addAttribute(.font, value: bodyFont, range: fullRange)
-
-        // Block-level overrides: headings and fenced code blocks.
         text.enumerateAttribute(Self.presentationIntentKey, in: fullRange, options: []) { value, range, _ in
-            guard let intent = value as? PresentationIntent else { return }
+            guard let intent = value as? PresentationIntent else {
+                text.addAttribute(.font, value: bodyFont, range: range)
+                return
+            }
+
             var headingLevel = 0
             var isCodeBlock  = false
+
             for component in intent.components {
                 switch component.kind {
                 case .header(let level): headingLevel = level
-                case .codeBlock:         isCodeBlock = true
+                case .codeBlock:         isCodeBlock  = true
                 default:                 break
                 }
             }
+
             if isCodeBlock {
                 text.addAttribute(.font, value: codeFont, range: range)
             } else if headingLevel > 0 {
-                let scale: CGFloat
-                switch headingLevel {
-                case 1: scale = 2.00
-                case 2: scale = 1.50
-                case 3: scale = 1.25
-                case 4: scale = 1.10
-                default: scale = 1.00
-                }
-                let base = request.readerFontFamily.nsFont(size: request.readerFontSize * scale)
-                let desc = base.fontDescriptor.withSymbolicTraits(.bold)
-                text.addAttribute(.font, value: NSFont(descriptor: desc, size: base.pointSize) ?? base, range: range)
+                let scale = Self.headingScales[headingLevel, default: 1.0]
+                let font  = family.nsFont(size: bodySize * scale, traits: .bold)
+                text.addAttribute(.font, value: font, range: range)
+            } else {
+                text.addAttribute(.font, value: bodyFont, range: range)
             }
         }
 
-        // Inline overrides: bold, italic, inline code.
-        // The attribute value is stored as NSNumber (the OptionSet raw value); construct
-        // InlinePresentationIntent from it to use named members rather than magic bit literals.
+        // ── Inline emphasis / code override ──────────────────────────────────
+        // InlinePresentationIntent raw value is an NSNumber bit-field.
         text.enumerateAttribute(Self.inlinePresentationIntentKey, in: fullRange, options: []) { value, range, _ in
             guard let raw = value as? NSNumber else { return }
             let intent = InlinePresentationIntent(rawValue: UInt(raw.intValue))
@@ -352,16 +325,111 @@ actor MarkdownRenderService {
                 text.addAttribute(.font, value: codeFont, range: range)
                 return
             }
-            let isBold   = intent.contains(.stronglyEmphasized)
-            let isItalic = intent.contains(.emphasized)
-            guard isBold || isItalic else { return }
+            let bold   = intent.contains(.stronglyEmphasized)
+            let italic = intent.contains(.emphasized)
+            guard bold || italic else { return }
+
             let current = (text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont) ?? bodyFont
-            var traits = current.fontDescriptor.symbolicTraits
-            if isBold   { traits.insert(.bold)   }
-            if isItalic { traits.insert(.italic)  }
+            var traits  = current.fontDescriptor.symbolicTraits
+            if bold   { traits.insert(.bold)   }
+            if italic { traits.insert(.italic) }
             let desc = current.fontDescriptor.withSymbolicTraits(traits)
             text.addAttribute(.font, value: NSFont(descriptor: desc, size: current.pointSize) ?? current, range: range)
         }
+
+        // ── Paragraph styles: one pass building full NSParagraphStyle per run ─
+        // The parser emits NO paragraph styles — all spacing, indentation, and
+        // rhythm must be constructed from scratch using PresentationIntent.
+        text.enumerateAttribute(Self.presentationIntentKey, in: fullRange, options: []) { value, range, _ in
+            let ps = buildParagraphStyle(
+                for: value as? PresentationIntent,
+                spacing: spacing,
+                bodySize: bodySize
+            )
+            text.addAttribute(.paragraphStyle, value: ps, range: range)
+        }
+
+        // ── Colour and kern: full-range baseline ──────────────────────────────
+        // applyCodeStyling will overwrite foregroundColor on code runs.
+        text.addAttribute(.foregroundColor, value: palette.textPrimary, range: fullRange)
+        text.addAttribute(.kern,            value: spacing.kern,        range: fullRange)
+    }
+
+    /// Builds a complete NSParagraphStyle for one PresentationIntent run.
+    private func buildParagraphStyle(
+        for intent: PresentationIntent?,
+        spacing: ReaderTextSpacing,
+        bodySize: CGFloat
+    ) -> NSParagraphStyle {
+        let ps = NSMutableParagraphStyle()
+
+        // Defaults — override below per block type.
+        ps.lineSpacing         = spacing.lineSpacing
+        ps.paragraphSpacing    = spacing.paragraphSpacing
+        ps.paragraphSpacingBefore = 0
+        ps.hyphenationFactor   = spacing.hyphenationFactor
+
+        guard let intent else { return ps }
+
+        var headingLevel  = 0
+        var isCodeBlock   = false
+        var bqDepth       = 0
+        var listDepth     = 0
+
+        for component in intent.components {
+            switch component.kind {
+            case .header(let l): headingLevel = l
+            case .codeBlock:     isCodeBlock  = true
+            case .blockQuote:    bqDepth     += 1
+            case .unorderedList: listDepth   += 1
+            case .orderedList:   listDepth   += 1
+            default:             break
+            }
+        }
+
+        // ── Headings ─────────────────────────────────────────────────────────
+        if headingLevel > 0 {
+            // More air above headings than below for visual grouping.
+            let scale = Self.headingScales[headingLevel, default: 1.0]
+            let headSize = bodySize * scale
+            ps.paragraphSpacingBefore = headSize * 1.2   // ~1.2× the heading itself
+            ps.paragraphSpacing       = headSize * 0.3   // tight gap between heading and body
+            ps.lineSpacing            = spacing.lineSpacing * 0.5
+            return ps
+        }
+
+        // ── Code blocks ───────────────────────────────────────────────────────
+        if isCodeBlock {
+            ps.lineSpacing            = spacing.lineSpacing * 0.6
+            ps.paragraphSpacingBefore = spacing.paragraphSpacing
+            ps.paragraphSpacing       = spacing.paragraphSpacing
+            ps.firstLineHeadIndent    = 12
+            ps.headIndent             = 12
+            ps.tailIndent             = -12
+            return ps
+        }
+
+        // ── Blockquotes ───────────────────────────────────────────────────────
+        if bqDepth > 0 {
+            let indent = CGFloat(bqDepth) * 24
+            ps.firstLineHeadIndent    = indent
+            ps.headIndent             = indent
+            ps.tailIndent             = -8
+            ps.paragraphSpacingBefore = spacing.paragraphSpacing * 0.5
+            return ps
+        }
+
+        // ── Lists ─────────────────────────────────────────────────────────────
+        if listDepth > 0 {
+            let perLevel: CGFloat = 20
+            let indent = CGFloat(listDepth) * perLevel
+            ps.firstLineHeadIndent    = indent
+            ps.headIndent             = indent + perLevel   // hang the marker
+            ps.paragraphSpacing       = spacing.paragraphSpacing * 0.5
+            return ps
+        }
+
+        return ps
     }
 
     private func applyCodeStyling(_ text: NSMutableAttributedString, request: RenderRequest) {

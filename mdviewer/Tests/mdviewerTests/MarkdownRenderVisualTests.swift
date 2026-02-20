@@ -245,8 +245,8 @@ final class MarkdownRenderVisualTests: XCTestCase {
     }
 
     func testUserLineSpacingAppliedToListItems() async {
-        // Regression: spacing must be merged into list-item paragraph styles,
-        // not overwrite them (which would strip list indentation).
+        // List items use lineSpacing from the user preference and a reduced
+        // paragraphSpacing (50% of body) to keep items visually compact.
         let markdown = """
         - First item
         - Second item
@@ -260,12 +260,18 @@ final class MarkdownRenderVisualTests: XCTestCase {
         XCTAssertNotEqual(itemLoc, NSNotFound)
 
         let style = paragraphStyle(at: itemLoc, in: result)
-        XCTAssertNotNil(style, "List items should have a paragraph style attribute")
-        XCTAssertEqual(style?.lineSpacing      ?? 0, ReaderTextSpacing.compact.lineSpacing,      accuracy: 0.1)
-        XCTAssertEqual(style?.paragraphSpacing ?? 0, ReaderTextSpacing.compact.paragraphSpacing, accuracy: 0.1)
+        XCTAssertNotNil(style, "List items must have a paragraph style")
+        XCTAssertEqual(style?.lineSpacing ?? 0, ReaderTextSpacing.compact.lineSpacing, accuracy: 0.1)
+        // paragraphSpacing for list items is 50% of the user value.
+        let expected = ReaderTextSpacing.compact.paragraphSpacing * 0.5
+        XCTAssertEqual(style?.paragraphSpacing ?? 0, expected, accuracy: 0.1)
+        // headIndent must be positive — proves indentation was applied.
+        XCTAssertGreaterThan(style?.headIndent ?? 0, 0, "List items must be indented")
     }
 
     func testUserLineSpacingAppliedToHeadings() async {
+        // Headings use reduced lineSpacing (50% of body preference) and tight
+        // paragraphSpacing below; paragraphSpacingBefore creates the air above.
         let markdown = "# My Heading\n\nSome body text."
 
         let result = await rendered(markdown, textSpacing: .relaxed)
@@ -276,8 +282,12 @@ final class MarkdownRenderVisualTests: XCTestCase {
 
         let style = paragraphStyle(at: headingLoc, in: result)
         XCTAssertNotNil(style)
-        XCTAssertEqual(style?.lineSpacing      ?? 0, ReaderTextSpacing.relaxed.lineSpacing,      accuracy: 0.1)
-        XCTAssertEqual(style?.paragraphSpacing ?? 0, ReaderTextSpacing.relaxed.paragraphSpacing, accuracy: 0.1)
+        // lineSpacing on headings is 50% of the user preference.
+        let expectedLineSpacing = ReaderTextSpacing.relaxed.lineSpacing * 0.5
+        XCTAssertEqual(style?.lineSpacing ?? 0, expectedLineSpacing, accuracy: 0.1)
+        // paragraphSpacingBefore must be substantial (heading pulls space above it).
+        XCTAssertGreaterThan(style?.paragraphSpacingBefore ?? 0, 0,
+                             "Headings must have paragraphSpacingBefore > 0")
     }
 
     // MARK: - Themes

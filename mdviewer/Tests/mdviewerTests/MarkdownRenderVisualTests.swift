@@ -378,6 +378,40 @@ final class MarkdownRenderVisualTests: XCTestCase {
             "H2 should be 1.5× body size (got h2=\(h2Size) body=\(bodySize))")
     }
 
+    func testH3FontSizeIs1Point25TimesBody() async {
+        let markdown = "### H3 Heading\n\nBody text."
+        let result = await rendered(markdown, fontSize: .standard)
+        let ns = result.string as NSString
+
+        let h3Loc   = ns.range(of: "H3 Heading").location
+        let bodyLoc = ns.range(of: "Body text").location
+        XCTAssertNotEqual(h3Loc,   NSNotFound)
+        XCTAssertNotEqual(bodyLoc, NSNotFound)
+
+        let h3Size   = pointSize(at: h3Loc,   in: result)
+        let bodySize = pointSize(at: bodyLoc, in: result)
+        XCTAssertGreaterThan(bodySize, 0)
+        XCTAssertEqual(h3Size, bodySize * 1.25, accuracy: 1.0,
+            "H3 should be 1.25× body size (got h3=\(h3Size) body=\(bodySize))")
+    }
+
+    func testH4FontSizeIs1Point1TimesBody() async {
+        let markdown = "#### H4 Heading\n\nBody text."
+        let result = await rendered(markdown, fontSize: .standard)
+        let ns = result.string as NSString
+
+        let h4Loc   = ns.range(of: "H4 Heading").location
+        let bodyLoc = ns.range(of: "Body text").location
+        XCTAssertNotEqual(h4Loc,   NSNotFound)
+        XCTAssertNotEqual(bodyLoc, NSNotFound)
+
+        let h4Size   = pointSize(at: h4Loc,   in: result)
+        let bodySize = pointSize(at: bodyLoc, in: result)
+        XCTAssertGreaterThan(bodySize, 0)
+        XCTAssertEqual(h4Size, bodySize * 1.1, accuracy: 1.0,
+            "H4 should be 1.1× body size (got h4=\(h4Size) body=\(bodySize))")
+    }
+
     // MARK: - Theme text color baseline
 
     func testBodyTextReceivesLabelColor() async {

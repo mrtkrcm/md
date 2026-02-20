@@ -120,6 +120,38 @@ final class MarkdownRenderLineBreakTests: XCTestCase {
         XCTAssertTrue(text.contains("alpha\nbeta"), "Tilde-fenced code lines must not have hard breaks injected between them")
     }
 
+    func testKernAppliedToAllSpacingPreferences() async {
+        // kern is a uniform preference — all three settings must produce the exact value
+        // defined on ReaderTextSpacing, with no run left at the default 0.
+        let markdown = "Text with **bold**, _italic_, and `code` inline."
+
+        for spacing in ReaderTextSpacing.allCases {
+            let request = RenderRequest(
+                markdown: markdown,
+                readerFontFamily: .newYork,
+                readerFontSize: 16,
+                codeFontSize: 14,
+                appTheme: .basic,
+                syntaxPalette: .midnight,
+                colorScheme: .light,
+                textSpacing: spacing,
+                readableWidth: ReaderColumnWidth.balanced.points
+            )
+
+            let rendered = await MarkdownRenderService.shared.render(request)
+            let ns = rendered.attributedString
+            let fullRange = NSRange(location: 0, length: ns.length)
+
+            ns.enumerateAttribute(.kern, in: fullRange) { value, range, _ in
+                let actual = (value as? CGFloat) ?? 0
+                XCTAssertEqual(
+                    actual, spacing.kern, accuracy: 0.001,
+                    "kern mismatch in range \(range) for spacing=\(spacing.rawValue)"
+                )
+            }
+        }
+    }
+
     func testLineSpacingAppliedToBodyText() async {
         let markdown = "Body text for spacing validation."
         let request = RenderRequest(

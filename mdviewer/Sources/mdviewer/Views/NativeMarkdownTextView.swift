@@ -335,7 +335,10 @@ actor MarkdownRenderService {
 
     private func applyTypography(_ text: NSMutableAttributedString, request: RenderRequest) {
         let fullRange = NSRange(location: 0, length: text.length)
+
+        // Pre-compute the two font objects shared across all runs.
         let bodyFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
+        let codeFont = request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true)
 
         // Detect whether the markdown parser pre-baked NSFont attributes (pre-macOS 26) or
         // only emitted semantic NSPresentationIntent attributes (macOS 26+).
@@ -353,7 +356,7 @@ actor MarkdownRenderService {
                 }
                 let traits = existing.fontDescriptor.symbolicTraits
                 if traits.contains(.monoSpace) {
-                    text.addAttribute(.font, value: request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true), range: range)
+                    text.addAttribute(.font, value: codeFont, range: range)
                     return
                 }
                 let scaledSize = max(12, existing.pointSize * (request.readerFontSize / 13))
@@ -364,28 +367,28 @@ actor MarkdownRenderService {
             }
         } else {
             // Semantic-only path (macOS 26+): build fonts from NSPresentationIntent.
-            applyFontsFromPresentationIntents(text, request: request)
+            applyFontsFromPresentationIntents(text, bodyFont: bodyFont, codeFont: codeFont, request: request)
         }
 
         // Apply label color as the default text color across the full range. applyCodeStyling
-        // will overwrite this with syntax colors on code spans, and the markdown parser may have
-        // set link/emphasis colors which will be preserved because they are applied after this
-        // baseline (enumerateAttribute runs on a snapshot; addAttribute on earlier ranges is safe).
+        // will overwrite this with syntax colors on code spans afterwards.
         text.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
 
-        // User spacing kern is a display preference — always apply uniformly.
+        // User spacing kern is a display preference — apply uniformly.
         text.addAttribute(.kern, value: request.textSpacing.kern, range: fullRange)
 
-        // Merge spacing properties into each existing paragraph style rather than overwriting
-        // the entire string with a single blank style. This preserves list indentation
-        // (headIndent, firstLineHeadIndent, NSTextList), blockquote formatting, and any other
-        // block-level structure the native markdown parser set.
+        // Merge spacing into each paragraph style in a single pass. This preserves list
+        // indentation (headIndent, firstLineHeadIndent, NSTextList) and blockquote structure
+        // that the markdown parser set, rather than overwriting them.
+        let lineSpacing      = request.textSpacing.lineSpacing
+        let paragraphSpacing = request.textSpacing.paragraphSpacing
+        let hyphenation      = request.textSpacing.hyphenationFactor
         text.enumerateAttribute(.paragraphStyle, in: fullRange) { value, range, _ in
             let base = (value as? NSParagraphStyle) ?? NSParagraphStyle.default
             guard let merged = base.mutableCopy() as? NSMutableParagraphStyle else { return }
-            merged.lineSpacing = request.textSpacing.lineSpacing
-            merged.paragraphSpacing = request.textSpacing.paragraphSpacing
-            merged.hyphenationFactor = request.textSpacing.hyphenationFactor
+            merged.lineSpacing = lineSpacing
+            merged.paragraphSpacing = paragraphSpacing
+            merged.hyphenationFactor = hyphenation
             text.addAttribute(.paragraphStyle, value: merged, range: range)
         }
     }
@@ -394,12 +397,14 @@ actor MarkdownRenderService {
     /// (macOS 26+) instead of pre-baked NSFont attributes.
     private func applyFontsFromPresentationIntents(
         _ text: NSMutableAttributedString,
+        bodyFont: NSFont,
+        codeFont: NSFont,
         request: RenderRequest
     ) {
         let fullRange = NSRange(location: 0, length: text.length)
 
-        // Baseline: every range starts at body size.
-        text.addAttribute(.font, value: request.readerFontFamily.nsFont(size: request.readerFontSize), range: fullRange)
+        // Baseline: every run starts at body size.
+        text.addAttribute(.font, value: bodyFont, range: fullRange)
 
         // Block-level overrides: headings and fenced code blocks.
         text.enumerateAttribute(Self.presentationIntentKey, in: fullRange, options: []) { value, range, _ in
@@ -414,17 +419,15 @@ actor MarkdownRenderService {
                 }
             }
             if isCodeBlock {
-                text.addAttribute(
-                    .font,
-                    value: request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true),
-                    range: range
-                )
+                text.addAttribute(.font, value: codeFont, range: range)
             } else if headingLevel > 0 {
                 let scale: CGFloat
                 switch headingLevel {
-                case 1: scale = 2.0;  case 2: scale = 1.5
-                case 3: scale = 1.25; case 4: scale = 1.1
-                default: scale = 1.0
+                case 1: scale = 2.00
+                case 2: scale = 1.50
+                case 3: scale = 1.25
+                case 4: scale = 1.10
+                default: scale = 1.00
                 }
                 let base = request.readerFontFamily.nsFont(size: request.readerFontSize * scale)
                 let desc = base.fontDescriptor.withSymbolicTraits(.bold)
@@ -440,18 +443,13 @@ actor MarkdownRenderService {
             let intent = InlinePresentationIntent(rawValue: UInt(raw.intValue))
 
             if intent.contains(.code) {
-                text.addAttribute(
-                    .font,
-                    value: request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true),
-                    range: range
-                )
+                text.addAttribute(.font, value: codeFont, range: range)
                 return
             }
             let isBold   = intent.contains(.stronglyEmphasized)
             let isItalic = intent.contains(.emphasized)
             guard isBold || isItalic else { return }
-            let current = (text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont)
-                ?? request.readerFontFamily.nsFont(size: request.readerFontSize)
+            let current = (text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont) ?? bodyFont
             var traits = current.fontDescriptor.symbolicTraits
             if isBold   { traits.insert(.bold)   }
             if isItalic { traits.insert(.italic)  }

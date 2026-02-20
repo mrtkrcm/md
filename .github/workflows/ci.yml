@@ -12,9 +12,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  format:
+    name: Format Check
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Swift build artifacts
+        uses: actions/cache@v4
+        with:
+          path: mdviewer/.build
+          key: ${{ runner.os }}-swift-fmt-${{ hashFiles('mdviewer/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-fmt-
+
+      - name: Check formatting
+        shell: bash
+        run: bash scripts/format.sh --check
+
   build-and-test:
     name: Build & Test
     runs-on: macos-15
+    needs: format
 
     steps:
       - name: Checkout

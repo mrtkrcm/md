@@ -159,35 +159,40 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable {
         ReaderTextSpacing(rawValue: rawValue) ?? .balanced
     }
 
+    // Extra pixels added after each line (NSParagraphStyle.lineSpacing).
+    // At 16pt body: compact ≈ 20pt leading, balanced ≈ 24pt, relaxed ≈ 28pt.
     var lineSpacing: CGFloat {
         switch self {
-        case .compact: return 1.5
-        case .balanced: return 3
-        case .relaxed: return 5
+        case .compact:  return 3
+        case .balanced: return 7
+        case .relaxed:  return 11
         }
     }
 
+    // Space between paragraph blocks. Expressed as a base that block-specific
+    // styles scale — body paragraphs use the full value, headings use multiples.
+    // At 16pt body: compact ≈ 0.6 lines, balanced ≈ 1 line, relaxed ≈ 1.5 lines.
     var paragraphSpacing: CGFloat {
         switch self {
-        case .compact: return 4
-        case .balanced: return 7
-        case .relaxed: return 10
+        case .compact:  return 10
+        case .balanced: return 16
+        case .relaxed:  return 22
         }
     }
 
     var kern: CGFloat {
         switch self {
-        case .compact: return 0.04
+        case .compact:  return 0.04
         case .balanced: return 0.10
-        case .relaxed: return 0.16
+        case .relaxed:  return 0.16
         }
     }
 
     var hyphenationFactor: Float {
         switch self {
-        case .compact: return 0.15
+        case .compact:  return 0.15
         case .balanced: return 0.20
-        case .relaxed: return 0.25
+        case .relaxed:  return 0.25
         }
     }
 }

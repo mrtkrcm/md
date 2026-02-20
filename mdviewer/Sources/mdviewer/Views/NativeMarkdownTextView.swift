@@ -19,18 +19,34 @@ struct NativeMarkdownTextView: NSViewRepresentable {
     let readableWidth: CGFloat
 
     func makeNSView(context: Context) -> NSScrollView {
-        let textView = ReaderTextView()
+        // Force TextKit 1 (NSLayoutManager) — TextKit 2 (the macOS 14+ default) does not
+        // call NSTextBlock.drawBackground(withFrame:), so blockquote/code NSTextBlock
+        // backgrounds and borders are invisible without explicit TK1 opt-in.
+        //
+        // The correct TK1 initialisation sequence:
+        //   NSTextStorage → NSLayoutManager → NSTextContainer → NSTextView
+        // NSTextView's textStorage property then points to the same NSTextStorage,
+        // so setAttributedString updates go through the correct layout pipeline.
+        let textStorage    = NSTextStorage()
+        let layoutManager  = ReaderLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+
+        let textContainer  = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        textContainer.lineFragmentPadding    = 0
+        textContainer.widthTracksTextView    = true
+        layoutManager.addTextContainer(textContainer)
+
+        // This designated initialiser adopts the textContainer (and its storage chain)
+        // instead of creating a fresh TK2 text layout manager.
+        let textView = ReaderTextView(frame: .zero, textContainer: textContainer)
         textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
-        textView.focusRingType = .none
+        textView.focusRingType = NSFocusRingType.none
         textView.usesFindBar = true
         textView.isRichText = true
         textView.allowsUndo = false
         textView.textContainerInset = NSSize(width: 24, height: 24)
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.preferredReadableWidth = readableWidth
 
         let scrollView = NSScrollView()
@@ -81,6 +97,7 @@ struct NativeMarkdownTextView: NSViewRepresentable {
             else { return }
 
             textView.textStorage?.setAttributedString(rendered.attributedString)
+            textView.updateContainerGeometry()
         }
     }
 
@@ -105,19 +122,59 @@ private final class ReaderTextView: NSTextView {
     var preferredReadableWidth: CGFloat = 760
     private let minimumHorizontalInset: CGFloat = 24
 
+    // Triggered when the view is added to the window hierarchy — the scroll view
+    // is guaranteed to exist here, so we can do the initial geometry pass.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        recomputeGeometry(force: true)
+    }
+
     override func layout() {
         super.layout()
+        recomputeGeometry(force: false)
+    }
 
+    // Called after content changes — always recomputes layout and frame.
+    func updateContainerGeometry() {
+        recomputeGeometry(force: true)
+    }
+
+    private func recomputeGeometry(force: Bool) {
         guard let textContainer else { return }
-        let availableWidth = bounds.width
-        let targetWidth = min(preferredReadableWidth, max(0, availableWidth - (minimumHorizontalInset * 2)))
-        let horizontalInset = max(minimumHorizontalInset, (availableWidth - targetWidth) / 2)
 
-        textContainer.containerSize = NSSize(
-            width: targetWidth,
-            height: .greatestFiniteMagnitude
-        )
-        textContainerInset = NSSize(width: horizontalInset, height: 24)
+        // Prefer the scroll view's content width; fall back to our own bounds
+        // for the brief window between init and insertion into the hierarchy.
+        let availableWidth: CGFloat
+        if let sv = enclosingScrollView {
+            availableWidth = sv.contentSize.width
+        } else if bounds.width > 0 {
+            availableWidth = bounds.width
+        } else {
+            return  // nothing to measure yet
+        }
+
+        let targetWidth      = min(preferredReadableWidth, max(0, availableWidth - minimumHorizontalInset * 2))
+        let hInset           = max(minimumHorizontalInset, (availableWidth - targetWidth) / 2)
+        let newContainerSize = NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude)
+
+        // Skip redundant work when neither the column width nor the inset has changed.
+        if !force,
+           abs(textContainer.containerSize.width - newContainerSize.width) < 0.5,
+           abs(textContainerInset.width - hInset) < 0.5 {
+            return
+        }
+
+        textContainer.containerSize = newContainerSize
+        textContainerInset          = NSSize(width: hInset, height: 24)
+
+        // Compute full document height and resize the view so NSScrollView knows
+        // the complete scroll extent.
+        layoutManager?.ensureLayout(for: textContainer)
+        let usedHeight  = layoutManager?.usedRect(for: textContainer).height ?? 0
+        let totalHeight = usedHeight + textContainerInset.height * 2
+        let viewWidth   = max(availableWidth, targetWidth + hInset * 2)
+        setFrameSize(NSSize(width: viewWidth, height: max(totalHeight, 1)))
     }
 }
 
@@ -229,6 +286,8 @@ actor MarkdownRenderService {
 
         let parsed = parseMarkdown(request.markdown)
         let mutable = NSMutableAttributedString(attributedString: parsed)
+        injectBlockSeparators(mutable)
+        injectListMarkers(mutable)
         applyTypography(mutable, request: request)
         applyCodeStyling(mutable, request: request)
 
@@ -261,6 +320,78 @@ actor MarkdownRenderService {
             ),
             baseURL: nil
         )) ?? NSAttributedString(string: parsed.renderedMarkdown)
+    }
+
+    /// Inserts `\n` at every block boundary in the attributed string produced by
+    /// `NSAttributedString(markdown:)`.
+    ///
+    /// The parser concatenates all block content with no separator characters —
+    /// "H1H2ParagraphItem oneItem two…". `NSLayoutManager` requires actual `\n`
+    /// to recognise paragraph breaks; `paragraphSpacing` alone has no effect
+    /// without them.
+    ///
+    /// Each top-level block (heading, paragraph, list item, blockquote, code
+    /// block) has a unique `PresentationIntent` identity on its first component.
+    /// A `\n` is inserted before every run whose first-component identity differs
+    /// from the previous run's.
+    private func injectBlockSeparators(_ text: NSMutableAttributedString) {
+        var blockIDs: [(location: Int, outerID: Int)] = []
+
+        text.enumerateAttribute(
+            Self.presentationIntentKey,
+            in: NSRange(location: 0, length: text.length),
+            options: []
+        ) { val, range, _ in
+            let outerID = (val as? PresentationIntent)?.components.first?.identity ?? 0
+            blockIDs.append((location: range.location, outerID: outerID))
+        }
+
+        // Walk backwards so insertions don't invalidate earlier locations.
+        let newline = NSAttributedString(string: "\n")
+        for i in stride(from: blockIDs.count - 1, through: 1, by: -1) {
+            guard blockIDs[i].outerID != blockIDs[i - 1].outerID else { continue }
+            text.insert(newline, at: blockIDs[i].location)
+        }
+    }
+
+    /// Prepends bullet/number markers to list item runs.
+    ///
+    /// The markdown parser strips list markers from the text; they must be
+    /// re-injected before typography so the font pass can style them uniformly.
+    /// Markers are prepended with a tab so `headIndent` creates a hanging layout.
+    private func injectListMarkers(_ text: NSMutableAttributedString) {
+        struct ListRun {
+            let location: Int
+            let ordinal: Int        // 1-based ordinal within the list
+            let isOrdered: Bool
+        }
+
+        var listRuns: [ListRun] = []
+        text.enumerateAttribute(
+            Self.presentationIntentKey,
+            in: NSRange(location: 0, length: text.length),
+            options: []
+        ) { val, range, _ in
+            guard let intent = val as? PresentationIntent else { return }
+            var ordinal = 0
+            var isOrdered = false
+            for component in intent.components {
+                switch component.kind {
+                case .listItem(let o): ordinal = o
+                case .orderedList:     isOrdered = true
+                default: break
+                }
+            }
+            guard ordinal > 0 else { return }
+            listRuns.append(ListRun(location: range.location, ordinal: ordinal, isOrdered: isOrdered))
+        }
+
+        // Insert backwards to preserve locations.
+        for run in listRuns.reversed() {
+            let marker = run.isOrdered ? "\(run.ordinal).\t" : "•\t"
+            let markerAttr = NSAttributedString(string: marker)
+            text.insert(markerAttr, at: run.location)
+        }
     }
 
     // Foundation key names for markdown semantic intents (macOS 12+).
@@ -337,56 +468,61 @@ actor MarkdownRenderService {
             text.addAttribute(.font, value: NSFont(descriptor: desc, size: current.pointSize) ?? current, range: range)
         }
 
-        // ── Paragraph styles: one pass building full NSParagraphStyle per run ─
-        // The parser emits NO paragraph styles — all spacing, indentation, and
-        // rhythm must be constructed from scratch using PresentationIntent.
-        //
-        // Blockquote blocks are cached by depth so every run inside the same
-        // nesting level shares an identical NSTextBlock instance. This satisfies
-        // the layout manager's expectation that adjacent runs in the same block
-        // share the same object identity, which is required for background/border
-        // rendering to coalesce correctly across runs.
-        // Collect (range, intent) pairs first — no mutation inside the closure.
+        // ── Paragraph styles ──────────────────────────────────────────────────
+        // Collect intent runs first to avoid mutating inside enumeration closure.
         var intentRuns: [(NSRange, PresentationIntent?)] = []
         text.enumerateAttribute(Self.presentationIntentKey, in: fullRange, options: []) { value, range, _ in
             intentRuns.append((range, value as? PresentationIntent))
         }
 
-        // Build and apply paragraph styles outside the closure, with full access
-        // to blockquoteBlockCache and text mutation without sendability concerns.
-        var blockquoteBlockCache: [Int: BlockquoteTextBlock] = [:]
         for (range, intent) in intentRuns {
-            let ps = buildParagraphStyle(
-                for: intent,
-                spacing: spacing,
-                bodySize: bodySize,
-                palette: palette,
-                blockquoteBlockCache: &blockquoteBlockCache
-            )
+            let ps = buildParagraphStyle(for: intent, spacing: spacing, bodySize: bodySize)
             text.addAttribute(.paragraphStyle, value: ps, range: range)
+
+            // Stamp blockquote decoration keys so ReaderLayoutManager can draw
+            // the left-accent bar and tinted background without NSTextBlock.
+            let bqDepth = intent?.components.reduce(0) { acc, c in
+                if case .blockQuote = c.kind { return acc + 1 }; return acc
+            } ?? 0
+            if bqDepth > 0 {
+                text.addAttribute(bqDepthKey,           value: bqDepth,                    range: range)
+                text.addAttribute(bqAccentColorKey,     value: palette.blockquoteAccent,   range: range)
+                text.addAttribute(bqBackgroundColorKey, value: palette.blockquoteBackground, range: range)
+            }
         }
 
         // ── Colour and kern: full-range baseline ──────────────────────────────
-        // applyCodeStyling will overwrite foregroundColor on code runs.
         text.addAttribute(.foregroundColor, value: palette.textPrimary, range: fullRange)
         text.addAttribute(.kern,            value: spacing.kern,        range: fullRange)
     }
 
     /// Builds a complete NSParagraphStyle for one PresentationIntent run.
+    ///
+    /// Rhythm contract (at 16pt body, balanced spacing — lineSpacing=7, paragraphSpacing=16):
+    ///   Body line-height  ≈ 23pt  (16 + 7)
+    ///   Body para gap     = 16pt  (≈ 0.7 lines — one clear breath between paragraphs)
+    ///   H1 above          = 40pt  (2.5× body — strong section break)
+    ///   H1 below          =  8pt  (pull content close under heading)
+    ///   H2 above          = 32pt
+    ///   H3 above          = 24pt
+    ///   Code block above  = 16pt  (matches body para gap)
+    ///   Code block below  = 16pt
+    ///   Blockquote above  = 12pt  (slightly inset from body rhythm)
+    ///   List item gap     =  6pt  (tight — items are related)
     private func buildParagraphStyle(
         for intent: PresentationIntent?,
         spacing: ReaderTextSpacing,
-        bodySize: CGFloat,
-        palette: NativeThemePalette,
-        blockquoteBlockCache: inout [Int: BlockquoteTextBlock]
+        bodySize: CGFloat
     ) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
+        let gap = spacing.paragraphSpacing   // inter-block gap baseline
 
-        // Defaults — overridden per block type below.
+        // Body defaults — every block starts here and overrides what it needs.
         ps.lineSpacing            = spacing.lineSpacing
-        ps.paragraphSpacing       = spacing.paragraphSpacing
+        ps.paragraphSpacing       = gap
         ps.paragraphSpacingBefore = 0
         ps.hyphenationFactor      = spacing.hyphenationFactor
+        ps.lineBreakMode          = .byWordWrapping
 
         guard let intent else { return ps }
 
@@ -402,63 +538,76 @@ actor MarkdownRenderService {
             case .blockQuote:    bqDepth     += 1
             case .unorderedList: listDepth   += 1
             case .orderedList:   listDepth   += 1
-            default:             break
+            default: break
             }
         }
 
         // ── Headings ─────────────────────────────────────────────────────────
+        // Space above = 1.5–2.5× body size scaled by heading level.
+        // Space below = 0.3× heading size (tight coupling to following content).
+        // Line spacing is small and fixed — headings rarely wrap.
         if headingLevel > 0 {
             let scale    = Self.headingScales[headingLevel, default: 1.0]
             let headSize = bodySize * scale
-            ps.paragraphSpacingBefore = headSize * 1.2
+            // Above: drops from 2.5× body for H1 down to 1.5× for H3+
+            let aboveScale: CGFloat = headingLevel == 1 ? 2.5
+                                    : headingLevel == 2 ? 2.0
+                                    : 1.5
+            ps.paragraphSpacingBefore = bodySize * aboveScale
             ps.paragraphSpacing       = headSize * 0.3
-            ps.lineSpacing            = spacing.lineSpacing * 0.5
+            ps.lineSpacing            = 2
+            ps.hyphenationFactor      = 0
             return ps
         }
 
         // ── Code blocks ───────────────────────────────────────────────────────
+        // Tighter line spacing (mono is denser), same inter-block gap as body.
+        // Left indent matches the layout manager's codeVPad so text sits centred
+        // within the rounded rect drawn by ReaderLayoutManager.
         if isCodeBlock {
-            ps.lineSpacing            = spacing.lineSpacing * 0.6
-            ps.paragraphSpacingBefore = spacing.paragraphSpacing
-            ps.paragraphSpacing       = spacing.paragraphSpacing
-            ps.firstLineHeadIndent    = 12
-            ps.headIndent             = 12
-            ps.tailIndent             = -12
+            ps.lineSpacing            = max(spacing.lineSpacing * 0.6, 3)
+            ps.paragraphSpacingBefore = gap
+            ps.paragraphSpacing       = gap
+            ps.firstLineHeadIndent    = 14
+            ps.headIndent             = 14
+            ps.hyphenationFactor      = 0
             return ps
         }
 
         // ── Blockquotes ───────────────────────────────────────────────────────
+        // Slightly inset from body rhythm — blockquotes are subsidiary content.
+        // Left indent clears the accent bar drawn by ReaderLayoutManager.
         if bqDepth > 0 {
-            // Retrieve or create the NSTextBlock for this nesting depth.
-            // Sharing the same instance across all runs at the same depth is
-            // required: the layout manager coalesces adjacent paragraph-style
-            // runs that share an identical textBlocks array by object identity.
-            let block: BlockquoteTextBlock
-            if let cached = blockquoteBlockCache[bqDepth] {
-                block = cached
-            } else {
-                block = BlockquoteTextBlock(depth: bqDepth, palette: palette)
-                blockquoteBlockCache[bqDepth] = block
-            }
-
-            ps.textBlocks             = [block]
+            let barWidth: CGFloat = 3
+            let leftPad:  CGFloat = 14 + CGFloat(bqDepth - 1) * 18
+            ps.firstLineHeadIndent    = barWidth + leftPad
+            ps.headIndent             = barWidth + leftPad
             ps.lineSpacing            = spacing.lineSpacing
-            ps.paragraphSpacingBefore = spacing.paragraphSpacing * 0.4
-            ps.paragraphSpacing       = spacing.paragraphSpacing * 0.4
+            ps.paragraphSpacingBefore = gap * 0.6
+            ps.paragraphSpacing       = gap * 0.6
             ps.hyphenationFactor      = spacing.hyphenationFactor
             return ps
         }
 
         // ── Lists ─────────────────────────────────────────────────────────────
+        // Items within a list are related — tight gap (0.35× body gap).
+        // Hanging indent: marker sits at firstLineHeadIndent, body at headIndent.
         if listDepth > 0 {
-            let perLevel: CGFloat = 20
-            let indent            = CGFloat(listDepth) * perLevel
-            ps.firstLineHeadIndent = indent
-            ps.headIndent          = indent + perLevel
-            ps.paragraphSpacing    = spacing.paragraphSpacing * 0.5
+            let markerWidth: CGFloat  = 20
+            let perLevel: CGFloat     = 20
+            let indent: CGFloat       = CGFloat(listDepth - 1) * perLevel + markerWidth
+            let tabStop = NSTextTab(textAlignment: .left, location: indent)
+            ps.tabStops            = [tabStop]
+            ps.defaultTabInterval  = markerWidth
+            ps.firstLineHeadIndent = indent - markerWidth
+            ps.headIndent          = indent
+            ps.lineSpacing         = spacing.lineSpacing
+            ps.paragraphSpacing    = gap * 0.35
             return ps
         }
 
+        // ── Body paragraph ────────────────────────────────────────────────────
+        // No spacingBefore — only paragraphSpacing (below) separates body blocks.
         return ps
     }
 
@@ -478,6 +627,11 @@ actor MarkdownRenderService {
                 font.fontDescriptor.symbolicTraits.contains(.monoSpace)
             else { continue }
 
+            // Apply background to all mono runs (both fenced code blocks and inline code).
+            // For fenced code blocks, ReaderLayoutManager reads .backgroundColor and draws
+            // a single unified rounded rect; the per-character attribute is suppressed during
+            // super.drawBackground so it produces no visible per-line pills.
+            // Inline code spans get the standard character-level background pill.
             text.addAttribute(.backgroundColor, value: themePalette.codeBackground, range: effectiveRange)
             applySyntaxHighlight(to: text, in: effectiveRange, syntax: syntax)
         }
@@ -561,47 +715,161 @@ private struct NativeThemePalette {
     }
 }
 
-/// NSTextBlock subclass that renders a themed left-border accent and tinted background
-/// for blockquote paragraphs.  One instance is created per nesting depth and shared
-/// across all runs at that depth so the layout manager can coalesce them correctly.
-private final class BlockquoteTextBlock: NSTextBlock {
+// MARK: - Custom attribute keys for blockquote decoration
 
-    private static let absolute = NSTextBlock.ValueType(rawValue: 0)!
+/// Stored on blockquote character ranges by the renderer.
+/// The layout manager reads these during drawing — no NSTextBlock needed.
+private let bqAccentColorKey     = NSAttributedString.Key("mdv.blockquoteAccent")
+private let bqBackgroundColorKey = NSAttributedString.Key("mdv.blockquoteBackground")
+private let bqDepthKey           = NSAttributedString.Key("mdv.blockquoteDepth")
 
-    // Nesting level drives left-indent so nested quotes remain visually distinct.
-    init(depth: Int, palette: NativeThemePalette) {
-        super.init()
+// MARK: - Custom layout manager
 
-        let barWidth:    CGFloat = 3
-        let leftPadding: CGFloat = 12
-        let hPadding:    CGFloat = 8
-        let vPadding:    CGFloat = 5
-        let depthOffset: CGFloat = CGFloat(depth - 1) * 8
+/// Draws blockquote and code-block decorations as unified geometry rather than
+/// per-character or per-line rects.
+///
+/// • **Code blocks**: a single rounded-rect background covering all lines.
+/// • **Blockquotes**: a left-border accent bar + tinted background covering all lines.
+///
+/// Both are drawn *before* glyph rendering so text sits on top.  No `NSTextBlock` is
+/// used — that API's `drawBackground` is never invoked reliably in SwiftUI-hosted
+/// TK1 views on macOS 14+.
+private final class ReaderLayoutManager: NSLayoutManager {
 
-        // Left accent bar (border layer on minX only).
-        setWidth(barWidth,                          type: Self.absolute, for: .border,  edge: .minX)
-        setWidth(0,                                 type: Self.absolute, for: .border,  edge: .maxX)
-        setWidth(0,                                 type: Self.absolute, for: .border,  edge: .minY)
-        setWidth(0,                                 type: Self.absolute, for: .border,  edge: .maxY)
+    private static let codeCornerRadius: CGFloat = 6
+    private static let codeVPad:         CGFloat = 6
+    private static let bqBarWidth:       CGFloat = 3
 
-        // Padding: extra on left to clear the bar + give text breathing room.
-        setWidth(leftPadding + depthOffset,         type: Self.absolute, for: .padding, edge: .minX)
-        setWidth(hPadding,                          type: Self.absolute, for: .padding, edge: .maxX)
-        setWidth(vPadding,                          type: Self.absolute, for: .padding, edge: .minY)
-        setWidth(vPadding,                          type: Self.absolute, for: .padding, edge: .maxY)
+    private static let piKey = NSAttributedString.Key("NSPresentationIntent")
 
-        // Outer margin (space outside the block, before the next paragraph).
-        setWidth(0,                                 type: Self.absolute, for: .margin,  edge: .minX)
-        setWidth(0,                                 type: Self.absolute, for: .margin,  edge: .maxX)
-        setWidth(4,                                 type: Self.absolute, for: .margin,  edge: .minY)
-        setWidth(4,                                 type: Self.absolute, for: .margin,  edge: .maxY)
+    override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        // Call super first for selection highlight and standard per-char backgrounds
+        // (inline code pills, etc.).  We draw our custom decorations on top of that.
+        super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
 
-        setBorderColor(palette.blockquoteAccent, for: .minX)
-        backgroundColor = palette.blockquoteBackground
+        guard
+            let ts        = textStorage,
+            let container = textContainers.first,
+            let ctx       = NSGraphicsContext.current?.cgContext
+        else { return }
+
+        let charRange = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+        let totalLen  = ts.length
+        guard totalLen > 0 else { return }
+
+        // ── Collect decoration spans ──────────────────────────────────────────
+
+        enum SpanKind {
+            case code(bg: NSColor)
+            case blockquote(bg: NSColor, accent: NSColor, depth: Int)
+        }
+        struct Span { var charStart: Int; var charEnd: Int; var kind: SpanKind }
+
+        var codeSpans: [Span] = []
+        var bqSpans:   [Span] = []
+
+        var i = charRange.location
+        while i < charRange.location + charRange.length, i < totalLen {
+            var effectiveRange = NSRange(location: i, length: 1)
+            let intent = ts.attribute(Self.piKey, at: i, effectiveRange: &effectiveRange)
+                as? PresentationIntent
+            let end = min(effectiveRange.location + effectiveRange.length, totalLen)
+
+            let isCode = intent?.components.contains {
+                if case .codeBlock = $0.kind { return true }; return false
+            } ?? false
+
+            let bqDepth = ts.attribute(bqDepthKey, at: i, effectiveRange: nil) as? Int ?? 0
+
+            if isCode, let bg = ts.attribute(.backgroundColor, at: i, effectiveRange: nil) as? NSColor {
+                if let last = codeSpans.last, last.charEnd >= i {
+                    codeSpans[codeSpans.count - 1].charEnd = max(codeSpans[codeSpans.count - 1].charEnd, end)
+                } else {
+                    codeSpans.append(Span(charStart: effectiveRange.location, charEnd: end, kind: .code(bg: bg)))
+                }
+            } else if bqDepth > 0,
+                      let bg     = ts.attribute(bqBackgroundColorKey, at: i, effectiveRange: nil) as? NSColor,
+                      let accent = ts.attribute(bqAccentColorKey,     at: i, effectiveRange: nil) as? NSColor {
+                if let last = bqSpans.last, last.charEnd >= i {
+                    bqSpans[bqSpans.count - 1].charEnd = max(bqSpans[bqSpans.count - 1].charEnd, end)
+                } else {
+                    bqSpans.append(Span(charStart: effectiveRange.location, charEnd: end,
+                                        kind: .blockquote(bg: bg, accent: accent, depth: bqDepth)))
+                }
+            }
+
+            i = end
+        }
+
+        let containerWidth = container.containerSize.width
+
+        // ── Draw code block backgrounds ───────────────────────────────────────
+        for span in codeSpans {
+            guard case .code(let bg) = span.kind else { continue }
+            let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+            guard !rect.isNull else { continue }
+
+            let drawRect = CGRect(
+                x: origin.x,
+                y: rect.minY - Self.codeVPad,
+                width: containerWidth,
+                height: rect.height + Self.codeVPad * 2
+            )
+            ctx.saveGState()
+            bg.setFill()
+            ctx.addPath(CGPath(roundedRect: drawRect,
+                               cornerWidth: Self.codeCornerRadius,
+                               cornerHeight: Self.codeCornerRadius,
+                               transform: nil))
+            ctx.fillPath()
+            ctx.restoreGState()
+        }
+
+        // ── Draw blockquote backgrounds + left accent bar ─────────────────────
+        for span in bqSpans {
+            guard case .blockquote(let bg, let accent, let depth) = span.kind else { continue }
+            let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+            guard !rect.isNull else { continue }
+
+            // Indent increases with nesting depth.
+            let leftInset = CGFloat(depth - 1) * 16 + origin.x
+            let drawRect  = CGRect(
+                x: leftInset,
+                y: rect.minY - 2,
+                width: containerWidth - leftInset + origin.x,
+                height: rect.height + 4
+            )
+
+            ctx.saveGState()
+
+            // Tinted background.
+            bg.setFill()
+            ctx.fill(drawRect)
+
+            // Left accent bar.
+            let barRect = CGRect(x: drawRect.minX, y: drawRect.minY,
+                                 width: Self.bqBarWidth, height: drawRect.height)
+            accent.setFill()
+            ctx.fill(barRect)
+
+            ctx.restoreGState()
+        }
     }
 
-    required init(coder: NSCoder) {
-        fatalError("init(coder:) not supported")
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private func unionUsedRect(charStart: Int, charEnd: Int, origin: NSPoint) -> CGRect {
+        let glRange = glyphRange(
+            forCharacterRange: NSRange(location: charStart, length: charEnd - charStart),
+            actualCharacterRange: nil
+        )
+        var result = CGRect.null
+        enumerateLineFragments(forGlyphRange: glRange) { _, usedRect, _, _, _ in
+            let r = CGRect(x: usedRect.minX + origin.x, y: usedRect.minY + origin.y,
+                           width: usedRect.width, height: usedRect.height)
+            result = result.isNull ? r : result.union(r)
+        }
+        return result
     }
 }
 #endif

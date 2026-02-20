@@ -1,8 +1,8 @@
 #!/bin/bash
-# build.sh — build, package, and optionally install md.app
+# build.sh — build, package, and install md.app (install is on by default)
 #
 # Usage:
-#   scripts/build.sh [--install] [--open] [--no-tests] [--no-strip]
+#   scripts/build.sh [--no-install] [--open] [--no-tests] [--no-strip]
 #
 # Environment overrides (all optional):
 #   INSTALL_DIR   — install destination (default: /Applications)
@@ -26,20 +26,21 @@ INSTALL_DIR="${INSTALL_DIR:-/Applications}"
 BUNDLE_ID="${BUNDLE_ID:-com.mrtkrcm.mdviewer}"
 
 # ── Parse flags ───────────────────────────────────────────────────────────────
-INSTALL=false
+INSTALL=true
 OPEN_AFTER=false
 RUN_TESTS=true
 STRIP_BINARY=true
 
 for arg in "$@"; do
   case "$arg" in
-    --install)    INSTALL=true ;;
+    --no-install) INSTALL=false ;;
+    --install)    INSTALL=true ;;   # kept for backwards compat, now a no-op
     --open)       OPEN_AFTER=true ;;
     --no-tests)   RUN_TESTS=false ;;
     --no-strip)   STRIP_BINARY=false ;;
     *)
       echo "Unknown argument: $arg" >&2
-      echo "Usage: scripts/build.sh [--install] [--open] [--no-tests] [--no-strip]" >&2
+      echo "Usage: scripts/build.sh [--no-install] [--open] [--no-tests] [--no-strip]" >&2
       exit 1
       ;;
   esac

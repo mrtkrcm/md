@@ -1,0 +1,4 @@
+--swiftversion 5.9
+--linebreaks lf
+--rules trailingSpace,linebreaks
+--exclude .build,release,dist

@@ -5,8 +5,14 @@ import XCTest
 final class mdviewerTests: XCTestCase {
     func testAppThemeRawValuesRemainStable() {
         XCTAssertEqual(AppTheme.basic.rawValue, "Basic")
-        XCTAssertEqual(AppTheme.gitHub.rawValue, "GitHub")
+        XCTAssertEqual(AppTheme.github.rawValue, "GitHub")
         XCTAssertEqual(AppTheme.docC.rawValue, "DocC")
+    }
+
+    func testSyntaxPalettesRemainStable() {
+        XCTAssertEqual(SyntaxPalette.sundellsColors.rawValue, "Sundell's Colors")
+        XCTAssertEqual(SyntaxPalette.midnight.rawValue, "Midnight")
+        XCTAssertEqual(SyntaxPalette.sunset.rawValue, "Sunset")
     }
 }
 #endif

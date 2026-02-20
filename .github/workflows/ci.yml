@@ -9,20 +9,30 @@ on:
       - main
 
 jobs:
-  build:
-    name: Build and Test
+  format:
+    name: Format Check
     runs-on: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build
-        run: |
-          cd mdviewer
-          swift build -c release -Xswiftc -warnings-as-errors -v
+      - name: SwiftFormat Lint
+        run: bash scripts/format.sh --check
 
-      - name: Test
+  quality:
+    name: Build and Test
+    runs-on: macos-latest
+    needs: format
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Quality Checks
+        run: bash scripts/quality.sh --skip-format
+
+      - name: Performance Smoke (Non-blocking)
         run: |
           cd mdviewer
-          swift test -Xswiftc -warnings-as-errors -v
+          swift test --filter RendererPerformanceTests -v || true

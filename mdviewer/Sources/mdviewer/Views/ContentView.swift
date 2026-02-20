@@ -130,21 +130,15 @@ struct ContentView: View {
 
     private func topOverlay(frontmatter: Frontmatter?) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                if readerMode == .rendered, let frontmatter {
-                    FloatingMetadataView(frontmatter: frontmatter)
-                        .frame(maxWidth: 320, alignment: .leading)
-                }
-
-                Spacer(minLength: 0)
-
-                TopBarView(
-                    showAppearancePopover: $showAppearancePopover,
-                    readerMode: readerModeBinding,
-                    openAction: openDocumentFromDisk,
-                    shareItem: document.text
-                )
-                .onHover { hovering in
+            UnifiedTopBarView(
+                frontmatter: frontmatter,
+                readerMode: readerMode,
+                showAppearancePopover: $showAppearancePopover,
+                readerModeBinding: readerModeBinding,
+                openAction: openDocumentFromDisk,
+                shareItem: document.text,
+                isTopBarVisible: isTopBarVisible,
+                onHover: { hovering in
                     isHoveringTopBar = hovering
                     if hovering {
                         registerInteraction()
@@ -152,10 +146,7 @@ struct ContentView: View {
                         scheduleTopBarHide()
                     }
                 }
-                .opacity(isTopBarVisible ? 1 : 0)
-                .allowsHitTesting(isTopBarVisible)
-                .animation(.easeInOut(duration: 0.25), value: isTopBarVisible)
-            }
+            )
             .padding(.top, 10)
             .padding(.leading, 14)
             .padding(.trailing, 14)
@@ -662,91 +653,6 @@ private struct RawMarkdownTextView: NSViewRepresentable {
 }
 #endif
 
-private struct FloatingMetadataView: View {
-    let frontmatter: Frontmatter
-    @AppStorage("frontmatterPanelExpanded") private var isExpanded = false
-
-    private let collapsedWidth: CGFloat = 150
-    private let expandedWidth: CGFloat = 360
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-
-                    Label("Metadata", systemImage: "tag")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-
-                    Text(frontmatter.entries.isEmpty ? "YAML" : "\(frontmatter.entries.count)")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.18), in: Capsule())
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-            }
-            .buttonStyle(.plain)
-            .frame(width: collapsedWidth, alignment: .leading)
-            .topChromeContainer(cornerRadius: 14)
-
-            if isExpanded {
-                ScrollView {
-                    if frontmatter.entries.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Frontmatter detected")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.primary)
-
-                            Text("Raw YAML is shown because key/value extraction is unavailable for this structure.")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            Text(frontmatter.rawYAML.trimmingCharacters(in: .whitespacesAndNewlines))
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, 2)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-                        )
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(Array(frontmatter.entries.enumerated()), id: \.offset) { _, entry in
-                                FloatingMetadataEntryView(entry: entry)
-                            }
-                        }
-                    }
-                }
-                .frame(width: expandedWidth)
-                .frame(maxHeight: 320, alignment: .topLeading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .topChromeContainer(cornerRadius: 14)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .frame(width: isExpanded ? expandedWidth : collapsedWidth, alignment: .leading)
-        .animation(.easeInOut(duration: 0.18), value: isExpanded)
-    }
-}
-
 private struct FloatingMetadataEntryView: View {
     let entry: Frontmatter.Entry
 
@@ -781,6 +687,146 @@ private struct FloatingMetadataEntryView: View {
             .capitalized
     }
 
+}
+
+private struct UnifiedTopBarView: View {
+    let frontmatter: Frontmatter?
+    let readerMode: ReaderMode
+    @Binding var showAppearancePopover: Bool
+    var readerModeBinding: Binding<ReaderMode>
+    let openAction: () -> Void
+    let shareItem: String
+    let isTopBarVisible: Bool
+    let onHover: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // Left: Metadata (only in rendered mode)
+            if readerMode == .rendered, let frontmatter = frontmatter {
+                MetadataButton(frontmatter: frontmatter)
+                    .padding(.trailing, 8)
+            }
+
+            // Center: Reader mode picker
+            HStack(spacing: 6) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Picker("Reader Mode", selection: readerModeBinding) {
+                    ForEach(ReaderMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 148)
+                .help("Switch between rendered preview and raw markdown")
+            }
+            .padding(.leading, readerMode == .rendered && frontmatter != nil ? 8 : 4)
+
+            Spacer(minLength: 12)
+
+            // Right: Actions
+            HStack(spacing: 6) {
+                Divider()
+                    .frame(height: 18)
+
+                ToolIconButton(icon: "slider.horizontal.3", isActive: showAppearancePopover) {
+                    showAppearancePopover.toggle()
+                }
+                .help("Appearance settings")
+
+                ShareIconButton(shareItem: shareItem)
+                    .help("Share markdown")
+
+                ToolIconButton(icon: "folder") {
+                    openAction()
+                }
+                .help("Open markdown file")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .topChromeContainer(cornerRadius: 14)
+        .onHover(perform: onHover)
+        .opacity(isTopBarVisible ? 1 : 0)
+        .allowsHitTesting(isTopBarVisible)
+        .animation(.easeInOut(duration: 0.25), value: isTopBarVisible)
+    }
+}
+
+private struct MetadataButton: View {
+    let frontmatter: Frontmatter
+    @AppStorage("frontmatterPanelExpanded") private var isExpanded = false
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Label("Metadata", systemImage: "tag")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+
+                Text(frontmatter.entries.isEmpty ? "YAML" : "\(frontmatter.entries.count)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Color(nsColor: .quaternaryLabelColor).opacity(0.18), in: Capsule())
+            }
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $isExpanded, arrowEdge: .bottom) {
+            MetadataPopoverView(frontmatter: frontmatter)
+        }
+    }
+}
+
+private struct MetadataPopoverView: View {
+    let frontmatter: Frontmatter
+
+    var body: some View {
+        ScrollView {
+            if frontmatter.entries.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Frontmatter detected")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Text("Raw YAML is shown because key/value extraction is unavailable for this structure.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(frontmatter.rawYAML.trimmingCharacters(in: .whitespacesAndNewlines))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 2)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(frontmatter.entries.enumerated()), id: \.offset) { _, entry in
+                        FloatingMetadataEntryView(entry: entry)
+                    }
+                }
+            }
+        }
+        .frame(width: 320)
+        .frame(maxHeight: 360, alignment: .topLeading)
+        .padding(12)
+    }
 }
 
 private struct TopBarView: View {

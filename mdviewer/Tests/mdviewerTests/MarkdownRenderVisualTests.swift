@@ -487,6 +487,78 @@ final class MarkdownRenderVisualTests: XCTestCase {
         XCTAssertFalse(text.contains("category:"),             "Frontmatter category key should not appear in rendered output")
         XCTAssertFalse(text.contains("hidden-author"),         "Frontmatter author value should not appear in rendered output")
     }
+
+    // MARK: - Blockquote rendering
+
+    func testBlockquoteHasTextBlock() async {
+        // A blockquote run must carry an NSTextBlock in its paragraphStyle.textBlocks.
+        // The block provides the left accent border and tinted background.
+        let markdown = "> This is a quoted line."
+        let result   = await rendered(markdown)
+        let ns       = result.string as NSString
+        let loc      = ns.range(of: "This is a quoted").location
+        XCTAssertNotEqual(loc, NSNotFound, "Blockquote text must appear in output")
+
+        let style = paragraphStyle(at: loc, in: result)
+        XCTAssertNotNil(style, "Blockquote must have a paragraph style")
+        XCTAssertFalse(style?.textBlocks.isEmpty ?? true,
+                       "Blockquote paragraph style must contain at least one NSTextBlock")
+    }
+
+    func testBlockquoteTextBlockHasBackground() async {
+        // The NSTextBlock on a blockquote must have a non-clear background colour.
+        let markdown = "> Quoted text with background."
+        let result   = await rendered(markdown, theme: .github, scheme: .light)
+        let ns       = result.string as NSString
+        let loc      = ns.range(of: "Quoted text").location
+        XCTAssertNotEqual(loc, NSNotFound)
+
+        let style = paragraphStyle(at: loc, in: result)
+        let block = style?.textBlocks.first
+        XCTAssertNotNil(block, "Blockquote must have an NSTextBlock")
+        let bg = block?.backgroundColor
+        XCTAssertNotNil(bg, "NSTextBlock must have a background colour")
+        // Alpha must be > 0 (not clear).
+        var a: CGFloat = 0
+        bg?.getHue(nil, saturation: nil, brightness: nil, alpha: &a)
+        XCTAssertGreaterThan(a, 0, "Blockquote background must not be fully transparent")
+    }
+
+    func testBlockquoteTextBlockHasLeftBorder() async {
+        // The NSTextBlock must declare a non-zero left border width for the accent bar.
+        let markdown = "> Quoted text with left border."
+        let result   = await rendered(markdown, theme: .github, scheme: .light)
+        let ns       = result.string as NSString
+        let loc      = ns.range(of: "Quoted text with left").location
+        XCTAssertNotEqual(loc, NSNotFound)
+
+        let style = paragraphStyle(at: loc, in: result)
+        let block = style?.textBlocks.first
+        XCTAssertNotNil(block)
+        let borderWidth = block?.width(for: .border, edge: .minX) ?? 0
+        XCTAssertGreaterThan(borderWidth, 0, "Blockquote NSTextBlock must have a left border width > 0")
+    }
+
+    func testNestedBlockquotesUseSeparateBlocks() async {
+        // Each nesting depth must use a distinct NSTextBlock instance.
+        let markdown = "> Outer\n>> Inner"
+        let result   = await rendered(markdown)
+        let ns       = result.string as NSString
+
+        let outerLoc = ns.range(of: "Outer").location
+        let innerLoc = ns.range(of: "Inner").location
+        guard outerLoc != NSNotFound, innerLoc != NSNotFound else {
+            XCTFail("Both blockquote runs must appear in output")
+            return
+        }
+
+        let outerBlock = paragraphStyle(at: outerLoc, in: result)?.textBlocks.first
+        let innerBlock = paragraphStyle(at: innerLoc, in: result)?.textBlocks.first
+        XCTAssertNotNil(outerBlock, "Outer blockquote must have a text block")
+        XCTAssertNotNil(innerBlock, "Inner blockquote must have a text block")
+        XCTAssertFalse(outerBlock === innerBlock,
+                       "Outer and inner blockquote depths must use different NSTextBlock instances")
+    }
 }
 #endif
 #endif

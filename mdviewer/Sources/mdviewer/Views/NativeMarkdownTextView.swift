@@ -340,11 +340,21 @@ actor MarkdownRenderService {
         // ── Paragraph styles: one pass building full NSParagraphStyle per run ─
         // The parser emits NO paragraph styles — all spacing, indentation, and
         // rhythm must be constructed from scratch using PresentationIntent.
+        //
+        // Blockquote blocks are cached by depth so every run inside the same
+        // nesting level shares an identical NSTextBlock instance. This satisfies
+        // the layout manager's expectation that adjacent runs in the same block
+        // share the same object identity, which is required for background/border
+        // rendering to coalesce correctly across runs.
+        var blockquoteBlockCache: [Int: BlockquoteTextBlock] = [:]
+
         text.enumerateAttribute(Self.presentationIntentKey, in: fullRange, options: []) { value, range, _ in
             let ps = buildParagraphStyle(
                 for: value as? PresentationIntent,
                 spacing: spacing,
-                bodySize: bodySize
+                bodySize: bodySize,
+                palette: palette,
+                blockquoteBlockCache: &blockquoteBlockCache
             )
             text.addAttribute(.paragraphStyle, value: ps, range: range)
         }
@@ -359,22 +369,24 @@ actor MarkdownRenderService {
     private func buildParagraphStyle(
         for intent: PresentationIntent?,
         spacing: ReaderTextSpacing,
-        bodySize: CGFloat
+        bodySize: CGFloat,
+        palette: NativeThemePalette,
+        blockquoteBlockCache: inout [Int: BlockquoteTextBlock]
     ) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
 
-        // Defaults — override below per block type.
-        ps.lineSpacing         = spacing.lineSpacing
-        ps.paragraphSpacing    = spacing.paragraphSpacing
+        // Defaults — overridden per block type below.
+        ps.lineSpacing            = spacing.lineSpacing
+        ps.paragraphSpacing       = spacing.paragraphSpacing
         ps.paragraphSpacingBefore = 0
-        ps.hyphenationFactor   = spacing.hyphenationFactor
+        ps.hyphenationFactor      = spacing.hyphenationFactor
 
         guard let intent else { return ps }
 
-        var headingLevel  = 0
-        var isCodeBlock   = false
-        var bqDepth       = 0
-        var listDepth     = 0
+        var headingLevel = 0
+        var isCodeBlock  = false
+        var bqDepth      = 0
+        var listDepth    = 0
 
         for component in intent.components {
             switch component.kind {
@@ -389,11 +401,10 @@ actor MarkdownRenderService {
 
         // ── Headings ─────────────────────────────────────────────────────────
         if headingLevel > 0 {
-            // More air above headings than below for visual grouping.
-            let scale = Self.headingScales[headingLevel, default: 1.0]
+            let scale    = Self.headingScales[headingLevel, default: 1.0]
             let headSize = bodySize * scale
-            ps.paragraphSpacingBefore = headSize * 1.2   // ~1.2× the heading itself
-            ps.paragraphSpacing       = headSize * 0.3   // tight gap between heading and body
+            ps.paragraphSpacingBefore = headSize * 1.2
+            ps.paragraphSpacing       = headSize * 0.3
             ps.lineSpacing            = spacing.lineSpacing * 0.5
             return ps
         }
@@ -411,21 +422,33 @@ actor MarkdownRenderService {
 
         // ── Blockquotes ───────────────────────────────────────────────────────
         if bqDepth > 0 {
-            let indent = CGFloat(bqDepth) * 24
-            ps.firstLineHeadIndent    = indent
-            ps.headIndent             = indent
-            ps.tailIndent             = -8
-            ps.paragraphSpacingBefore = spacing.paragraphSpacing * 0.5
+            // Retrieve or create the NSTextBlock for this nesting depth.
+            // Sharing the same instance across all runs at the same depth is
+            // required: the layout manager coalesces adjacent paragraph-style
+            // runs that share an identical textBlocks array by object identity.
+            let block: BlockquoteTextBlock
+            if let cached = blockquoteBlockCache[bqDepth] {
+                block = cached
+            } else {
+                block = BlockquoteTextBlock(depth: bqDepth, palette: palette)
+                blockquoteBlockCache[bqDepth] = block
+            }
+
+            ps.textBlocks             = [block]
+            ps.lineSpacing            = spacing.lineSpacing
+            ps.paragraphSpacingBefore = spacing.paragraphSpacing * 0.4
+            ps.paragraphSpacing       = spacing.paragraphSpacing * 0.4
+            ps.hyphenationFactor      = spacing.hyphenationFactor
             return ps
         }
 
         // ── Lists ─────────────────────────────────────────────────────────────
         if listDepth > 0 {
             let perLevel: CGFloat = 20
-            let indent = CGFloat(listDepth) * perLevel
-            ps.firstLineHeadIndent    = indent
-            ps.headIndent             = indent + perLevel   // hang the marker
-            ps.paragraphSpacing       = spacing.paragraphSpacing * 0.5
+            let indent            = CGFloat(listDepth) * perLevel
+            ps.firstLineHeadIndent = indent
+            ps.headIndent          = indent + perLevel
+            ps.paragraphSpacing    = spacing.paragraphSpacing * 0.5
             return ps
         }
 
@@ -484,33 +507,94 @@ actor MarkdownRenderService {
 private struct NativeThemePalette {
     let textPrimary: NSColor
     let codeBackground: NSColor
+    let blockquoteAccent: NSColor
+    let blockquoteBackground: NSColor
 
     init(theme: AppTheme, scheme: ColorScheme) {
         switch (theme, scheme) {
         case (.github, .light):
-            textPrimary = NSColor(calibratedRed: 0.14, green: 0.16, blue: 0.20, alpha: 1)
-            codeBackground = NSColor(calibratedWhite: 0.96, alpha: 1)
+            textPrimary          = NSColor(calibratedRed: 0.14, green: 0.16, blue: 0.20, alpha: 1)
+            codeBackground       = NSColor(calibratedWhite: 0.96, alpha: 1)
+            blockquoteAccent     = NSColor(calibratedRed: 0.22, green: 0.51, blue: 0.82, alpha: 1)
+            blockquoteBackground = NSColor(calibratedRed: 0.22, green: 0.51, blue: 0.82, alpha: 0.06)
         case (.github, .dark):
-            textPrimary = NSColor(calibratedWhite: 0.90, alpha: 1)
-            codeBackground = NSColor(calibratedRed: 0.17, green: 0.18, blue: 0.20, alpha: 1)
+            textPrimary          = NSColor(calibratedWhite: 0.90, alpha: 1)
+            codeBackground       = NSColor(calibratedRed: 0.17, green: 0.18, blue: 0.20, alpha: 1)
+            blockquoteAccent     = NSColor(calibratedRed: 0.35, green: 0.62, blue: 0.90, alpha: 1)
+            blockquoteBackground = NSColor(calibratedRed: 0.35, green: 0.62, blue: 0.90, alpha: 0.08)
         case (.docC, .light):
-            textPrimary = NSColor(calibratedRed: 0.12, green: 0.12, blue: 0.14, alpha: 1)
-            codeBackground = NSColor(calibratedWhite: 0.95, alpha: 1)
+            textPrimary          = NSColor(calibratedRed: 0.12, green: 0.12, blue: 0.14, alpha: 1)
+            codeBackground       = NSColor(calibratedWhite: 0.95, alpha: 1)
+            blockquoteAccent     = NSColor(calibratedRed: 0.00, green: 0.48, blue: 1.00, alpha: 1)
+            blockquoteBackground = NSColor(calibratedRed: 0.00, green: 0.48, blue: 1.00, alpha: 0.05)
         case (.docC, .dark):
-            textPrimary = NSColor(calibratedWhite: 0.93, alpha: 1)
-            codeBackground = NSColor(calibratedRed: 0.14, green: 0.15, blue: 0.17, alpha: 1)
+            textPrimary          = NSColor(calibratedWhite: 0.93, alpha: 1)
+            codeBackground       = NSColor(calibratedRed: 0.14, green: 0.15, blue: 0.17, alpha: 1)
+            blockquoteAccent     = NSColor(calibratedRed: 0.25, green: 0.60, blue: 1.00, alpha: 1)
+            blockquoteBackground = NSColor(calibratedRed: 0.25, green: 0.60, blue: 1.00, alpha: 0.08)
         case (.basic, .light):
-            textPrimary = .labelColor
-            codeBackground = NSColor(calibratedWhite: 0.95, alpha: 1)
+            textPrimary          = .labelColor
+            codeBackground       = NSColor(calibratedWhite: 0.95, alpha: 1)
+            blockquoteAccent     = NSColor(calibratedWhite: 0.55, alpha: 1)
+            blockquoteBackground = NSColor(calibratedWhite: 0.00, alpha: 0.04)
         case (.basic, .dark):
-            textPrimary = .labelColor
-            codeBackground = NSColor(calibratedWhite: 0.2, alpha: 1)
+            textPrimary          = .labelColor
+            codeBackground       = NSColor(calibratedWhite: 0.20, alpha: 1)
+            blockquoteAccent     = NSColor(calibratedWhite: 0.45, alpha: 1)
+            blockquoteBackground = NSColor(calibratedWhite: 1.00, alpha: 0.05)
         @unknown default:
-            textPrimary = .labelColor
-            codeBackground = scheme == .dark
-                ? NSColor(calibratedWhite: 0.2, alpha: 1)
+            textPrimary          = .labelColor
+            codeBackground       = scheme == .dark
+                ? NSColor(calibratedWhite: 0.20, alpha: 1)
                 : NSColor(calibratedWhite: 0.95, alpha: 1)
+            blockquoteAccent     = NSColor(calibratedWhite: scheme == .dark ? 0.45 : 0.55, alpha: 1)
+            blockquoteBackground = NSColor(calibratedWhite: scheme == .dark ? 1.0 : 0.0,
+                                           alpha: scheme == .dark ? 0.05 : 0.04)
         }
+    }
+}
+
+/// NSTextBlock subclass that renders a themed left-border accent and tinted background
+/// for blockquote paragraphs.  One instance is created per nesting depth and shared
+/// across all runs at that depth so the layout manager can coalesce them correctly.
+private final class BlockquoteTextBlock: NSTextBlock {
+
+    private static let absolute = NSTextBlock.ValueType(rawValue: 0)!
+
+    // Nesting level drives left-indent so nested quotes remain visually distinct.
+    init(depth: Int, palette: NativeThemePalette) {
+        super.init()
+
+        let barWidth:    CGFloat = 3
+        let leftPadding: CGFloat = 12
+        let hPadding:    CGFloat = 8
+        let vPadding:    CGFloat = 5
+        let depthOffset: CGFloat = CGFloat(depth - 1) * 8
+
+        // Left accent bar (border layer on minX only).
+        setWidth(barWidth,                          type: Self.absolute, for: .border,  edge: .minX)
+        setWidth(0,                                 type: Self.absolute, for: .border,  edge: .maxX)
+        setWidth(0,                                 type: Self.absolute, for: .border,  edge: .minY)
+        setWidth(0,                                 type: Self.absolute, for: .border,  edge: .maxY)
+
+        // Padding: extra on left to clear the bar + give text breathing room.
+        setWidth(leftPadding + depthOffset,         type: Self.absolute, for: .padding, edge: .minX)
+        setWidth(hPadding,                          type: Self.absolute, for: .padding, edge: .maxX)
+        setWidth(vPadding,                          type: Self.absolute, for: .padding, edge: .minY)
+        setWidth(vPadding,                          type: Self.absolute, for: .padding, edge: .maxY)
+
+        // Outer margin (space outside the block, before the next paragraph).
+        setWidth(0,                                 type: Self.absolute, for: .margin,  edge: .minX)
+        setWidth(0,                                 type: Self.absolute, for: .margin,  edge: .maxX)
+        setWidth(4,                                 type: Self.absolute, for: .margin,  edge: .minY)
+        setWidth(4,                                 type: Self.absolute, for: .margin,  edge: .maxY)
+
+        setBorderColor(palette.blockquoteAccent, for: .minX)
+        backgroundColor = palette.blockquoteBackground
+    }
+
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) not supported")
     }
 }
 #endif

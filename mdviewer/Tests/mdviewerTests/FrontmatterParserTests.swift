@@ -116,5 +116,21 @@ final class FrontmatterParserTests: XCTestCase {
         XCTAssertFalse(parsed.renderedMarkdown.contains("<!-- Tags:"))
         XCTAssertTrue(parsed.renderedMarkdown.contains("# Heading"))
     }
+
+    func testKeepsFrontmatterForNestedYamlStructures() {
+        let markdown = """
+        ---
+        author:
+          name: Murat
+          social:
+            github: mrtkrcm
+        ---
+        Body
+        """
+
+        let parsed = FrontmatterParser.parse(markdown)
+        XCTAssertNotNil(parsed.frontmatter)
+        XCTAssertEqual(parsed.renderedMarkdown, "Body")
+    }
 }
 #endif

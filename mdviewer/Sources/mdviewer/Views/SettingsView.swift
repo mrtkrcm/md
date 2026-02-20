@@ -15,6 +15,8 @@ struct SettingsView: View {
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.auto.rawValue
     @AppStorage("readerFontFamily") private var readerFontFamilyRaw = ReaderFontFamily.newYork.rawValue
     @AppStorage("readerMode") private var readerModeRaw = ReaderModeSetting.rendered.rawValue
+    @AppStorage("readerTextSpacing") private var readerTextSpacingRaw = ReaderTextSpacing.balanced.rawValue
+    @AppStorage("readerColumnWidth") private var readerColumnWidthRaw = ReaderColumnWidth.balanced.rawValue
 
     var body: some View {
         Form {
@@ -46,6 +48,16 @@ struct SettingsView: View {
                 Picker("Text Size", selection: readerFontSizeBinding) {
                     ForEach(ReaderFontSize.allCases) { size in
                         Text(size.label).tag(size)
+                    }
+                }
+                Picker("Text Spacing", selection: readerTextSpacingBinding) {
+                    ForEach(ReaderTextSpacing.allCases) { spacing in
+                        Text(spacing.rawValue).tag(spacing)
+                    }
+                }
+                Picker("Column Width", selection: readerColumnWidthBinding) {
+                    ForEach(ReaderColumnWidth.allCases) { width in
+                        Text(width.rawValue).tag(width)
                     }
                 }
             }
@@ -114,6 +126,20 @@ struct SettingsView: View {
         Binding(
             get: { ReaderModeSetting(rawValue: readerModeRaw) ?? .rendered },
             set: { readerModeRaw = $0.rawValue }
+        )
+    }
+
+    private var readerTextSpacingBinding: Binding<ReaderTextSpacing> {
+        Binding(
+            get: { ReaderTextSpacing.from(rawValue: readerTextSpacingRaw) },
+            set: { readerTextSpacingRaw = $0.rawValue }
+        )
+    }
+
+    private var readerColumnWidthBinding: Binding<ReaderColumnWidth> {
+        Binding(
+            get: { ReaderColumnWidth.from(rawValue: readerColumnWidthRaw) },
+            set: { readerColumnWidthRaw = $0.rawValue }
         )
     }
 }

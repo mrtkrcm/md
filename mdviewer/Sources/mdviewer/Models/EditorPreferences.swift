@@ -120,6 +120,70 @@ enum CodeFontSize: Int, CaseIterable, Identifiable {
     }
 }
 
+enum ReaderTextSpacing: String, CaseIterable, Identifiable {
+    case compact = "Compact"
+    case balanced = "Balanced"
+    case relaxed = "Relaxed"
+
+    var id: String { rawValue }
+
+    static func from(rawValue: String) -> ReaderTextSpacing {
+        ReaderTextSpacing(rawValue: rawValue) ?? .balanced
+    }
+
+    var lineSpacing: CGFloat {
+        switch self {
+        case .compact: return 1.5
+        case .balanced: return 3
+        case .relaxed: return 5
+        }
+    }
+
+    var paragraphSpacing: CGFloat {
+        switch self {
+        case .compact: return 4
+        case .balanced: return 7
+        case .relaxed: return 10
+        }
+    }
+
+    var kern: CGFloat {
+        switch self {
+        case .compact: return 0.04
+        case .balanced: return 0.10
+        case .relaxed: return 0.16
+        }
+    }
+
+    var hyphenationFactor: Float {
+        switch self {
+        case .compact: return 0.15
+        case .balanced: return 0.20
+        case .relaxed: return 0.25
+        }
+    }
+}
+
+enum ReaderColumnWidth: String, CaseIterable, Identifiable {
+    case narrow = "Narrow"
+    case balanced = "Balanced"
+    case wide = "Wide"
+
+    var id: String { rawValue }
+
+    static func from(rawValue: String) -> ReaderColumnWidth {
+        ReaderColumnWidth(rawValue: rawValue) ?? .balanced
+    }
+
+    var points: CGFloat {
+        switch self {
+        case .narrow: return 680
+        case .balanced: return 760
+        case .wide: return 860
+        }
+    }
+}
+
 enum SyntaxPalette: String, CaseIterable, Identifiable {
     case sundellsColors = "Sundell's Colors"
     case midnight = "Midnight"

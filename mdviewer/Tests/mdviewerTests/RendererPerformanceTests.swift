@@ -19,7 +19,9 @@ final class RendererPerformanceTests: XCTestCase {
             codeFontSize: 14,
             appTheme: .basic,
             syntaxPalette: .midnight,
-            colorScheme: .light
+            colorScheme: .light,
+            textSpacing: .balanced,
+            readableWidth: ReaderColumnWidth.balanced.points
         )
 
         let coldMs = await elapsedMillis {
@@ -36,7 +38,9 @@ final class RendererPerformanceTests: XCTestCase {
             codeFontSize: 14,
             appTheme: .github,
             syntaxPalette: .midnight,
-            colorScheme: .light
+            colorScheme: .light,
+            textSpacing: .balanced,
+            readableWidth: ReaderColumnWidth.balanced.points
         )
 
         let themeSwitchMs = await elapsedMillis {

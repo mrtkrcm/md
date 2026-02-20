@@ -22,6 +22,10 @@
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>md</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon.icns</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.example.md</string>
 	<key>CFBundleName</key>

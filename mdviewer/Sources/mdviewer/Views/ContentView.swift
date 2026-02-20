@@ -22,6 +22,8 @@ struct ContentView: View {
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.auto.rawValue
     @AppStorage("readerFontFamily") private var readerFontFamilyRaw = ReaderFontFamily.newYork.rawValue
     @AppStorage("readerMode") private var readerModeRaw = ReaderMode.rendered.rawValue
+    @AppStorage("readerTextSpacing") private var readerTextSpacingRaw = ReaderTextSpacing.balanced.rawValue
+    @AppStorage("readerColumnWidth") private var readerColumnWidthRaw = ReaderColumnWidth.balanced.rawValue
 
     @Environment(\.openDocument) private var openDocument
     @Environment(\.colorScheme) private var colorScheme
@@ -61,7 +63,9 @@ struct ContentView: View {
                             codeFontSize: CGFloat(codeFontSize.rawValue),
                             appTheme: selectedTheme,
                             syntaxPalette: syntaxPalette,
-                            colorScheme: effectiveColorScheme
+                            colorScheme: effectiveColorScheme,
+                            textSpacing: readerTextSpacing,
+                            readableWidth: readerColumnWidth.points
                         )
                     } else {
                         RawMarkdownEditor(
@@ -111,7 +115,9 @@ struct ContentView: View {
                 readerFontFamily: readerFontFamilyBinding,
                 syntaxPalette: syntaxPaletteBinding,
                 codeFontSize: codeFontSizeBinding,
-                appearanceMode: appearanceModeBinding
+                appearanceMode: appearanceModeBinding,
+                readerTextSpacing: readerTextSpacingBinding,
+                readerColumnWidth: readerColumnWidthBinding
             )
         }
         .alert("Unable to Open Document", isPresented: openErrorBinding) {
@@ -124,11 +130,12 @@ struct ContentView: View {
     private func topOverlay(frontmatter: Frontmatter?) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Spacer(minLength: 0)
-
-                if readerMode == .rendered, let frontmatter, !frontmatter.entries.isEmpty {
+                if readerMode == .rendered, let frontmatter {
                     FloatingMetadataView(frontmatter: frontmatter)
+                        .frame(maxWidth: 320, alignment: .leading)
                 }
+
+                Spacer(minLength: 0)
 
                 TopBarView(
                     showAppearancePopover: $showAppearancePopover,
@@ -205,6 +212,14 @@ struct ContentView: View {
         ReaderMode(rawValue: readerModeRaw) ?? .rendered
     }
 
+    private var readerTextSpacing: ReaderTextSpacing {
+        ReaderTextSpacing.from(rawValue: readerTextSpacingRaw)
+    }
+
+    private var readerColumnWidth: ReaderColumnWidth {
+        ReaderColumnWidth.from(rawValue: readerColumnWidthRaw)
+    }
+
     private var effectiveColorScheme: ColorScheme {
         appearanceMode.preferredColorScheme ?? colorScheme
     }
@@ -255,6 +270,20 @@ struct ContentView: View {
         Binding(
             get: { readerMode },
             set: { readerModeRaw = $0.rawValue }
+        )
+    }
+
+    private var readerTextSpacingBinding: Binding<ReaderTextSpacing> {
+        Binding(
+            get: { readerTextSpacing },
+            set: { readerTextSpacingRaw = $0.rawValue }
+        )
+    }
+
+    private var readerColumnWidthBinding: Binding<ReaderColumnWidth> {
+        Binding(
+            get: { readerColumnWidth },
+            set: { readerColumnWidthRaw = $0.rawValue }
         )
     }
 
@@ -621,7 +650,10 @@ private struct RawMarkdownTextView: NSViewRepresentable {
 
 private struct FloatingMetadataView: View {
     let frontmatter: Frontmatter
-    @State private var isExpanded = false
+    @AppStorage("frontmatterPanelExpanded") private var isExpanded = false
+
+    private let collapsedWidth: CGFloat = 150
+    private let expandedWidth: CGFloat = 360
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -640,36 +672,64 @@ private struct FloatingMetadataView: View {
                         .foregroundStyle(.secondary)
                         .textCase(.uppercase)
 
-                    Text("\(frontmatter.entries.count)")
+                    Text(frontmatter.entries.isEmpty ? "YAML" : "\(frontmatter.entries.count)")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
                         .background(Color(nsColor: .quaternaryLabelColor).opacity(0.18), in: Capsule())
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.10), radius: 12, y: 4)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
             }
             .buttonStyle(.plain)
+            .frame(width: collapsedWidth, alignment: .leading)
+            .topChromeContainer(cornerRadius: 14)
 
             if isExpanded {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(frontmatter.entries.enumerated()), id: \.offset) { _, entry in
-                            FloatingMetadataEntryView(entry: entry)
+                    if frontmatter.entries.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Frontmatter detected")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+
+                            Text("Raw YAML is shown because key/value extraction is unavailable for this structure.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Text(frontmatter.rawYAML.trimmingCharacters(in: .whitespacesAndNewlines))
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 2)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                        )
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(Array(frontmatter.entries.enumerated()), id: \.offset) { _, entry in
+                                FloatingMetadataEntryView(entry: entry)
+                            }
                         }
                     }
                 }
-                .frame(width: 280)
+                .frame(width: expandedWidth)
                 .frame(maxHeight: 320, alignment: .topLeading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .topChromeContainer(cornerRadius: 14)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .frame(width: isExpanded ? expandedWidth : collapsedWidth, alignment: .leading)
+        .animation(.easeInOut(duration: 0.18), value: isExpanded)
     }
 }
 
@@ -752,12 +812,18 @@ private struct TopBarView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.10), radius: 12, y: 4)
+        .topChromeContainer(cornerRadius: 14)
+    }
+}
+
+private extension View {
+    func topChromeContainer(cornerRadius: CGFloat) -> some View {
+        background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.10), radius: 12, y: 4)
     }
 }
 
@@ -868,6 +934,8 @@ private struct AppearancePopoverView: View {
     @Binding var syntaxPalette: SyntaxPalette
     @Binding var codeFontSize: CodeFontSize
     @Binding var appearanceMode: AppearanceMode
+    @Binding var readerTextSpacing: ReaderTextSpacing
+    @Binding var readerColumnWidth: ReaderColumnWidth
 
     var body: some View {
         ScrollView {
@@ -907,6 +975,18 @@ private struct AppearancePopoverView: View {
                     Picker("Text Size", selection: $readerFontSize) {
                         ForEach(ReaderFontSize.allCases) { size in
                             Text(size.label).tag(size)
+                        }
+                    }
+
+                    Picker("Text Spacing", selection: $readerTextSpacing) {
+                        ForEach(ReaderTextSpacing.allCases) { spacing in
+                            Text(spacing.rawValue).tag(spacing)
+                        }
+                    }
+
+                    Picker("Column Width", selection: $readerColumnWidth) {
+                        ForEach(ReaderColumnWidth.allCases) { width in
+                            Text(width.rawValue).tag(width)
                         }
                     }
                 }

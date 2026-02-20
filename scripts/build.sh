@@ -6,6 +6,10 @@ PKG_DIR="$ROOT_DIR/mdviewer"
 APP_NAME="md"
 APP_BUNDLE="$ROOT_DIR/release/$APP_NAME.app"
 INFO_PLIST_SOURCE="$PKG_DIR/Sources/mdviewer/Info.plist"
+ICON_CANDIDATES=(
+  "$PKG_DIR/Sources/mdviewer/Resources/AppIcon.icns"
+  "$ROOT_DIR/dist/MD.app/Contents/Resources/AppIcon.icns"
+)
 BUNDLE_ID="com.example.$APP_NAME"
 
 INSTALL_APP="${INSTALL_APP:-false}"
@@ -48,10 +52,28 @@ cp "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 cp "$INFO_PLIST_SOURCE" "$APP_BUNDLE/Contents/Info.plist"
 
+ICON_SOURCE=""
+for candidate in "${ICON_CANDIDATES[@]}"; do
+  if [ -f "$candidate" ]; then
+    ICON_SOURCE="$candidate"
+    break
+  fi
+done
+
+if [ -n "$ICON_SOURCE" ]; then
+  cp "$ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+else
+  echo "Warning: AppIcon.icns not found. App icon will appear as blank/default."
+fi
+
 plutil -replace CFBundleExecutable -string "$APP_NAME" "$APP_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleName -string "$APP_NAME" "$APP_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleDisplayName -string "$APP_NAME" "$APP_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleIdentifier -string "$BUNDLE_ID" "$APP_BUNDLE/Contents/Info.plist"
+if [ -n "$ICON_SOURCE" ]; then
+  plutil -replace CFBundleIconFile -string "AppIcon.icns" "$APP_BUNDLE/Contents/Info.plist"
+  plutil -replace CFBundleIconName -string "AppIcon" "$APP_BUNDLE/Contents/Info.plist"
+fi
 
 if command -v codesign >/dev/null 2>&1; then
   codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true

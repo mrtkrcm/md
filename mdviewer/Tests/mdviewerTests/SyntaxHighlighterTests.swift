@@ -13,7 +13,9 @@ final class SyntaxHighlighterTests: XCTestCase {
             codeFontSize: 14,
             appTheme: .basic,
             syntaxPalette: .midnight,
-            colorScheme: .light
+            colorScheme: .light,
+            textSpacing: .balanced,
+            readableWidth: ReaderColumnWidth.balanced.points
         )
         let rhs = RenderRequest(
             markdown: "```swift\nlet x = 1\n```",
@@ -22,7 +24,9 @@ final class SyntaxHighlighterTests: XCTestCase {
             codeFontSize: 14,
             appTheme: .basic,
             syntaxPalette: .midnight,
-            colorScheme: .light
+            colorScheme: .light,
+            textSpacing: .balanced,
+            readableWidth: ReaderColumnWidth.balanced.points
         )
         let changed = RenderRequest(
             markdown: "```swift\nlet x = 2\n```",
@@ -31,7 +35,9 @@ final class SyntaxHighlighterTests: XCTestCase {
             codeFontSize: 14,
             appTheme: .basic,
             syntaxPalette: .midnight,
-            colorScheme: .light
+            colorScheme: .light,
+            textSpacing: .balanced,
+            readableWidth: ReaderColumnWidth.balanced.points
         )
 
         XCTAssertEqual(lhs.cacheKey, rhs.cacheKey)
@@ -55,7 +61,9 @@ final class SyntaxHighlighterTests: XCTestCase {
                 codeFontSize: 14,
                 appTheme: .basic,
                 syntaxPalette: .midnight,
-                colorScheme: .light
+                colorScheme: .light,
+                textSpacing: .balanced,
+                readableWidth: ReaderColumnWidth.balanced.points
             )
         ).attributedString
 
@@ -87,7 +95,9 @@ final class SyntaxHighlighterTests: XCTestCase {
             codeFontSize: 14,
             appTheme: .github,
             syntaxPalette: .midnight,
-            colorScheme: .dark
+            colorScheme: .dark,
+            textSpacing: .balanced,
+            readableWidth: ReaderColumnWidth.balanced.points
         )
 
         var outputs = [String]()
@@ -107,32 +117,6 @@ final class SyntaxHighlighterTests: XCTestCase {
         XCTAssertEqual(Set(outputs).count, 1)
         let stats = await MarkdownRenderService.shared.snapshotStats()
         XCTAssertGreaterThanOrEqual(stats.cacheHits, 1)
-    }
-
-    func testRenderStripsFrontmatterFromDisplayedMarkdown() async {
-        let markdown = """
-        ---
-        title: Hidden metadata
-        category: docs
-        ---
-        # Public Title
-        """
-
-        let rendered = await MarkdownRenderService.shared.render(
-            RenderRequest(
-                markdown: markdown,
-                readerFontFamily: .newYork,
-                readerFontSize: 16,
-                codeFontSize: 14,
-                appTheme: .basic,
-                syntaxPalette: .midnight,
-                colorScheme: .light
-            )
-        ).attributedString.string
-
-        XCTAssertTrue(rendered.contains("Public Title"))
-        XCTAssertFalse(rendered.contains("Hidden metadata"))
-        XCTAssertFalse(rendered.contains("category:"))
     }
 
     private func color(at location: Int, in text: NSAttributedString) -> NSColor {

@@ -15,6 +15,8 @@ struct NativeMarkdownTextView: NSViewRepresentable {
     let appTheme: AppTheme
     let syntaxPalette: SyntaxPalette
     let colorScheme: ColorScheme
+    let textSpacing: ReaderTextSpacing
+    let readableWidth: CGFloat
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = ReaderTextView()
@@ -29,6 +31,7 @@ struct NativeMarkdownTextView: NSViewRepresentable {
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.preferredReadableWidth = readableWidth
 
         let scrollView = NSScrollView()
         scrollView.drawsBackground = false
@@ -45,7 +48,8 @@ struct NativeMarkdownTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
+        guard let textView = scrollView.documentView as? ReaderTextView else { return }
+        textView.preferredReadableWidth = readableWidth
 
         let request = RenderRequest(
             markdown: markdown,
@@ -54,7 +58,9 @@ struct NativeMarkdownTextView: NSViewRepresentable {
             codeFontSize: codeFontSize,
             appTheme: appTheme,
             syntaxPalette: syntaxPalette,
-            colorScheme: colorScheme
+            colorScheme: colorScheme,
+            textSpacing: textSpacing,
+            readableWidth: readableWidth
         )
 
         let coordinator = context.coordinator
@@ -96,7 +102,7 @@ struct NativeMarkdownTextView: NSViewRepresentable {
 }
 
 private final class ReaderTextView: NSTextView {
-    private let maxReadableWidth: CGFloat = 760
+    var preferredReadableWidth: CGFloat = 760
     private let minimumHorizontalInset: CGFloat = 24
 
     override func layout() {
@@ -104,7 +110,7 @@ private final class ReaderTextView: NSTextView {
 
         guard let textContainer else { return }
         let availableWidth = bounds.width
-        let targetWidth = min(maxReadableWidth, max(0, availableWidth - (minimumHorizontalInset * 2)))
+        let targetWidth = min(preferredReadableWidth, max(0, availableWidth - (minimumHorizontalInset * 2)))
         let horizontalInset = max(minimumHorizontalInset, (availableWidth - targetWidth) / 2)
 
         textContainer.containerSize = NSSize(
@@ -123,6 +129,8 @@ struct RenderRequest: Hashable, Sendable {
     let appTheme: AppTheme
     let syntaxPalette: SyntaxPalette
     let colorScheme: ColorScheme
+    let textSpacing: ReaderTextSpacing
+    let readableWidth: CGFloat
 
     var cacheKey: String {
         let payload = [
@@ -132,7 +140,9 @@ struct RenderRequest: Hashable, Sendable {
             String(format: "%.2f", codeFontSize),
             appTheme.rawValue,
             syntaxPalette.rawValue,
-            colorScheme == .dark ? "dark" : "light"
+            colorScheme == .dark ? "dark" : "light",
+            textSpacing.rawValue,
+            String(format: "%.0f", readableWidth)
         ].joined(separator: "|")
 
         let digest = SHA256.hash(data: Data(payload.utf8))
@@ -164,8 +174,6 @@ actor MarkdownRenderService {
 
     private let logger = Logger(subsystem: "mdviewer", category: "render")
     private let signpostLog = OSLog(subsystem: "mdviewer", category: "render-signpost")
-    private let textBlocksKey = NSAttributedString.Key("NSAttributedStringTextBlocks")
-
     private let cache: NSCache<NSString, RenderedMarkdown>
     private let syntaxRules: [SyntaxRule]
     private let stringRegex: NSRegularExpression?
@@ -245,36 +253,211 @@ actor MarkdownRenderService {
 
     private func parseMarkdown(_ markdown: String) -> NSAttributedString {
         let parsed = FrontmatterParser.parse(markdown)
+        let normalizedMarkdown = preserveAuthorLineBreaks(in: parsed.renderedMarkdown)
         return (try? NSAttributedString(
-            markdown: Data(parsed.renderedMarkdown.utf8),
+            markdown: Data(normalizedMarkdown.utf8),
             options: AttributedString.MarkdownParsingOptions(
                 interpretedSyntax: .full,
                 failurePolicy: .returnPartiallyParsedIfPossible
             ),
             baseURL: nil
-        )) ?? NSAttributedString(string: parsed.renderedMarkdown)
+        )) ?? NSAttributedString(string: normalizedMarkdown)
     }
+
+    private func preserveAuthorLineBreaks(in markdown: String) -> String {
+        var lines = markdown.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
+        guard lines.count > 1 else { return markdown }
+
+        // Track backtick and tilde fences independently so mixed fences don't corrupt state.
+        var inBacktickFence = false
+        var inTildeFence = false
+
+        for index in lines.indices {
+            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") {
+                inBacktickFence.toggle()
+            } else if trimmed.hasPrefix("~~~") {
+                inTildeFence.toggle()
+            }
+
+            let inFence = inBacktickFence || inTildeFence
+            guard index + 1 < lines.count, !inFence else { continue }
+            let next = lines[index + 1]
+            if shouldInsertHardBreak(after: lines[index], before: next) {
+                lines[index] += "  "
+            }
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private func shouldInsertHardBreak(after currentLine: String, before nextLine: String) -> Bool {
+        let currentTrimmed = currentLine.trimmingCharacters(in: .whitespaces)
+        let nextTrimmed = nextLine.trimmingCharacters(in: .whitespaces)
+
+        guard !currentTrimmed.isEmpty, !nextTrimmed.isEmpty else { return false }
+        guard !currentLine.hasSuffix("  "), !currentLine.hasSuffix("\\") else { return false }
+        guard !isStructuralBoundaryLine(currentTrimmed), !isStructuralBoundaryLine(nextTrimmed) else { return false }
+
+        return true
+    }
+
+    private func isStructuralBoundaryLine(_ line: String) -> Bool {
+        guard !line.isEmpty else { return false }
+        if line.hasPrefix("#")
+            || line.hasPrefix("- ")
+            || line.hasPrefix("* ")
+            || line.hasPrefix("+ ")
+            || line.hasPrefix("|")
+            || line.hasPrefix("```")
+            || line.hasPrefix("~~~")
+        {
+            return true
+        }
+
+        if line.range(of: #"^\d+[\.\)]\s"#, options: .regularExpression) != nil {
+            return true
+        }
+
+        if line.range(of: #"^([-*_]\s*){3,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+
+        return false
+    }
+
+    // NSAttributedString key names for semantic markdown intents (Foundation, macOS 12+).
+    // On macOS 26+ the markdown parser stopped pre-baking NSFont attributes and switched to
+    // emitting only these semantic intent attributes, leaving visual rendering to the framework.
+    // We interpret them here so the renderer stays correct across OS versions.
+    private static let presentationIntentKey = NSAttributedString.Key("NSPresentationIntent")
+    private static let inlinePresentationIntentKey = NSAttributedString.Key("NSInlinePresentationIntent")
 
     private func applyTypography(_ text: NSMutableAttributedString, request: RenderRequest) {
         let fullRange = NSRange(location: 0, length: text.length)
-        let palette = NativeThemePalette(theme: request.appTheme, scheme: request.colorScheme)
+        let bodyFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
 
-        text.removeAttribute(textBlocksKey, range: fullRange)
-
-        text.enumerateAttribute(.font, in: fullRange) { value, range, _ in
-            let existing = (value as? NSFont) ?? NSFont.systemFont(ofSize: request.readerFontSize)
-            let isCode = existing.fontDescriptor.symbolicTraits.contains(.monoSpace)
-            let targetBase = isCode
-                ? request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true)
-                : request.readerFontFamily.nsFont(size: max(12, existing.pointSize * (request.readerFontSize / 13)))
-
-            let descriptor = targetBase.fontDescriptor.withSymbolicTraits(existing.fontDescriptor.symbolicTraits)
-            let target = NSFont(descriptor: descriptor, size: targetBase.pointSize) ?? targetBase
-            text.addAttribute(.font, value: target, range: range)
+        // Detect whether the markdown parser pre-baked NSFont attributes (pre-macOS 26) or
+        // only emitted semantic NSPresentationIntent attributes (macOS 26+).
+        var usedPreBakedFonts = false
+        text.enumerateAttribute(.font, in: fullRange, options: [.longestEffectiveRangeNotRequired]) { value, _, stop in
+            if value is NSFont { usedPreBakedFonts = true; stop.pointee = true }
         }
 
-        text.addAttribute(.foregroundColor, value: palette.textPrimary, range: fullRange)
-        text.addAttribute(.kern, value: 0.1, range: fullRange)
+        if usedPreBakedFonts {
+            // Classic path (pre-macOS 26): preserve hierarchy from parser-set NSFont attributes.
+            text.enumerateAttribute(.font, in: fullRange) { value, range, _ in
+                guard let existing = value as? NSFont else {
+                    text.addAttribute(.font, value: bodyFont, range: range)
+                    return
+                }
+                let traits = existing.fontDescriptor.symbolicTraits
+                if traits.contains(.monoSpace) {
+                    text.addAttribute(.font, value: request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true), range: range)
+                    return
+                }
+                let scaledSize = max(12, existing.pointSize * (request.readerFontSize / 13))
+                let base = request.readerFontFamily.nsFont(size: scaledSize)
+                let desc = base.fontDescriptor.withSymbolicTraits(traits)
+                let target = NSFont(descriptor: desc, size: base.pointSize) ?? base
+                text.addAttribute(.font, value: target, range: range)
+            }
+        } else {
+            // Semantic-only path (macOS 26+): build fonts from NSPresentationIntent.
+            applyFontsFromPresentationIntents(text, request: request)
+        }
+
+        // Apply label color as the default text color across the full range. applyCodeStyling
+        // will overwrite this with syntax colors on code spans, and the markdown parser may have
+        // set link/emphasis colors which will be preserved because they are applied after this
+        // baseline (enumerateAttribute runs on a snapshot; addAttribute on earlier ranges is safe).
+        text.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+
+        // User spacing kern is a display preference — always apply uniformly.
+        text.addAttribute(.kern, value: request.textSpacing.kern, range: fullRange)
+
+        // Merge spacing properties into each existing paragraph style rather than overwriting
+        // the entire string with a single blank style. This preserves list indentation
+        // (headIndent, firstLineHeadIndent, NSTextList), blockquote formatting, and any other
+        // block-level structure the native markdown parser set.
+        text.enumerateAttribute(.paragraphStyle, in: fullRange) { value, range, _ in
+            let base = (value as? NSParagraphStyle) ?? NSParagraphStyle.default
+            guard let merged = base.mutableCopy() as? NSMutableParagraphStyle else { return }
+            merged.lineSpacing = request.textSpacing.lineSpacing
+            merged.paragraphSpacing = request.textSpacing.paragraphSpacing
+            merged.hyphenationFactor = request.textSpacing.hyphenationFactor
+            text.addAttribute(.paragraphStyle, value: merged, range: range)
+        }
+    }
+
+    /// Applies fonts when the markdown parser only emitted semantic presentation intents
+    /// (macOS 26+) instead of pre-baked NSFont attributes.
+    private func applyFontsFromPresentationIntents(
+        _ text: NSMutableAttributedString,
+        request: RenderRequest
+    ) {
+        let fullRange = NSRange(location: 0, length: text.length)
+
+        // Baseline: every range starts at body size.
+        text.addAttribute(.font, value: request.readerFontFamily.nsFont(size: request.readerFontSize), range: fullRange)
+
+        // Block-level overrides: headings and fenced code blocks.
+        text.enumerateAttribute(Self.presentationIntentKey, in: fullRange, options: []) { value, range, _ in
+            guard let intent = value as? PresentationIntent else { return }
+            var headingLevel = 0
+            var isCodeBlock  = false
+            for component in intent.components {
+                switch component.kind {
+                case .header(let level): headingLevel = level
+                case .codeBlock:         isCodeBlock = true
+                default:                 break
+                }
+            }
+            if isCodeBlock {
+                text.addAttribute(
+                    .font,
+                    value: request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true),
+                    range: range
+                )
+            } else if headingLevel > 0 {
+                let scale: CGFloat
+                switch headingLevel {
+                case 1: scale = 2.0;  case 2: scale = 1.5
+                case 3: scale = 1.25; case 4: scale = 1.1
+                default: scale = 1.0
+                }
+                let base = request.readerFontFamily.nsFont(size: request.readerFontSize * scale)
+                let desc = base.fontDescriptor.withSymbolicTraits(.bold)
+                text.addAttribute(.font, value: NSFont(descriptor: desc, size: base.pointSize) ?? base, range: range)
+            }
+        }
+
+        // Inline overrides: bold, italic, inline code.
+        // The attribute value is stored as NSNumber (the OptionSet raw value); construct
+        // InlinePresentationIntent from it to use named members rather than magic bit literals.
+        text.enumerateAttribute(Self.inlinePresentationIntentKey, in: fullRange, options: []) { value, range, _ in
+            guard let raw = value as? NSNumber else { return }
+            let intent = InlinePresentationIntent(rawValue: UInt(raw.intValue))
+
+            if intent.contains(.code) {
+                text.addAttribute(
+                    .font,
+                    value: request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true),
+                    range: range
+                )
+                return
+            }
+            let isBold   = intent.contains(.stronglyEmphasized)
+            let isItalic = intent.contains(.emphasized)
+            guard isBold || isItalic else { return }
+            let current = (text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont)
+                ?? request.readerFontFamily.nsFont(size: request.readerFontSize)
+            var traits = current.fontDescriptor.symbolicTraits
+            if isBold   { traits.insert(.bold)   }
+            if isItalic { traits.insert(.italic)  }
+            let desc = current.fontDescriptor.withSymbolicTraits(traits)
+            text.addAttribute(.font, value: NSFont(descriptor: desc, size: current.pointSize) ?? current, range: range)
+        }
     }
 
     private func applyCodeStyling(_ text: NSMutableAttributedString, request: RenderRequest) {

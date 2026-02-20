@@ -84,7 +84,7 @@ struct MarkdownDocument: FileDocument {
         return FileWrapper(regularFileWithContents: data)
     }
 
-    private static func decode(data: Data) -> String? {
+    static func decode(data: Data) -> String? {
         if data.starts(with: [0xEF, 0xBB, 0xBF]) {
             return String(data: data.dropFirst(3), encoding: .utf8)
         }

@@ -346,11 +346,18 @@ actor MarkdownRenderService {
         // the layout manager's expectation that adjacent runs in the same block
         // share the same object identity, which is required for background/border
         // rendering to coalesce correctly across runs.
-        var blockquoteBlockCache: [Int: BlockquoteTextBlock] = [:]
-
+        // Collect (range, intent) pairs first — no mutation inside the closure.
+        var intentRuns: [(NSRange, PresentationIntent?)] = []
         text.enumerateAttribute(Self.presentationIntentKey, in: fullRange, options: []) { value, range, _ in
+            intentRuns.append((range, value as? PresentationIntent))
+        }
+
+        // Build and apply paragraph styles outside the closure, with full access
+        // to blockquoteBlockCache and text mutation without sendability concerns.
+        var blockquoteBlockCache: [Int: BlockquoteTextBlock] = [:]
+        for (range, intent) in intentRuns {
             let ps = buildParagraphStyle(
-                for: value as? PresentationIntent,
+                for: intent,
                 spacing: spacing,
                 bodySize: bodySize,
                 palette: palette,

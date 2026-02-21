@@ -400,8 +400,32 @@ actor MarkdownRenderService {
     private static let presentationIntentKey   = NSAttributedString.Key("NSPresentationIntent")
     private static let inlinePresentationIntentKey = NSAttributedString.Key("NSInlinePresentationIntent")
 
-    // Heading font scales relative to body size.
-    private static let headingScales: [Int: CGFloat] = [1: 2.0, 2: 1.5, 3: 1.25, 4: 1.1, 5: 1.0, 6: 1.0]
+    // MARK: - Typography Constants
+
+    /// Heading font scales relative to body size.
+    /// Creates clear visual hierarchy from H1 (hero) to H6 (subtle).
+    private static let headingScales: [Int: CGFloat] = [
+        1: 2.0,   // H1: Hero headings
+        2: 1.5,   // H2: Section headers
+        3: 1.25,  // H3: Subsections
+        4: 1.1,   // H4: Minor headings
+        5: 0.95,  // H5: Small headings (slightly smaller than body)
+        6: 0.9    // H6: Tiny headings (italic style applied)
+    ]
+
+    /// Heading font weights for visual hierarchy.
+    /// Heavier weights for major headings, lighter for minor.
+    private static let headingWeights: [Int: NSFont.Weight] = [
+        1: .heavy,    // H1: Maximum impact
+        2: .bold,     // H2: Strong emphasis
+        3: .semibold, // H3: Clear hierarchy
+        4: .medium,   // H4: Subtle emphasis
+        5: .regular,  // H5: Body-like with size difference
+        6: .light     // H6: Delicate, often italic
+    ]
+
+    /// Display P3 color space for consistent colors across devices.
+    private static let themeColorSpace = NSColorSpace.displayP3
 
     private func applyTypography(_ text: NSMutableAttributedString, request: RenderRequest) {
         let fullRange = NSRange(location: 0, length: text.length)
@@ -439,7 +463,16 @@ actor MarkdownRenderService {
                 text.addAttribute(.font, value: codeFont, range: range)
             } else if headingLevel > 0 {
                 let scale = Self.headingScales[headingLevel, default: 1.0]
-                let font  = family.nsFont(size: bodySize * scale, traits: .bold)
+                let weight = Self.headingWeights[headingLevel, default: .bold]
+                let size = bodySize * scale
+
+                // H6 gets italic styling for additional differentiation
+                var traits: NSFontDescriptor.SymbolicTraits = []
+                if headingLevel == 6 {
+                    traits.insert(.italic)
+                }
+
+                let font = family.nsFont(size: size, weight: weight, traits: traits)
                 text.addAttribute(.font, value: font, range: range)
             } else {
                 text.addAttribute(.font, value: bodyFont, range: range)
@@ -516,28 +549,30 @@ actor MarkdownRenderService {
 
     /// Builds a complete NSParagraphStyle for one PresentationIntent run.
     ///
-    /// Rhythm contract (at 16pt body, balanced spacing — lineSpacing=7, paragraphSpacing=16):
-    ///   Body line-height  ≈ 23pt  (16 + 7)
-    ///   Body para gap     = 16pt  (≈ 0.7 lines — one clear breath between paragraphs)
-    ///   H1 above          = 40pt  (2.5× body — strong section break)
-    ///   H1 below          =  8pt  (pull content close under heading)
-    ///   H2 above          = 32pt
-    ///   H3 above          = 24pt
-    ///   Code block above  = 16pt  (matches body para gap)
-    ///   Code block below  = 16pt
-    ///   Blockquote above  = 12pt  (slightly inset from body rhythm)
-    ///   List item gap     =  6pt  (tight — items are related)
+    /// Rhythm contract (ratio-based spacing for consistent vertical rhythm):
+    ///   Body line-height  ≈ 1.55× font size (balanced)
+    ///   Body para gap     ≈ 0.75× line height
+    ///   H1 above          = 2.5× body size
+    ///   H1 below          = 0.3× heading size
+    ///   H2 above          = 2.0× body size
+    ///   H3 above          = 1.5× body size
+    ///   Code block above  = 1.0× body para gap
+    ///   Blockquote above  = 0.6× body para gap
+    ///   List item gap     = 0.35× body para gap
     private func buildParagraphStyle(
         for intent: PresentationIntent?,
         spacing: ReaderTextSpacing,
         bodySize: CGFloat
     ) -> NSParagraphStyle {
         let ps = NSMutableParagraphStyle()
-        let gap = spacing.paragraphSpacing   // inter-block gap baseline
+
+        // Calculate ratio-based spacing for this body size
+        let lineGap = spacing.lineSpacing(for: bodySize)
+        let paraGap = spacing.paragraphSpacing(for: bodySize)
 
         // Body defaults — every block starts here and overrides what it needs.
-        ps.lineSpacing            = spacing.lineSpacing
-        ps.paragraphSpacing       = gap
+        ps.lineSpacing            = lineGap
+        ps.paragraphSpacing       = paraGap
         ps.paragraphSpacingBefore = 0
         ps.hyphenationFactor      = spacing.hyphenationFactor
         ps.lineBreakMode          = .byWordWrapping
@@ -561,16 +596,23 @@ actor MarkdownRenderService {
         }
 
         // ── Headings ─────────────────────────────────────────────────────────
-        // Space above = 1.5–2.5× body size scaled by heading level.
-        // Space below = 0.3× heading size (tight coupling to following content).
-        // Line spacing is small and fixed — headings rarely wrap.
+        // Space above scales by heading importance (H1 gets most breathing room).
+        // Space below is tight to couple heading with its content.
+        // Line spacing is minimal — headings rarely wrap.
         if headingLevel > 0 {
             let scale    = Self.headingScales[headingLevel, default: 1.0]
             let headSize = bodySize * scale
-            // Above: drops from 2.5× body for H1 down to 1.5× for H3+
-            let aboveScale: CGFloat = headingLevel == 1 ? 2.5
-                                    : headingLevel == 2 ? 2.0
-                                    : 1.5
+
+            // Above: drops from 2.5× body for H1 down to 1.0× for H6
+            let aboveScale: CGFloat = switch headingLevel {
+            case 1: 2.5
+            case 2: 2.0
+            case 3: 1.5
+            case 4: 1.2
+            case 5: 1.0
+            default: 0.8
+            }
+
             ps.paragraphSpacingBefore = bodySize * aboveScale
             ps.paragraphSpacing       = headSize * 0.3
             ps.lineSpacing            = 2
@@ -579,13 +621,13 @@ actor MarkdownRenderService {
         }
 
         // ── Code blocks ───────────────────────────────────────────────────────
-        // Tighter line spacing (mono is denser), same inter-block gap as body.
-        // Left indent matches the layout manager's codeVPad so text sits centred
-        // within the rounded rect drawn by ReaderLayoutManager.
+        // Tighter line spacing for monospace (more dense).
+        // Fixed indent for visual containment within rounded rect.
         if isCodeBlock {
-            ps.lineSpacing            = max(spacing.lineSpacing * 0.6, 3)
-            ps.paragraphSpacingBefore = gap
-            ps.paragraphSpacing       = gap
+            let codeLineGap = max(lineGap * 0.6, 2)
+            ps.lineSpacing            = codeLineGap
+            ps.paragraphSpacingBefore = paraGap
+            ps.paragraphSpacing       = paraGap
             ps.firstLineHeadIndent    = 14
             ps.headIndent             = 14
             ps.hyphenationFactor      = 0
@@ -600,9 +642,9 @@ actor MarkdownRenderService {
             let leftPad:  CGFloat = 14 + CGFloat(bqDepth - 1) * 18
             ps.firstLineHeadIndent    = barWidth + leftPad
             ps.headIndent             = barWidth + leftPad
-            ps.lineSpacing            = spacing.lineSpacing
-            ps.paragraphSpacingBefore = gap * 0.6
-            ps.paragraphSpacing       = gap * 0.6
+            ps.lineSpacing            = lineGap
+            ps.paragraphSpacingBefore = paraGap * 0.6
+            ps.paragraphSpacing       = paraGap * 0.6
             ps.hyphenationFactor      = spacing.hyphenationFactor
             return ps
         }
@@ -619,8 +661,8 @@ actor MarkdownRenderService {
             ps.defaultTabInterval  = markerWidth
             ps.firstLineHeadIndent = indent - markerWidth
             ps.headIndent          = indent
-            ps.lineSpacing         = spacing.lineSpacing
-            ps.paragraphSpacing    = gap * 0.35
+            ps.lineSpacing         = lineGap
+            ps.paragraphSpacing    = paraGap * 0.35
             return ps
         }
 
@@ -717,88 +759,92 @@ private struct NativeThemePalette {
     init(theme: AppTheme, scheme: ColorScheme) {
         switch (theme, scheme) {
         case (.github, .light):
-            textPrimary          = NSColor(red: 0.14, green: 0.16, blue: 0.20, alpha: 1)
-            textSecondary        = NSColor(red: 0.40, green: 0.42, blue: 0.46, alpha: 1)
-            link                 = NSColor(red: 0.10, green: 0.46, blue: 0.82, alpha: 1)
-            heading              = NSColor(red: 0.06, green: 0.08, blue: 0.12, alpha: 1)
-            codeBackground       = NSColor(red: 0.96, green: 0.96, blue: 0.96, alpha: 1)
-            codeBorder           = NSColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1)
-            blockquoteAccent     = NSColor(red: 0.22, green: 0.51, blue: 0.82, alpha: 1)
-            blockquoteBackground = NSColor(red: 0.22, green: 0.51, blue: 0.82, alpha: 0.06)
-            inlineCodeBackground = NSColor(red: 0.22, green: 0.51, blue: 0.82, alpha: 0.08)
+            textPrimary          = Self.p3Color(r: 0.14, g: 0.16, b: 0.20)
+            textSecondary        = Self.p3Color(r: 0.40, g: 0.42, b: 0.46)
+            link                 = Self.p3Color(r: 0.10, g: 0.46, b: 0.82)
+            heading              = Self.p3Color(r: 0.06, g: 0.08, b: 0.12)
+            codeBackground       = Self.p3Color(r: 0.96, g: 0.96, b: 0.96)
+            codeBorder           = Self.p3Color(r: 0.88, g: 0.88, b: 0.88)
+            blockquoteAccent     = Self.p3Color(r: 0.22, g: 0.51, b: 0.82)
+            blockquoteBackground = Self.p3Color(r: 0.22, g: 0.51, b: 0.82, a: 0.06)
+            inlineCodeBackground = Self.p3Color(r: 0.22, g: 0.51, b: 0.82, a: 0.08)
         case (.github, .dark):
-            textPrimary          = NSColor(red: 0.90, green: 0.90, blue: 0.90, alpha: 1)
-            textSecondary        = NSColor(red: 0.60, green: 0.62, blue: 0.66, alpha: 1)
-            link                 = NSColor(red: 0.53, green: 0.75, blue: 0.98, alpha: 1)
-            heading              = NSColor(red: 0.95, green: 0.96, blue: 0.98, alpha: 1)
-            codeBackground       = NSColor(red: 0.17, green: 0.18, blue: 0.20, alpha: 1)
-            codeBorder           = NSColor(red: 0.28, green: 0.29, blue: 0.32, alpha: 1)
-            blockquoteAccent     = NSColor(red: 0.35, green: 0.62, blue: 0.90, alpha: 1)
-            blockquoteBackground = NSColor(red: 0.35, green: 0.62, blue: 0.90, alpha: 0.08)
-            inlineCodeBackground = NSColor(red: 0.35, green: 0.62, blue: 0.90, alpha: 0.10)
+            textPrimary          = Self.p3Color(r: 0.90, g: 0.90, b: 0.90)
+            textSecondary        = Self.p3Color(r: 0.60, g: 0.62, b: 0.66)
+            link                 = Self.p3Color(r: 0.53, g: 0.75, b: 0.98)
+            heading              = Self.p3Color(r: 0.95, g: 0.96, b: 0.98)
+            codeBackground       = Self.p3Color(r: 0.17, g: 0.18, b: 0.20)
+            codeBorder           = Self.p3Color(r: 0.28, g: 0.29, b: 0.32)
+            blockquoteAccent     = Self.p3Color(r: 0.35, g: 0.62, b: 0.90)
+            blockquoteBackground = Self.p3Color(r: 0.35, g: 0.62, b: 0.90, a: 0.08)
+            inlineCodeBackground = Self.p3Color(r: 0.35, g: 0.62, b: 0.90, a: 0.10)
         case (.docC, .light):
-            textPrimary          = NSColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1)
-            textSecondary        = NSColor(red: 0.38, green: 0.38, blue: 0.42, alpha: 1)
-            link                 = NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 1)
-            heading              = NSColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1)
-            codeBackground       = NSColor(red: 0.95, green: 0.95, blue: 0.96, alpha: 1)
-            codeBorder           = NSColor(red: 0.88, green: 0.88, blue: 0.90, alpha: 1)
-            blockquoteAccent     = NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 1)
-            blockquoteBackground = NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 0.05)
-            inlineCodeBackground = NSColor(red: 0.00, green: 0.48, blue: 1.00, alpha: 0.08)
+            textPrimary          = Self.p3Color(r: 0.12, g: 0.12, b: 0.14)
+            textSecondary        = Self.p3Color(r: 0.38, g: 0.38, b: 0.42)
+            link                 = Self.p3Color(r: 0.00, g: 0.48, b: 1.00)
+            heading              = Self.p3Color(r: 0.05, g: 0.05, b: 0.08)
+            codeBackground       = Self.p3Color(r: 0.95, g: 0.95, b: 0.96)
+            codeBorder           = Self.p3Color(r: 0.88, g: 0.88, b: 0.90)
+            blockquoteAccent     = Self.p3Color(r: 0.00, g: 0.48, b: 1.00)
+            blockquoteBackground = Self.p3Color(r: 0.00, g: 0.48, b: 1.00, a: 0.05)
+            inlineCodeBackground = Self.p3Color(r: 0.00, g: 0.48, b: 1.00, a: 0.08)
         case (.docC, .dark):
-            textPrimary          = NSColor(red: 0.93, green: 0.93, blue: 0.94, alpha: 1)
-            textSecondary        = NSColor(red: 0.60, green: 0.60, blue: 0.64, alpha: 1)
-            link                 = NSColor(red: 0.25, green: 0.60, blue: 1.00, alpha: 1)
-            heading              = NSColor(red: 0.97, green: 0.97, blue: 0.98, alpha: 1)
-            codeBackground       = NSColor(red: 0.14, green: 0.15, blue: 0.17, alpha: 1)
-            codeBorder           = NSColor(red: 0.26, green: 0.27, blue: 0.30, alpha: 1)
-            blockquoteAccent     = NSColor(red: 0.25, green: 0.60, blue: 1.00, alpha: 1)
-            blockquoteBackground = NSColor(red: 0.25, green: 0.60, blue: 1.00, alpha: 0.08)
-            inlineCodeBackground = NSColor(red: 0.25, green: 0.60, blue: 1.00, alpha: 0.10)
+            textPrimary          = Self.p3Color(r: 0.93, g: 0.93, b: 0.94)
+            textSecondary        = Self.p3Color(r: 0.60, g: 0.60, b: 0.64)
+            link                 = Self.p3Color(r: 0.25, g: 0.60, b: 1.00)
+            heading              = Self.p3Color(r: 0.97, g: 0.97, b: 0.98)
+            codeBackground       = Self.p3Color(r: 0.14, g: 0.15, b: 0.17)
+            codeBorder           = Self.p3Color(r: 0.26, g: 0.27, b: 0.30)
+            blockquoteAccent     = Self.p3Color(r: 0.25, g: 0.60, b: 1.00)
+            blockquoteBackground = Self.p3Color(r: 0.25, g: 0.60, b: 1.00, a: 0.08)
+            inlineCodeBackground = Self.p3Color(r: 0.25, g: 0.60, b: 1.00, a: 0.10)
         case (.basic, .light):
             textPrimary          = .labelColor
             textSecondary        = .secondaryLabelColor
             link                 = .linkColor
             heading              = .labelColor
-            codeBackground       = NSColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1)
-            codeBorder           = NSColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1)
-            blockquoteAccent     = NSColor(red: 0.55, green: 0.55, blue: 0.55, alpha: 1)
-            blockquoteBackground = NSColor(red: 0.00, green: 0.00, blue: 0.00, alpha: 0.04)
-            inlineCodeBackground = NSColor(red: 0.55, green: 0.55, blue: 0.55, alpha: 0.08)
+            codeBackground       = Self.p3Color(r: 0.95, g: 0.95, b: 0.95)
+            codeBorder           = Self.p3Color(r: 0.88, g: 0.88, b: 0.88)
+            blockquoteAccent     = Self.p3Color(r: 0.55, g: 0.55, b: 0.55)
+            blockquoteBackground = Self.p3Color(r: 0.00, g: 0.00, b: 0.00, a: 0.04)
+            inlineCodeBackground = Self.p3Color(r: 0.55, g: 0.55, b: 0.55, a: 0.08)
         case (.basic, .dark):
             textPrimary          = .labelColor
             textSecondary        = .secondaryLabelColor
             link                 = .linkColor
             heading              = .labelColor
-            codeBackground       = NSColor(red: 0.20, green: 0.20, blue: 0.20, alpha: 1)
-            codeBorder           = NSColor(red: 0.30, green: 0.30, blue: 0.30, alpha: 1)
-            blockquoteAccent     = NSColor(red: 0.45, green: 0.45, blue: 0.45, alpha: 1)
-            blockquoteBackground = NSColor(red: 1.00, green: 1.00, blue: 1.00, alpha: 0.05)
-            inlineCodeBackground = NSColor(red: 0.45, green: 0.45, blue: 0.45, alpha: 0.08)
+            codeBackground       = Self.p3Color(r: 0.20, g: 0.20, b: 0.20)
+            codeBorder           = Self.p3Color(r: 0.30, g: 0.30, b: 0.30)
+            blockquoteAccent     = Self.p3Color(r: 0.45, g: 0.45, b: 0.45)
+            blockquoteBackground = Self.p3Color(r: 1.00, g: 1.00, b: 1.00, a: 0.05)
+            inlineCodeBackground = Self.p3Color(r: 0.45, g: 0.45, b: 0.45, a: 0.08)
         @unknown default:
             textPrimary          = .labelColor
             textSecondary        = .secondaryLabelColor
             link                 = .linkColor
             heading              = .labelColor
             codeBackground       = scheme == .dark
-                ? NSColor(red: 0.20, green: 0.20, blue: 0.20, alpha: 1)
-                : NSColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1)
+                ? Self.p3Color(r: 0.20, g: 0.20, b: 0.20)
+                : Self.p3Color(r: 0.95, g: 0.95, b: 0.95)
             codeBorder           = scheme == .dark
-                ? NSColor(red: 0.30, green: 0.30, blue: 0.30, alpha: 1)
-                : NSColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1)
-            blockquoteAccent     = NSColor(red: scheme == .dark ? 0.45 : 0.55,
-                                           green: scheme == .dark ? 0.45 : 0.55,
-                                           blue: scheme == .dark ? 0.45 : 0.55, alpha: 1)
-            blockquoteBackground = NSColor(red: scheme == .dark ? 1.0 : 0.0,
-                                           green: scheme == .dark ? 1.0 : 0.0,
-                                           blue: scheme == .dark ? 1.0 : 0.0,
-                                           alpha: scheme == .dark ? 0.05 : 0.04)
-            inlineCodeBackground = NSColor(red: scheme == .dark ? 0.45 : 0.55,
-                                           green: scheme == .dark ? 0.45 : 0.55,
-                                           blue: scheme == .dark ? 0.45 : 0.55,
-                                           alpha: 0.08)
+                ? Self.p3Color(r: 0.30, g: 0.30, b: 0.30)
+                : Self.p3Color(r: 0.88, g: 0.88, b: 0.88)
+            blockquoteAccent     = scheme == .dark
+                ? Self.p3Color(r: 0.45, g: 0.45, b: 0.45)
+                : Self.p3Color(r: 0.55, g: 0.55, b: 0.55)
+            blockquoteBackground = scheme == .dark
+                ? Self.p3Color(r: 1.00, g: 1.00, b: 1.00, a: 0.05)
+                : Self.p3Color(r: 0.00, g: 0.00, b: 0.00, a: 0.04)
+            inlineCodeBackground = scheme == .dark
+                ? Self.p3Color(r: 0.45, g: 0.45, b: 0.45, a: 0.08)
+                : Self.p3Color(r: 0.55, g: 0.55, b: 0.55, a: 0.08)
         }
+    }
+
+    /// Creates a color in the Display P3 color space for consistent rendering across devices.
+    /// Falls back to sRGB on older displays automatically.
+    private static func p3Color(r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat = 1.0) -> NSColor {
+        NSColor(displayP3Red: r, green: g, blue: b, alpha: a)
     }
 }
 

@@ -390,11 +390,7 @@ private struct RawMarkdownEditor: View {
             colorScheme: colorScheme
         )
         .frame(minHeight: 480, alignment: .topLeading)
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.75), lineWidth: 1)
-        )
+        .glassPanel(cornerRadius: 12)
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
     }
@@ -700,7 +696,7 @@ private struct FloatingMetadataView: View {
                 .padding(.vertical, 7)
             }
             .buttonStyle(.plain)
-            .topChromeContainer(cornerRadius: 14)
+            .glassPanel()
 
             // Expanded panel (overlay, doesn't affect layout)
             if isExpanded {
@@ -724,11 +720,7 @@ private struct FloatingMetadataView: View {
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-                        )
+                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     } else {
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(Array(frontmatter.entries.enumerated()), id: \.offset) { _, entry in
@@ -741,12 +733,7 @@ private struct FloatingMetadataView: View {
                 .frame(maxHeight: 280)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.15), radius: 20, y: 8)
+                .glassPanel()
                 .offset(y: 44) // Position below the button
                 .transition(.opacity.combined(with: .offset(y: -10)))
                 .zIndex(100) // Ensure it floats above other content
@@ -775,12 +762,7 @@ private struct FloatingMetadataEntryView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.08), radius: 10, y: 3)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func displayKey(_ raw: String) -> String {
@@ -835,18 +817,24 @@ private struct TopBarView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .topChromeContainer(cornerRadius: 14)
+        .glassPanel()
     }
 }
 
 private extension View {
-    func topChromeContainer(cornerRadius: CGFloat) -> some View {
-        background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.10), radius: 12, y: 4)
+    @ViewBuilder
+    func glassPanel(cornerRadius: CGFloat = 14) -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            self
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.10), radius: 12, y: 4)
+        }
     }
 }
 
@@ -930,23 +918,36 @@ private struct WelcomeStartView: View {
     let useStarterAction: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Welcome")
-                .font(.system(size: 28, weight: .semibold))
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 20) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 40, weight: .thin))
+                    .foregroundStyle(.tertiary)
 
-            Text("Open a markdown file or start with starter content.")
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Welcome")
+                        .font(.system(size: 28, weight: .semibold))
 
-            HStack(spacing: 8) {
-                Button("Open...", action: openAction)
-                    .buttonStyle(.borderedProminent)
-                Button("Use Starter", action: useStarterAction)
-                    .buttonStyle(.bordered)
+                    Text("Open a markdown file or start with starter content.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 10) {
+                    Button("Open...", action: openAction)
+                        .buttonStyle(.borderedProminent)
+                    Button("Use Starter", action: useStarterAction)
+                        .buttonStyle(.bordered)
+                }
             }
+            .padding(28)
+            .glassPanel(cornerRadius: 20)
+            .frame(maxWidth: 380)
+
+            Spacer()
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(32)
+        .frame(maxWidth: .infinity)
     }
 }
 

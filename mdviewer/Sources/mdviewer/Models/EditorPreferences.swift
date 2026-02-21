@@ -54,50 +54,64 @@ enum ReaderFontFamily: String, CaseIterable, Identifiable {
     #if os(macOS)
     /// Returns an NSFont for this family at the given size.
     /// Pass `monospaced: true` to get the code font regardless of the chosen family.
+    /// Pass `weight` to control font weight (light, regular, medium, semibold, bold, heavy).
     /// Pass `traits` to apply bold/italic/both on top of the base descriptor.
     func nsFont(
         size: CGFloat,
         monospaced: Bool = false,
+        weight: NSFont.Weight = .regular,
         traits: NSFontDescriptor.SymbolicTraits = []
     ) -> NSFont {
-        let base: NSFont = resolveBaseFont(size: size, monospaced: monospaced)
+        let base: NSFont = resolveBaseFont(size: size, monospaced: monospaced, weight: weight)
         guard !traits.isEmpty else { return base }
         let desc = base.fontDescriptor.withSymbolicTraits(traits)
         return NSFont(descriptor: desc, size: base.pointSize) ?? base
     }
 
-    private func resolveBaseFont(size: CGFloat, monospaced: Bool) -> NSFont {
+    private func resolveBaseFont(size: CGFloat, monospaced: Bool, weight: NSFont.Weight) -> NSFont {
         // Monospaced: prefer Maple Mono NF when available, fall back to system mono.
         if monospaced {
-            if let f = NSFont(name: "MapleMono-NF-Regular", size: size) { return f }
-            if let f = NSFont(name: "Maple Mono NF", size: size) { return f }
-            let desc = NSFont.systemFont(ofSize: size).fontDescriptor.withDesign(.monospaced)
+            if weight == .regular {
+                if let f = NSFont(name: "MapleMono-NF-Regular", size: size) { return f }
+                if let f = NSFont(name: "Maple Mono NF", size: size) { return f }
+            }
+            let desc = NSFont.systemFont(ofSize: size, weight: weight).fontDescriptor.withDesign(.monospaced)
             return desc.flatMap { NSFont(descriptor: $0, size: size) }
-                ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+                ?? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
         }
 
         switch self {
         case .mapleMonoNF:
-            if let f = NSFont(name: "MapleMono-NF-Regular", size: size) { return f }
-            if let f = NSFont(name: "Maple Mono NF", size: size) { return f }
-            return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            // For monospace family, use system mono with weight
+            let desc = NSFont.systemFont(ofSize: size, weight: weight).fontDescriptor.withDesign(.monospaced)
+            return desc.flatMap { NSFont(descriptor: $0, size: size) }
+                ?? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
 
         case .sfPro:
-            // Use system font with default design for SF Pro Text
-            return NSFont.systemFont(ofSize: size, weight: .regular)
+            // Use system font with specified weight
+            return NSFont.systemFont(ofSize: size, weight: weight)
 
         case .newYork:
             // "New York" is not accessible via NSFont(name:) — use descriptor design.
-            let desc = NSFont.systemFont(ofSize: size).fontDescriptor.withDesign(.serif)
+            let baseFont = NSFont.systemFont(ofSize: size, weight: weight)
+            let desc = baseFont.fontDescriptor.withDesign(.serif)
             if let f = desc.flatMap({ NSFont(descriptor: $0, size: size) }) { return f }
             if let f = NSFont(name: "Georgia", size: size) { return f }
-            return NSFont.systemFont(ofSize: size)
+            return baseFont
 
         case .georgia:
-            if let f = NSFont(name: "Georgia", size: size) { return f }
-            let desc = NSFont.systemFont(ofSize: size).fontDescriptor.withDesign(.serif)
+            if let f = NSFont(name: "Georgia", size: size) {
+                // Georgia loaded by name won't have weight, apply it via descriptor
+                if weight != .regular {
+                    let desc = f.fontDescriptor.withSymbolicTraits(.bold)
+                    if let weighted = NSFont(descriptor: desc, size: size) { return weighted }
+                }
+                return f
+            }
+            let baseFont = NSFont.systemFont(ofSize: size, weight: weight)
+            let desc = baseFont.fontDescriptor.withDesign(.serif)
             return desc.flatMap { NSFont(descriptor: $0, size: size) }
-                ?? NSFont.systemFont(ofSize: size)
+                ?? baseFont
         }
     }
     #endif
@@ -158,25 +172,51 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable {
         ReaderTextSpacing(rawValue: rawValue) ?? .balanced
     }
 
-    // Extra pixels added after each line (NSParagraphStyle.lineSpacing).
-    // At 16pt body: compact ≈ 20pt leading, balanced ≈ 24pt, relaxed ≈ 28pt.
-    var lineSpacing: CGFloat {
+    // MARK: - Ratio-Based Typography
+
+    /// Line height multiplier for ratio-based leading.
+    /// Returns the line height as a multiple of font size.
+    /// - Compact: 1.4x (tight, code-like)
+    /// - Balanced: 1.55x (classic book typography)
+    /// - Relaxed: 1.7x (airy, accessible)
+    var lineHeightMultiplier: CGFloat {
         switch self {
-        case .compact:  return 3
-        case .balanced: return 7
-        case .relaxed:  return 11
+        case .compact:  return 1.4
+        case .balanced: return 1.55
+        case .relaxed:  return 1.7
         }
     }
 
-    // Space between paragraph blocks. Expressed as a base that block-specific
-    // styles scale — body paragraphs use the full value, headings use multiples.
-    // At 16pt body: compact ≈ 0.6 lines, balanced ≈ 1 line, relaxed ≈ 1.5 lines.
-    var paragraphSpacing: CGFloat {
+    /// Calculates line spacing for a given font size.
+    /// This ensures consistent vertical rhythm regardless of font size.
+    func lineSpacing(for fontSize: CGFloat) -> CGFloat {
+        let targetLineHeight = fontSize * lineHeightMultiplier
+        return max(0, targetLineHeight - fontSize)
+    }
+
+    /// Calculates paragraph spacing as a multiple of line height.
+    /// This maintains visual separation proportional to text size.
+    func paragraphSpacing(for fontSize: CGFloat) -> CGFloat {
+        let lineHeight = fontSize * lineHeightMultiplier
         switch self {
-        case .compact:  return 10
-        case .balanced: return 16
-        case .relaxed:  return 22
+        case .compact:  return lineHeight * 0.5
+        case .balanced: return lineHeight * 0.75
+        case .relaxed:  return lineHeight * 1.0
         }
+    }
+
+    // MARK: - Legacy Fixed Spacing (for backward compatibility)
+
+    /// Extra pixels added after each line (fixed value for 16pt body).
+    @available(*, deprecated, message: "Use lineSpacing(for:) instead")
+    var lineSpacing: CGFloat {
+        lineSpacing(for: 16)
+    }
+
+    /// Space between paragraph blocks (fixed value for 16pt body).
+    @available(*, deprecated, message: "Use paragraphSpacing(for:) instead")
+    var paragraphSpacing: CGFloat {
+        paragraphSpacing(for: 16)
     }
 
     var kern: CGFloat {
@@ -248,59 +288,63 @@ enum SyntaxPalette: String, CaseIterable, Identifiable {
         switch self {
         case .sundellsColors:
             return .init(
-                keyword: NSColor(red: 0.91, green: 0.2, blue: 0.54, alpha: 1),
-                string: NSColor(red: 0.98, green: 0.39, blue: 0.12, alpha: 1),
-                type: NSColor(red: 0.51, green: 0.51, blue: 0.79, alpha: 1),
-                number: NSColor(red: 0.86, green: 0.44, blue: 0.34, alpha: 1),
-                comment: NSColor(red: 0.42, green: 0.54, blue: 0.58, alpha: 1),
-                call: NSColor(red: 0.2, green: 0.56, blue: 0.9, alpha: 1)
+                keyword: Self.p3(r: 0.91, g: 0.2, b: 0.54),
+                string: Self.p3(r: 0.98, g: 0.39, b: 0.12),
+                type: Self.p3(r: 0.51, g: 0.51, b: 0.79),
+                number: Self.p3(r: 0.86, g: 0.44, b: 0.34),
+                comment: Self.p3(r: 0.42, g: 0.54, b: 0.58),
+                call: Self.p3(r: 0.2, g: 0.56, b: 0.9)
             )
         case .midnight:
             return .init(
-                keyword: NSColor(red: 0.828, green: 0.095, blue: 0.583, alpha: 1),
-                string: NSColor(red: 1.0, green: 0.171, blue: 0.219, alpha: 1),
-                type: NSColor(red: 0.137, green: 1.0, blue: 0.512, alpha: 1),
-                number: NSColor(red: 0.469, green: 0.426, blue: 1.0, alpha: 1),
-                comment: NSColor(red: 0.255, green: 0.801, blue: 0.27, alpha: 1),
-                call: NSColor(red: 0.137, green: 1.0, blue: 0.512, alpha: 1)
+                keyword: Self.p3(r: 0.828, g: 0.095, b: 0.583),
+                string: Self.p3(r: 1.0, g: 0.171, b: 0.219),
+                type: Self.p3(r: 0.137, g: 1.0, b: 0.512),
+                number: Self.p3(r: 0.469, g: 0.426, b: 1.0),
+                comment: Self.p3(r: 0.255, g: 0.801, b: 0.27),
+                call: Self.p3(r: 0.137, g: 1.0, b: 0.512)
             )
         case .sunset:
             return .init(
-                keyword: NSColor(red: 0.161, green: 0.259, blue: 0.467, alpha: 1),
-                string: NSColor(red: 0.875, green: 0.027, blue: 0, alpha: 1),
-                type: NSColor(red: 0.706, green: 0.27, blue: 0, alpha: 1),
-                number: NSColor(red: 0.161, green: 0.259, blue: 0.467, alpha: 1),
-                comment: NSColor(red: 0.765, green: 0.455, blue: 0.11, alpha: 1),
-                call: NSColor(red: 0.278, green: 0.415, blue: 0.593, alpha: 1)
+                keyword: Self.p3(r: 0.161, g: 0.259, b: 0.467),
+                string: Self.p3(r: 0.875, g: 0.027, b: 0),
+                type: Self.p3(r: 0.706, g: 0.27, b: 0),
+                number: Self.p3(r: 0.161, g: 0.259, b: 0.467),
+                comment: Self.p3(r: 0.765, g: 0.455, b: 0.11),
+                call: Self.p3(r: 0.278, g: 0.415, b: 0.593)
             )
         case .presentation:
             return .init(
-                keyword: NSColor(red: 0.706, green: 0.0, blue: 0.384, alpha: 1),
-                string: NSColor(red: 0.729, green: 0.0, blue: 0.067, alpha: 1),
-                type: NSColor(red: 0.267, green: 0.537, blue: 0.576, alpha: 1),
-                number: NSColor(red: 0.0, green: 0.043, blue: 1.0, alpha: 1),
-                comment: NSColor(red: 0.336, green: 0.376, blue: 0.42, alpha: 1),
-                call: NSColor(red: 0.267, green: 0.537, blue: 0.576, alpha: 1)
+                keyword: Self.p3(r: 0.706, g: 0.0, b: 0.384),
+                string: Self.p3(r: 0.729, g: 0.0, b: 0.067),
+                type: Self.p3(r: 0.267, g: 0.537, b: 0.576),
+                number: Self.p3(r: 0.0, g: 0.043, b: 1.0),
+                comment: Self.p3(r: 0.336, g: 0.376, b: 0.42),
+                call: Self.p3(r: 0.267, g: 0.537, b: 0.576)
             )
         case .wwdc17:
             return .init(
-                keyword: NSColor(red: 0.992, green: 0.791, blue: 0.45, alpha: 1),
-                string: NSColor(red: 0.966, green: 0.517, blue: 0.29, alpha: 1),
-                type: NSColor(red: 0.431, green: 0.714, blue: 0.533, alpha: 1),
-                number: NSColor(red: 0.559, green: 0.504, blue: 0.745, alpha: 1),
-                comment: NSColor(red: 0.484, green: 0.483, blue: 0.504, alpha: 1),
-                call: NSColor(red: 0.431, green: 0.714, blue: 0.533, alpha: 1)
+                keyword: Self.p3(r: 0.992, g: 0.791, b: 0.45),
+                string: Self.p3(r: 0.966, g: 0.517, b: 0.29),
+                type: Self.p3(r: 0.431, g: 0.714, b: 0.533),
+                number: Self.p3(r: 0.559, g: 0.504, b: 0.745),
+                comment: Self.p3(r: 0.484, g: 0.483, b: 0.504),
+                call: Self.p3(r: 0.431, g: 0.714, b: 0.533)
             )
         case .wwdc18:
             return .init(
-                keyword: NSColor(red: 0.948, green: 0.140, blue: 0.547, alpha: 1),
-                string: NSColor(red: 0.988, green: 0.273, blue: 0.317, alpha: 1),
-                type: NSColor(red: 0.584, green: 0.898, blue: 0.361, alpha: 1),
-                number: NSColor(red: 0.587, green: 0.517, blue: 0.974, alpha: 1),
-                comment: NSColor(red: 0.424, green: 0.475, blue: 0.529, alpha: 1),
-                call: NSColor(red: 0.584, green: 0.898, blue: 0.361, alpha: 1)
+                keyword: Self.p3(r: 0.948, g: 0.140, b: 0.547),
+                string: Self.p3(r: 0.988, g: 0.273, b: 0.317),
+                type: Self.p3(r: 0.584, g: 0.898, b: 0.361),
+                number: Self.p3(r: 0.587, g: 0.517, b: 0.974),
+                comment: Self.p3(r: 0.424, g: 0.475, b: 0.529),
+                call: Self.p3(r: 0.584, g: 0.898, b: 0.361)
             )
         }
+    }
+
+    private static func p3(r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat = 1.0) -> NSColor {
+        NSColor(displayP3Red: r, green: g, blue: b, alpha: a)
     }
     #endif
 }

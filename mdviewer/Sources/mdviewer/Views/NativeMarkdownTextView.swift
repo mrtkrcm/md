@@ -1,11 +1,11 @@
-import SwiftUI
-import CryptoKit
-import Foundation
-import OSLog
-import os.log
-import os.signpost
+internal import SwiftUI
+internal import CryptoKit
+internal import Foundation
+internal import OSLog
+internal import os.log
+internal import os.signpost
 #if os(macOS)
-@preconcurrency import AppKit
+@preconcurrency internal import AppKit
 
 struct NativeMarkdownTextView: NSViewRepresentable {
     let markdown: String

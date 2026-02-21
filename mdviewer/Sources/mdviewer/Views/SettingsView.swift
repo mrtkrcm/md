@@ -1,4 +1,4 @@
-import SwiftUI
+internal import SwiftUI
 
 struct SettingsView: View {
     private enum ReaderModeSetting: String, CaseIterable, Identifiable {

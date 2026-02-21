@@ -1,8 +1,8 @@
 #if canImport(XCTest)
-import XCTest
+internal import XCTest
 #if os(macOS)
-import AppKit
-@testable import mdviewer
+internal import AppKit
+@testable internal import mdviewer
 
 final class SyntaxHighlighterTests: XCTestCase {
     func testRenderRequestCacheKeyIsDeterministic() {

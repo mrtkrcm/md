@@ -1,4 +1,4 @@
-import SwiftUI
+internal import SwiftUI
 
 enum AppTheme: String, CaseIterable, Identifiable {
     case basic = "Basic"

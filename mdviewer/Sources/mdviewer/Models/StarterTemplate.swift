@@ -1,4 +1,4 @@
-import Foundation
+internal import Foundation
 
 enum StarterTemplate {
     static let markdown = """

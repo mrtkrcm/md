@@ -33,9 +33,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.1-dev.4</string>
+	<string>1.0.1-dev.8</string>
 	<key>CFBundleVersion</key>
-	<string>23</string>
+	<string>27</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>

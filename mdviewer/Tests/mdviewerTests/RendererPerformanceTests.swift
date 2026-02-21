@@ -1,7 +1,7 @@
 #if canImport(XCTest)
-import XCTest
+internal import XCTest
 #if os(macOS)
-@testable import mdviewer
+@testable internal import mdviewer
 
 final class RendererPerformanceTests: XCTestCase {
     func testRenderBudgetsForLargeDocument() async throws {

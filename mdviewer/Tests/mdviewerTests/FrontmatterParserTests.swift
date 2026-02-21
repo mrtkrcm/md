@@ -1,6 +1,6 @@
 #if canImport(XCTest)
-import XCTest
-@testable import mdviewer
+internal import XCTest
+@testable internal import mdviewer
 
 final class FrontmatterParserTests: XCTestCase {
     func testParsesValidFrontmatterAndExtractsBody() {

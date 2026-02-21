@@ -1,6 +1,6 @@
-import SwiftUI
-import UniformTypeIdentifiers
-import OSLog
+internal import SwiftUI
+internal import UniformTypeIdentifiers
+internal import OSLog
 
 extension UTType {
     static var markdownDocument: UTType {

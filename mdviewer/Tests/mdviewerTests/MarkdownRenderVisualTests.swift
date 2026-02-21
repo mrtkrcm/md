@@ -1,9 +1,9 @@
 #if canImport(XCTest)
-import XCTest
+internal import XCTest
 #if os(macOS)
-import AppKit
-import SwiftUI
-@testable import mdviewer
+internal import AppKit
+internal import SwiftUI
+@testable internal import mdviewer
 
 final class MarkdownRenderVisualTests: XCTestCase {
 

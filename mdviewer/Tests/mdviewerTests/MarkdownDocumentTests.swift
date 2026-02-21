@@ -1,7 +1,7 @@
 #if canImport(XCTest)
-import XCTest
-import UniformTypeIdentifiers
-@testable import mdviewer
+internal import XCTest
+internal import UniformTypeIdentifiers
+@testable internal import mdviewer
 
 final class MarkdownDocumentTests: XCTestCase {
     func testDefaultInitializationStartsEmptyDocument() {

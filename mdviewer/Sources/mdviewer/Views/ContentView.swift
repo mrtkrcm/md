@@ -1,7 +1,7 @@
-import SwiftUI
-import OSLog
+internal import SwiftUI
+internal import OSLog
 #if os(macOS)
-import AppKit
+@preconcurrency internal import AppKit
 #endif
 
 private enum ReaderMode: String, CaseIterable, Identifiable {
@@ -130,8 +130,9 @@ struct ContentView: View {
 
     private func topOverlay(frontmatter: Frontmatter?) -> some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 10) {
-                // Left: Floating metadata container
+            // Unified row: metadata and toolbar share same horizontal axis
+            HStack(alignment: .center, spacing: 12) {
+                // Left: Metadata container (intrinsic width, floats below button when expanded)
                 if readerMode == .rendered, let frontmatter {
                     FloatingMetadataView(frontmatter: frontmatter)
                         .opacity(isTopBarVisible ? 1 : 0)
@@ -139,9 +140,9 @@ struct ContentView: View {
                         .animation(.easeInOut(duration: 0.25), value: isTopBarVisible)
                 }
 
-                Spacer(minLength: 0)
+                Spacer(minLength: 20)
 
-                // Right: Floating toolbar container
+                // Right: Toolbar container (intrinsic size)
                 TopBarView(
                     showAppearancePopover: $showAppearancePopover,
                     readerMode: readerModeBinding,
@@ -161,8 +162,7 @@ struct ContentView: View {
                 .animation(.easeInOut(duration: 0.25), value: isTopBarVisible)
             }
             .padding(.top, 10)
-            .padding(.leading, 14)
-            .padding(.trailing, 14)
+            .padding(.horizontal, 14)
 
             Spacer()
         }
@@ -670,11 +670,10 @@ private struct FloatingMetadataView: View {
     let frontmatter: Frontmatter
     @AppStorage("frontmatterPanelExpanded") private var isExpanded = false
 
-    private let collapsedWidth: CGFloat = 150
-    private let expandedWidth: CGFloat = 320
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Use overlay for expansion so it doesn't push toolbar
+        ZStack(alignment: .topLeading) {
+            // Collapsed button (always visible)
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     isExpanded.toggle()
@@ -701,9 +700,9 @@ private struct FloatingMetadataView: View {
                 .padding(.vertical, 7)
             }
             .buttonStyle(.plain)
-            .frame(width: collapsedWidth, alignment: .leading)
             .topChromeContainer(cornerRadius: 14)
 
+            // Expanded panel (overlay, doesn't affect layout)
             if isExpanded {
                 ScrollView {
                     if frontmatter.entries.isEmpty {
@@ -738,15 +737,21 @@ private struct FloatingMetadataView: View {
                         }
                     }
                 }
-                .frame(width: expandedWidth)
-                .frame(maxHeight: 320, alignment: .topLeading)
+                .frame(width: 280, alignment: .leading)
+                .frame(maxHeight: 280)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .topChromeContainer(cornerRadius: 14)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.vertical, 8)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.15), radius: 20, y: 8)
+                .offset(y: 44) // Position below the button
+                .transition(.opacity.combined(with: .offset(y: -10)))
+                .zIndex(100) // Ensure it floats above other content
             }
         }
-        .frame(width: isExpanded ? expandedWidth : collapsedWidth, alignment: .leading)
         .animation(.easeInOut(duration: 0.18), value: isExpanded)
     }
 }

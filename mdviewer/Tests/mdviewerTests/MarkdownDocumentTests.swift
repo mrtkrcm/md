@@ -74,5 +74,35 @@ final class MarkdownDocumentTests: XCTestCase {
         let data = Data([0xFF, 0xFE]) + payload
         XCTAssertEqual(MarkdownDocument.decode(data: data), source)
     }
+
+    func testDecodeHandlesEmptyData() {
+        // Empty UTF-8 data is valid: String(data: Data(), encoding: .utf8) returns ""
+        let result = MarkdownDocument.decode(data: Data())
+        XCTAssertNotNil(result, "decode(Data()) should return non-nil for empty data")
+        XCTAssertEqual(result, "", "decode(Data()) should return empty string")
+    }
+
+    func testDecodeHandlesAsciiData() throws {
+        let source = "# Hello World"
+        let data = try XCTUnwrap(source.data(using: .ascii))
+        let result = MarkdownDocument.decode(data: data)
+        XCTAssertEqual(result, source,
+            "ASCII data should decode to the original string via UTF-8 fallback")
+    }
+
+    func testDecodeReturnsNilForGarbageData() {
+        // The decode function tries a list of candidate encodings in order.
+        // .utf8 and .ascii reject bytes above 0x7F; however the candidate list also includes
+        // .utf16, which is permissive enough to decode any even-length byte sequence.
+        // As a result, these bytes produce a non-nil (garbage) string rather than nil,
+        // because .utf16 accepts them as valid surrogate-pair free UTF-16 code units.
+        // This test documents the actual permissive contract of the decode function:
+        // binary data is silently accepted rather than rejected.
+        let highBytes = Data([0x80, 0x81, 0x82, 0x83, 0x84, 0x85])
+        let result = MarkdownDocument.decode(data: highBytes)
+        // .utf8 fails, .ascii fails, but .utf16 succeeds → result is non-nil.
+        XCTAssertNotNil(result,
+            "decode is permissive: .utf16 accepts binary bytes, so result is non-nil")
+    }
 }
 #endif

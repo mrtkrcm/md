@@ -53,32 +53,10 @@ struct ContentView: View {
                     useStarterAction: resetStarter
                 )
                 .padding(.top, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             } else {
-                Group {
-                    if readerMode == .rendered {
-                        NativeMarkdownTextView(
-                            markdown: parsed.renderedMarkdown,
-                            readerFontFamily: readerFontFamily,
-                            readerFontSize: readerFontSize.points,
-                            codeFontSize: CGFloat(codeFontSize.rawValue),
-                            appTheme: selectedTheme,
-                            syntaxPalette: syntaxPalette,
-                            colorScheme: effectiveColorScheme,
-                            textSpacing: readerTextSpacing,
-                            readableWidth: readerColumnWidth.points
-                        )
-                    } else {
-                        RawMarkdownEditor(
-                            text: $document.text,
-                            fontFamily: readerFontFamily,
-                            fontSize: readerFontSize.points,
-                            syntaxPalette: syntaxPalette,
-                            colorScheme: effectiveColorScheme
-                        )
-                    }
-                }
-                .padding(.top, 42)
-                .simultaneousGesture(TapGesture().onEnded { registerInteraction() })
+                readerContent(parsed: parsed)
+                    .transition(.opacity)
             }
 
             topOverlay(frontmatter: parsed.frontmatter)
@@ -130,19 +108,23 @@ struct ContentView: View {
 
     private func topOverlay(frontmatter: Frontmatter?) -> some View {
         VStack(spacing: 0) {
-            // Unified row: metadata and toolbar share same horizontal axis
             HStack(alignment: .center, spacing: 12) {
-                // Left: Metadata container (intrinsic width, floats below button when expanded)
+                // Left: Metadata pill — zIndex ensures expanded panel floats above toolbar
                 if readerMode == .rendered, let frontmatter {
                     FloatingMetadataView(frontmatter: frontmatter)
+                        .zIndex(10)
                         .opacity(isTopBarVisible ? 1 : 0)
                         .allowsHitTesting(isTopBarVisible)
-                        .animation(.easeInOut(duration: 0.25), value: isTopBarVisible)
+                        .animation(.easeInOut(duration: 0.22), value: isTopBarVisible)
+                        .onHover { hovering in
+                            isHoveringTopBar = hovering
+                            if hovering { registerInteraction() } else { scheduleTopBarHide() }
+                        }
                 }
 
                 Spacer(minLength: 20)
 
-                // Right: Toolbar container (intrinsic size)
+                // Right: Toolbar pill
                 TopBarView(
                     showAppearancePopover: $showAppearancePopover,
                     readerMode: readerModeBinding,
@@ -151,15 +133,11 @@ struct ContentView: View {
                 )
                 .onHover { hovering in
                     isHoveringTopBar = hovering
-                    if hovering {
-                        registerInteraction()
-                    } else {
-                        scheduleTopBarHide()
-                    }
+                    if hovering { registerInteraction() } else { scheduleTopBarHide() }
                 }
                 .opacity(isTopBarVisible ? 1 : 0)
                 .allowsHitTesting(isTopBarVisible)
-                .animation(.easeInOut(duration: 0.25), value: isTopBarVisible)
+                .animation(.easeInOut(duration: 0.22), value: isTopBarVisible)
             }
             .padding(.top, 10)
             .padding(.horizontal, 14)
@@ -172,11 +150,7 @@ struct ContentView: View {
                 .contentShape(Rectangle())
                 .onHover { hovering in
                     isHoveringRevealZone = hovering
-                    if hovering {
-                        registerInteraction()
-                    } else {
-                        scheduleTopBarHide()
-                    }
+                    if hovering { registerInteraction() } else { scheduleTopBarHide() }
                 }
         }
     }
@@ -301,6 +275,59 @@ struct ContentView: View {
                 }
             }
         )
+    }
+
+    // MARK: - Liquid Design Content View
+
+    @ViewBuilder
+    private func readerContent(parsed: ParsedMarkdown) -> some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Animated background subtle gradient for liquid feel
+                LiquidBackground()
+                    .ignoresSafeArea()
+
+                // Main content with fluid transition
+                Group {
+                    if readerMode == .rendered {
+                        NativeMarkdownTextView(
+                            markdown: parsed.renderedMarkdown,
+                            readerFontFamily: readerFontFamily,
+                            readerFontSize: readerFontSize.points,
+                            codeFontSize: CGFloat(codeFontSize.rawValue),
+                            appTheme: selectedTheme,
+                            syntaxPalette: syntaxPalette,
+                            colorScheme: effectiveColorScheme,
+                            textSpacing: readerTextSpacing,
+                            readableWidth: min(readerColumnWidth.points, geometry.size.width - 48)
+                        )
+                        .id("rendered_\(selectedTheme)_\(readerFontFamily)_\(readerFontSize)")
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                            removal: .opacity
+                        ))
+                    } else {
+                        RawMarkdownEditor(
+                            text: $document.text,
+                            fontFamily: readerFontFamily,
+                            fontSize: readerFontSize.points,
+                            syntaxPalette: syntaxPalette,
+                            colorScheme: effectiveColorScheme
+                        )
+                        .id("raw_\(readerFontFamily)_\(readerFontSize)")
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .move(edge: .top).combined(with: .opacity)
+                        ))
+                    }
+                }
+                .padding(.top, geometry.safeAreaInsets.top + 42)
+                .animation(.smooth(duration: 0.25), value: readerMode)
+                .animation(.smooth(duration: 0.3), value: readerFontSize)
+                .animation(.smooth(duration: 0.3), value: readerColumnWidth)
+            }
+            .simultaneousGesture(TapGesture().onEnded { registerInteraction() })
+        }
     }
 
     private func openDocumentFromDisk() {
@@ -667,11 +694,12 @@ private struct FloatingMetadataView: View {
     @AppStorage("frontmatterPanelExpanded") private var isExpanded = false
 
     var body: some View {
-        // Use overlay for expansion so it doesn't push toolbar
-        ZStack(alignment: .topLeading) {
-            // Collapsed button (always visible)
+        // VStack keeps layout stable: only the collapsed button affects HStack height.
+        // The expanded panel lives in a zero-height overlay so it can't push siblings.
+        VStack(alignment: .leading, spacing: 0) {
+            // Collapsed button — sole layout contributor
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -679,6 +707,7 @@ private struct FloatingMetadataView: View {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
+                        .animation(.easeInOut(duration: 0.15), value: isExpanded)
 
                     Label("Metadata", systemImage: "tag")
                         .font(.system(size: 11, weight: .semibold))
@@ -686,11 +715,11 @@ private struct FloatingMetadataView: View {
                         .textCase(.uppercase)
 
                     Text(frontmatter.entries.isEmpty ? "YAML" : "\(frontmatter.entries.count)")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.18), in: Capsule())
+                        .background(Color.primary.opacity(0.08), in: Capsule())
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -698,48 +727,54 @@ private struct FloatingMetadataView: View {
             .buttonStyle(.plain)
             .glassPanel()
 
-            // Expanded panel (overlay, doesn't affect layout)
-            if isExpanded {
-                ScrollView {
-                    if frontmatter.entries.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Frontmatter detected")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.primary)
-
-                            Text("Raw YAML is shown because key/value extraction is unavailable for this structure.")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            Text(frontmatter.rawYAML.trimmingCharacters(in: .whitespacesAndNewlines))
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, 2)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(Array(frontmatter.entries.enumerated()), id: \.offset) { _, entry in
-                                FloatingMetadataEntryView(entry: entry)
-                            }
-                        }
+            // Zero-height anchor: expanded panel anchors here, contributing no layout height
+            Color.clear
+                .frame(width: 0, height: 0)
+                .overlay(alignment: .topLeading) {
+                    if isExpanded {
+                        expandedPanel
+                            .padding(.top, 8)
+                            .transition(.opacity.combined(with: .offset(y: -8)))
                     }
                 }
-                .frame(width: 280, alignment: .leading)
-                .frame(maxHeight: 280)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .glassPanel()
-                .offset(y: 44) // Position below the button
-                .transition(.opacity.combined(with: .offset(y: -10)))
-                .zIndex(100) // Ensure it floats above other content
+        }
+    }
+
+    private var expandedPanel: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            if frontmatter.entries.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Frontmatter detected")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Text("Raw YAML is shown because key/value extraction is unavailable for this structure.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(frontmatter.rawYAML.trimmingCharacters(in: .whitespacesAndNewlines))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 2)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(frontmatter.entries.enumerated()), id: \.offset) { _, entry in
+                        FloatingMetadataEntryView(entry: entry)
+                    }
+                }
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: isExpanded)
+        .frame(width: 280)
+        .frame(maxHeight: 280)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .glassPanel()
     }
 }
 
@@ -851,10 +886,6 @@ private struct ToolIconButton: View {
                 .font(.system(size: 13, weight: .semibold))
                 .frame(width: 28, height: 28)
                 .background(backgroundFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(backgroundStroke, lineWidth: 1)
-                )
                 .foregroundStyle(isActive ? Color.accentColor : Color(nsColor: .secondaryLabelColor))
         }
         .buttonStyle(.plain)
@@ -862,22 +893,8 @@ private struct ToolIconButton: View {
     }
 
     private var backgroundFill: Color {
-        if isActive {
-            return Color.accentColor.opacity(0.10)
-        }
-        if isHovering {
-            return Color(nsColor: .quaternaryLabelColor).opacity(0.24)
-        }
-        return .clear
-    }
-
-    private var backgroundStroke: Color {
-        if isActive {
-            return Color.accentColor.opacity(0.35)
-        }
-        if isHovering {
-            return Color(nsColor: .separatorColor).opacity(0.45)
-        }
+        if isActive { return Color.accentColor.opacity(0.12) }
+        if isHovering { return Color.primary.opacity(0.10) }
         return .clear
     }
 }
@@ -892,19 +909,8 @@ private struct ShareIconButton: View {
                 .font(.system(size: 13, weight: .semibold))
                 .frame(width: 28, height: 28)
                 .background(
-                    isHovering
-                        ? Color(nsColor: .quaternaryLabelColor).opacity(0.24)
-                        : .clear,
+                    isHovering ? Color.primary.opacity(0.10) : .clear,
                     in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(
-                            isHovering
-                                ? Color(nsColor: .separatorColor).opacity(0.45)
-                                : .clear,
-                            lineWidth: 1
-                        )
                 )
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
         }
@@ -1038,5 +1044,123 @@ private struct AppearancePopoverView: View {
             .padding(24)
         }
         .frame(width: 300)
+    }
+}
+
+// MARK: - Liquid Design Components
+
+/// Subtle animated background that responds to system appearance
+private struct LiquidBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Group {
+            if #available(macOS 15.0, *) {
+                ModernLiquidBackground()
+            } else {
+                LegacyLiquidBackground()
+            }
+        }
+    }
+}
+
+@available(macOS 15.0, *)
+private struct ModernLiquidBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1/30, paused: false)) { _ in
+            MeshGradient(
+                width: 3,
+                height: 3,
+                points: [
+                    .init(x: 0, y: 0), .init(x: 0.5, y: 0), .init(x: 1, y: 0),
+                    .init(x: 0, y: 0.5), .init(x: 0.5, y: 0.5), .init(x: 1, y: 0.5),
+                    .init(x: 0, y: 1), .init(x: 0.5, y: 1), .init(x: 1, y: 1)
+                ],
+                colors: colors
+            )
+            .opacity(0.15)
+            .blur(radius: 40)
+        }
+        .animation(.easeInOut(duration: 2.0), value: colorScheme)
+    }
+
+    private var colors: [Color] {
+        switch colorScheme {
+        case .dark:
+            return [
+                .black, .black, .black,
+                Color.purple.opacity(0.2), Color.blue.opacity(0.1), Color.black,
+                Color.indigo.opacity(0.15), .black, Color.purple.opacity(0.1)
+            ]
+        default:
+            return [
+                .white, .white, .white,
+                Color.blue.opacity(0.08), Color.purple.opacity(0.05), .white,
+                Color.cyan.opacity(0.06), .white, Color.blue.opacity(0.04)
+            ]
+        }
+    }
+}
+
+/// Fallback for macOS 14 using RadialGradient
+private struct LegacyLiquidBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var phase: Double = 0
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Base color
+                Color(nsColor: .windowBackgroundColor)
+
+                // Animated orbs
+                ForEach(0..<3) { i in
+                    RadialGradient(
+                        colors: [
+                            orbColor(for: i).opacity(0.15),
+                            orbColor(for: i).opacity(0)
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: geometry.size.width * 0.6
+                    )
+                    .offset(x: offsetX(for: i, width: geometry.size.width),
+                            y: offsetY(for: i, height: geometry.size.height))
+                    .blur(radius: 60)
+                    .animation(
+                        .easeInOut(duration: 8 + Double(i) * 2)
+                        .repeatForever(autoreverses: true),
+                        value: phase
+                    )
+                }
+            }
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) {
+                phase = 1
+            }
+        }
+    }
+
+    private func orbColor(for index: Int) -> Color {
+        switch (colorScheme, index) {
+        case (.dark, 0): return .purple
+        case (.dark, 1): return .blue
+        case (.dark, _): return .indigo
+        default:
+            return [.blue, .cyan, .purple][index]
+        }
+    }
+
+    private func offsetX(for index: Int, width: CGFloat) -> CGFloat {
+        let offsets: [CGFloat] = [-width * 0.2, width * 0.3, -width * 0.1]
+        return offsets[index]
+    }
+
+    private func offsetY(for index: Int, height: CGFloat) -> CGFloat {
+        let offsets: [CGFloat] = [-height * 0.1, height * 0.2, height * 0.3]
+        return offsets[index]
     }
 }

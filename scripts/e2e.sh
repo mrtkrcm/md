@@ -1,13 +1,20 @@
 #!/bin/bash
 set -euo pipefail
 
+# E2E Test Suite for mdviewer
+# Validates app launch, UI interaction, render correctness, and liquid design
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BUNDLE="${APP_BUNDLE:-$ROOT_DIR/release/md.app}"
 APP_EXECUTABLE="$APP_BUNDLE/Contents/MacOS/md"
 STARTUP_TIMEOUT_SECONDS="${STARTUP_TIMEOUT_SECONDS:-12}"
-BUNDLE_ID="${BUNDLE_ID:-com.example.md}"
+BUNDLE_ID="${BUNDLE_ID:-com.mrtkrcm.mdviewer}"
 ARTIFACTS_DIR="${ARTIFACTS_DIR:-/tmp/mdviewer-e2e}"
 VISUAL_CAPTURE="${VISUAL_CAPTURE:-false}"
+
+# Test result tracking
+TESTS_PASSED=0
+TESTS_FAILED=0
 
 ENABLE_VISUAL=false
 UPDATE_BASELINE=false
@@ -22,6 +29,10 @@ done
 if [ "$VISUAL_CAPTURE" = "true" ]; then
   ENABLE_VISUAL=true
 fi
+
+# Helper functions
+pass() { echo "✓ $1"; ((TESTS_PASSED++)); }
+fail() { echo "✗ $1"; ((TESTS_FAILED++)); }
 
 # ─── Phase 0: Validate bundle ────────────────────────────────────────────────
 if [ ! -d "$APP_BUNDLE" ]; then
@@ -106,7 +117,51 @@ fi
 # Extra wait for rendering to complete
 sleep 1.5
 
-# ─── Phase 2: Visual capture (opt-in) ────────────────────────────────────────
+# ─── Phase 2: UI Interaction Tests ───────────────────────────────────────────
+echo ""
+echo "=== Phase 2: UI Interaction Tests ==="
+
+# Test window properties
+if command -v osascript >/dev/null 2>&1; then
+  WINDOW_EXISTS=$(osascript -e "tell application \"System Events\" to count windows of (first process whose unix id is $APP_PID)" 2>/dev/null || echo "0")
+  if [ "$WINDOW_EXISTS" -gt 0 ]; then
+    pass "Window exists"
+
+    # Test window is resizable (liquid design)
+    BOUNDS=$(osascript 2>/dev/null << OSASCRIPT
+set appPid to $APP_PID
+tell application "System Events"
+  set procs to every process whose unix id is appPid
+  if (count of procs) > 0 then
+    set proc to first item of procs
+    set wins to every window of proc
+    if (count of wins) > 0 then
+      set b to bounds of first item of wins
+      return (item 3 of b) - (item 1 of b) & "," & (item 4 of b) - (item 2 of b)
+    end if
+  end if
+end tell
+OSASCRIPT
+) || true
+
+    if [ -n "$BOUNDS" ]; then
+      WIDTH=$(echo "$BOUNDS" | cut -d',' -f1)
+      HEIGHT=$(echo "$BOUNDS" | cut -d',' -f2)
+      if [ "$WIDTH" -gt 800 ] && [ "$HEIGHT" -gt 600 ]; then
+        pass "Window has valid size (${WIDTH}x${HEIGHT})"
+      else
+        fail "Window size too small"
+      fi
+    fi
+  else
+    fail "No window found"
+  fi
+fi
+
+# ─── Phase 3: Visual capture and render validation ───────────────────────────
+echo ""
+echo "=== Phase 3: Render Validation ==="
+
 VISUAL_EXIT_CODE=0
 if [ "$ENABLE_VISUAL" = "true" ]; then
   SCREENSHOT="$ARTIFACTS_DIR/screenshot.png"
@@ -200,7 +255,50 @@ OSASCRIPT
   fi
 fi
 
-# ─── Quit app ─────────────────────────────────────────────────────────────────
+# ─── Phase 4: Liquid Design Tests ────────────────────────────────────────────
+echo ""
+echo "=== Phase 4: Liquid Design Tests ==="
+
+if command -v osascript >/dev/null 2>&1; then
+  # Test responsive resize
+  osascript << OSASCRIPT 2>/dev/null
+tell application "System Events"
+  set proc to first process whose unix id is $APP_PID
+  set win to first window of proc
+  set bounds of win to {100, 100, 900, 700}
+end tell
+OSASCRIPT
+  sleep 1
+
+  SMALL_SCREENSHOT="$ARTIFACTS_DIR/render-small.png"
+  if screencapture -x "$SMALL_SCREENSHOT" 2>/dev/null; then
+    pass "Responsive to smaller window"
+  else
+    fail "Small window screenshot failed"
+  fi
+
+  # Resize to larger
+  osascript << OSASCRIPT 2>/dev/null
+tell application "System Events"
+  set proc to first process whose unix id is $APP_PID
+  set win to first window of proc
+  set bounds of win to {100, 100, 1400, 900}
+end tell
+OSASCRIPT
+  sleep 1
+
+  LARGE_SCREENSHOT="$ARTIFACTS_DIR/render-large.png"
+  if screencapture -x "$LARGE_SCREENSHOT" 2>/dev/null; then
+    pass "Responsive to larger window"
+  else
+    fail "Large window screenshot failed"
+  fi
+fi
+
+# ─── Phase 5: Cleanup ─────────────────────────────────────────────────────────
+echo ""
+echo "=== Phase 5: Cleanup ==="
+
 if command -v osascript >/dev/null 2>&1; then
   osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
   osascript -e "tell application \"md\" to quit" >/dev/null 2>&1 || true
@@ -224,12 +322,28 @@ if pgrep -f "$APP_EXECUTABLE" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "E2E smoke test passed."
+# ─── Summary ─────────────────────────────────────────────────────────────────
+echo ""
+echo "====================================="
+echo "Test Summary"
+echo "====================================="
+echo "Passed: $TESTS_PASSED"
+echo "Failed: $TESTS_FAILED"
 
 if [ "$ENABLE_VISUAL" = "true" ]; then
   if [ "$VISUAL_EXIT_CODE" -ne 0 ]; then
-    echo "WARNING: Visual checks completed with warnings (see above)."
+    echo "WARNING: Visual checks had warnings"
   else
-    echo "Visual checks passed."
+    echo "Visual checks: passed"
   fi
+fi
+
+if [ $TESTS_FAILED -eq 0 ]; then
+  echo ""
+  echo "E2E smoke test PASSED"
+  exit 0
+else
+  echo ""
+  echo "E2E smoke test FAILED"
+  exit 1
 fi

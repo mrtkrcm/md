@@ -41,12 +41,12 @@ struct TopBarView: View {
             .help("Appearance settings")
 
             ShareIconButton(shareItem: shareItem)
-            .help("Share markdown")
+                .help("Share markdown")
 
             ToolIconButton(icon: "folder") {
                 openAction()
             }
-                .help("Open markdown file")
+            .help("Open markdown file")
         }
         .padding(.horizontal, DesignTokens.Spacing.comfortable)
         .padding(.vertical, 7)

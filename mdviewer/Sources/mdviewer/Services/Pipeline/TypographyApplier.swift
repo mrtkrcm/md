@@ -1,6 +1,6 @@
 internal import Foundation
 #if os(macOS)
-@preconcurrency internal import AppKit
+    @preconcurrency internal import AppKit
 #endif
 
 // MARK: - Typography Applier
@@ -10,7 +10,6 @@ internal import Foundation
 /// This component configures the visual appearance of rendered Markdown
 /// based on the requested theme, font family, and spacing preferences.
 struct TypographyApplier: TypographyApplying {
-
     // MARK: - Typography Application
 
     func applyTypography(to text: NSMutableAttributedString, request: RenderRequest) {
@@ -35,19 +34,19 @@ struct TypographyApplier: TypographyApplying {
             for component in intent.components {
                 switch component.kind {
                 case .header(let level):
-                    let fontSize = self.fontSizeForHeader(level: level, baseSize: request.readerFontSize)
+                    let fontSize = fontSizeForHeader(level: level, baseSize: request.readerFontSize)
                     let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
                     text.addAttribute(.font, value: font, range: range)
                     text.addAttribute(.foregroundColor, value: palette.heading, range: range)
                     // Apply paragraph style to headers with fixed 2pt line spacing
-                    self.applyHeadingParagraphStyle(to: text, range: range, request: request)
+                    applyHeadingParagraphStyle(to: text, range: range, request: request)
 
                 case .codeBlock:
                     let codeFont = NSFont.monospacedSystemFont(ofSize: request.codeFontSize, weight: .regular)
                     text.addAttribute(.font, value: codeFont, range: range)
                     text.addAttribute(.backgroundColor, value: palette.codeBackground, range: range)
                     // Apply paragraph style to code blocks for spacing
-                    self.applyParagraphStyle(to: text, range: range, request: request)
+                    applyParagraphStyle(to: text, range: range, request: request)
 
                 case .blockQuote:
                     text.addAttribute(.foregroundColor, value: palette.textSecondary, range: range)
@@ -72,15 +71,15 @@ struct TypographyApplier: TypographyApplying {
                         range: range
                     )
                     // Apply paragraph style to blockquotes for spacing
-                    self.applyParagraphStyle(to: text, range: range, request: request)
+                    applyParagraphStyle(to: text, range: range, request: request)
 
                 case .paragraph:
                     // Apply paragraph style to paragraphs for proper spacing
-                    self.applyParagraphStyle(to: text, range: range, request: request)
+                    applyParagraphStyle(to: text, range: range, request: request)
 
                 case .unorderedList, .orderedList:
                     // Apply paragraph style to lists for proper indentation and spacing
-                    self.applyListParagraphStyle(to: text, range: range, request: request)
+                    applyListParagraphStyle(to: text, range: range, request: request)
 
                 default:
                     break
@@ -145,7 +144,11 @@ struct TypographyApplier: TypographyApplying {
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
-    private func applyHeadingParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
+    private func applyHeadingParagraphStyle(
+        to text: NSMutableAttributedString,
+        range: NSRange,
+        request: RenderRequest
+    ) {
         let style = NSMutableParagraphStyle()
         // Headings use fixed 2pt line spacing for tight multi-line layout
         style.lineSpacing = 2.0

@@ -1,6 +1,6 @@
 internal import SwiftUI
 #if os(macOS)
-internal import AppKit
+    internal import AppKit
 #endif
 
 // MARK: - Design Tokens
@@ -8,7 +8,6 @@ internal import AppKit
 /// Centralized design system values for consistent liquid design throughout the app.
 /// All corner radii, animations, spacing, and opacity values should reference these tokens.
 enum DesignTokens {
-
     // MARK: - Corner Radius
 
     enum CornerRadius {
@@ -155,7 +154,7 @@ extension View {
         _ value: Value,
         duration: TimeInterval = DesignTokens.Animation.normal
     ) -> some View {
-        self.animation(.easeInOut(duration: duration), value: value)
+        animation(.easeInOut(duration: duration), value: value)
     }
 
     /// Applies a smooth spring animation for interactive elements.
@@ -164,6 +163,6 @@ extension View {
         response: TimeInterval = 0.28,
         damping: CGFloat = 0.82
     ) -> some View {
-        self.animation(.spring(response: response, dampingFraction: damping), value: value)
+        animation(.spring(response: response, dampingFraction: damping), value: value)
     }
 }

@@ -1,6 +1,6 @@
 internal import Foundation
 #if os(macOS)
-internal import AppKit
+    internal import AppKit
 #endif
 
 // MARK: - Block Separator Injector
@@ -10,7 +10,6 @@ internal import AppKit
 /// This component identifies block boundaries using PresentationIntent attributes
 /// and ensures proper paragraph separation by inserting newlines and marker attributes.
 struct BlockSeparatorInjector: BlockSeparatorInjecting {
-
     // MARK: - Separator Injection
 
     func injectSeparators(into text: NSMutableAttributedString) {
@@ -52,7 +51,7 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
 
         // Mark the end of each block (except the last one) with a separator attribute
         // The actual spacing is handled by paragraph styles applied in TypographyApplier
-        for i in 0..<(blockRanges.count - 1) {
+        for i in 0 ..< (blockRanges.count - 1) {
             let currentRange = blockRanges[i]
             let endLocation = currentRange.location + currentRange.length
 
@@ -74,7 +73,7 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
                     )
 
                     // Adjust subsequent ranges
-                    for j in (i + 1)..<blockRanges.count {
+                    for j in (i + 1) ..< blockRanges.count {
                         let oldRange = blockRanges[j]
                         blockRanges[j] = NSRange(
                             location: oldRange.location + insertedLength,

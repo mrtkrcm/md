@@ -24,14 +24,14 @@ private struct ModernLiquidBackground: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1/30, paused: false)) { _ in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: false)) { _ in
             MeshGradient(
                 width: 3,
                 height: 3,
                 points: [
                     .init(x: 0, y: 0), .init(x: 0.5, y: 0), .init(x: 1, y: 0),
                     .init(x: 0, y: 0.5), .init(x: 0.5, y: 0.5), .init(x: 1, y: 0.5),
-                    .init(x: 0, y: 1), .init(x: 0.5, y: 1), .init(x: 1, y: 1)
+                    .init(x: 0, y: 1), .init(x: 0.5, y: 1), .init(x: 1, y: 1),
                 ],
                 colors: colors
             )
@@ -47,13 +47,13 @@ private struct ModernLiquidBackground: View {
             return [
                 .black, .black, .black,
                 Color.purple.opacity(0.2), Color.blue.opacity(0.1), Color.black,
-                Color.indigo.opacity(0.15), .black, Color.purple.opacity(0.1)
+                Color.indigo.opacity(0.15), .black, Color.purple.opacity(0.1),
             ]
         default:
             return [
                 .white, .white, .white,
                 Color.blue.opacity(0.08), Color.purple.opacity(0.05), .white,
-                Color.cyan.opacity(0.06), .white, Color.blue.opacity(0.04)
+                Color.cyan.opacity(0.06), .white, Color.blue.opacity(0.04),
             ]
         }
     }
@@ -73,22 +73,24 @@ private struct LegacyLiquidBackground: View {
                 Color(nsColor: .windowBackgroundColor)
 
                 // Animated orbs
-                ForEach(0..<3) { i in
+                ForEach(0 ..< 3) { i in
                     RadialGradient(
                         colors: [
                             orbColor(for: i).opacity(0.15),
-                            orbColor(for: i).opacity(0)
+                            orbColor(for: i).opacity(0),
                         ],
                         center: .center,
                         startRadius: 0,
                         endRadius: geometry.size.width * 0.6
                     )
-                    .offset(x: offsetX(for: i, width: geometry.size.width),
-                            y: offsetY(for: i, height: geometry.size.height))
+                    .offset(
+                        x: offsetX(for: i, width: geometry.size.width),
+                        y: offsetY(for: i, height: geometry.size.height)
+                    )
                     .blur(radius: 60)
                     .animation(
                         .easeInOut(duration: 8 + Double(i) * 2)
-                        .repeatForever(autoreverses: true),
+                            .repeatForever(autoreverses: true),
                         value: phase
                     )
                 }

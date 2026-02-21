@@ -4,13 +4,13 @@ import PackageDescription
 let package = Package(
     name: "mdviewer",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v14),
     ],
     products: [
-        .executable(name: "mdviewer", targets: ["mdviewer"])
+        .executable(name: "mdviewer", targets: ["mdviewer"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/nicklockwood/SwiftFormat", from: "0.58.7")
+        .package(url: "https://github.com/nicklockwood/SwiftFormat", from: "0.58.7"),
     ],
     targets: [
         .executableTarget(
@@ -23,7 +23,7 @@ let package = Package(
             name: "mdviewerTests",
             dependencies: ["mdviewer"],
             swiftSettings: swift6Settings
-        )
+        ),
     ]
 )
 

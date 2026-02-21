@@ -1,7 +1,7 @@
 internal import SwiftUI
 internal import OSLog
 #if os(macOS)
-@preconcurrency internal import AppKit
+    @preconcurrency internal import AppKit
 #endif
 
 @MainActor
@@ -103,9 +103,11 @@ struct ContentView: View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: DesignTokens.Spacing.relaxed) {
                 // Left: Metadata pill — only rendered when frontmatter has content
-                if readerMode == .rendered,
-                   let frontmatter,
-                   !frontmatter.rawYAML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if
+                    readerMode == .rendered,
+                    let frontmatter,
+                    !frontmatter.rawYAML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                {
                     FloatingMetadataView(frontmatter: frontmatter)
                         .zIndex(10)
                         .opacity(isTopBarVisible ? 1 : 0)
@@ -238,26 +240,26 @@ struct ContentView: View {
 
     private func openDocumentFromDisk() {
         #if os(macOS)
-        let panel = NSOpenPanel()
-        panel.title = "Open Markdown File"
-        panel.allowedContentTypes = MarkdownDocument.readableContentTypes
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.resolvesAliases = true
+            let panel = NSOpenPanel()
+            panel.title = "Open Markdown File"
+            panel.allowedContentTypes = MarkdownDocument.readableContentTypes
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            panel.resolvesAliases = true
 
-        guard panel.runModal() == .OK, let url = panel.url else {
-            return
-        }
-
-        Task { @MainActor in
-            do {
-                try await openDocument(at: url)
-                showStartupWelcome = false
-            } catch {
-                logger.error("Open document failed: \(String(describing: error), privacy: .public)")
-                openErrorMessage = error.localizedDescription
+            guard panel.runModal() == .OK, let url = panel.url else {
+                return
             }
-        }
+
+            Task { @MainActor in
+                do {
+                    try await openDocument(at: url)
+                    showStartupWelcome = false
+                } catch {
+                    logger.error("Open document failed: \(String(describing: error), privacy: .public)")
+                    openErrorMessage = error.localizedDescription
+                }
+            }
         #endif
     }
 
@@ -304,10 +306,10 @@ struct ContentView: View {
         revealTopBar()
         scheduleTopBarHide()
     }
-
 }
 
 // MARK: - Extracted Components
+
 // UI components moved to Views/Components/:
 // - FloatingMetadataView, FloatingMetadataEntryView
 // - TopBarView, ToolIconButton, ShareIconButton

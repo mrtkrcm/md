@@ -1,6 +1,6 @@
 internal import Foundation
 #if os(macOS)
-internal import AppKit
+    internal import AppKit
 #endif
 
 // MARK: - Syntax Highlighter
@@ -10,7 +10,6 @@ internal import AppKit
 /// This component uses regex-based pattern matching to identify and colorize
 /// Swift language constructs within code blocks.
 struct SyntaxHighlighter: SyntaxHighlighting {
-
     // MARK: - Highlighting
 
     func highlight(_ text: NSMutableAttributedString, in range: NSRange, syntax: NativeSyntaxStyle) {
@@ -131,10 +130,10 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         protectedRanges: inout [NSRange],
         skipProtected: Bool = false
     ) {
-        guard let pattern = pattern else { return }
+        guard let pattern else { return }
 
         pattern.enumerateMatches(in: text.string, options: [], range: range) { match, _, _ in
-            guard let match = match else { return }
+            guard let match else { return }
 
             let matchRange = match.range
             guard matchRange.location != NSNotFound, matchRange.length > 0 else { return }

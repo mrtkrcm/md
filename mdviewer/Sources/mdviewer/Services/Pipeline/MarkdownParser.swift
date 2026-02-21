@@ -1,28 +1,27 @@
 #if os(macOS)
-@preconcurrency internal import AppKit
+    @preconcurrency internal import AppKit
 
-// MARK: - Markdown Parser
+    // MARK: - Markdown Parser
 
-/// Parses Markdown text using the system's NSAttributedString parser.
-///
-/// This implementation uses macOS's built-in Markdown parsing capabilities
-/// with configurable options for block and inline rendering.
-struct MarkdownParser: MarkdownParsing {
+    /// Parses Markdown text using the system's NSAttributedString parser.
+    ///
+    /// This implementation uses macOS's built-in Markdown parsing capabilities
+    /// with configurable options for block and inline rendering.
+    struct MarkdownParser: MarkdownParsing {
+        func parse(_ markdown: String) throws -> NSAttributedString {
+            guard !markdown.isEmpty else {
+                return NSAttributedString()
+            }
 
-    func parse(_ markdown: String) throws -> NSAttributedString {
-        guard !markdown.isEmpty else {
-            return NSAttributedString()
-        }
-
-        do {
-            return try NSAttributedString(
-                markdown: markdown,
-                baseURL: nil
-            )
-        } catch {
-            throw MarkdownParsingError.parsingFailed(underlying: error)
+            do {
+                return try NSAttributedString(
+                    markdown: markdown,
+                    baseURL: nil
+                )
+            } catch {
+                throw MarkdownParsingError.parsingFailed(underlying: error)
+            }
         }
     }
-}
 
 #endif

@@ -7,7 +7,6 @@ internal import Foundation
 /// These keys are used to tag metadata on attributed strings that is consumed
 /// by the layout manager for drawing decorations like blockquote borders and backgrounds.
 enum MarkdownRenderAttribute {
-
     /// Key used by NSAttributedString(markdown:) to convey block and inline semantic structure.
     ///
     /// The value is a `PresentationIntent` describing the semantic role of the text.

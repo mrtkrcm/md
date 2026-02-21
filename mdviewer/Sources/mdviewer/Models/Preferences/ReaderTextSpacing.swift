@@ -1,6 +1,6 @@
 internal import Foundation
 #if os(macOS)
-internal import AppKit
+    internal import AppKit
 #endif
 
 // MARK: - Reader Text Spacing
@@ -25,9 +25,9 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
     /// - Relaxed: 1.7x (airy, accessible)
     var lineHeightMultiplier: CGFloat {
         switch self {
-        case .compact:  return 1.4
+        case .compact: return 1.4
         case .balanced: return 1.55
-        case .relaxed:  return 1.7
+        case .relaxed: return 1.7
         }
     }
 
@@ -43,9 +43,9 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
     func paragraphSpacing(for fontSize: CGFloat) -> CGFloat {
         let lineHeight = fontSize * lineHeightMultiplier
         switch self {
-        case .compact:  return lineHeight * 0.5
+        case .compact: return lineHeight * 0.5
         case .balanced: return lineHeight * 0.75
-        case .relaxed:  return lineHeight * 1.0
+        case .relaxed: return lineHeight * 1.0
         }
     }
 
@@ -66,18 +66,18 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
     /// Letter spacing (tracking) for fine-tuning text density.
     var kern: CGFloat {
         switch self {
-        case .compact:  return 0.04
+        case .compact: return 0.04
         case .balanced: return 0.10
-        case .relaxed:  return 0.16
+        case .relaxed: return 0.16
         }
     }
 
     /// Hyphenation factor for text breaking.
     var hyphenationFactor: Float {
         switch self {
-        case .compact:  return 0.15
+        case .compact: return 0.15
         case .balanced: return 0.20
-        case .relaxed:  return 0.25
+        case .relaxed: return 0.25
         }
     }
 

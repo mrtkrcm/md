@@ -10,10 +10,9 @@ extension View {
     @ViewBuilder
     func glassPanel(cornerRadius: CGFloat = DesignTokens.CornerRadius.standard) -> some View {
         if #available(macOS 26.0, *) {
-            self.glassEffect(in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            glassEffect(in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
-            self
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(Color(nsColor: .separatorColor).opacity(DesignTokens.Opacity.veryHigh), lineWidth: 1)

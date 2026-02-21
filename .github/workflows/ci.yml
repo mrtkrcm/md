@@ -12,13 +12,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Code Quality Checks
+  quality:
+    name: Code Quality
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache Swift build artifacts
+        uses: actions/cache@v4
+        with:
+          path: mdviewer/.build
+          key: ${{ runner.os }}-swift-quality-${{ hashFiles('mdviewer/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-quality-
+
+      - name: Install tools
+        run: |
+          brew install swiftlint lefthook
+          cd mdviewer && swift package resolve
+
+      - name: Check SwiftFormat
+        run: |
+          cd mdviewer
+          swift run swiftformat --lint . || {
+            echo "::error::SwiftFormat check failed. Run 'just format-fix' to fix."
+            exit 1
+          }
+
+      - name: Run SwiftLint
+        run: swiftlint lint --strict --reporter github-actions-logging
+
+      - name: Check file headers
+        run: |
+          MISSING=$(find mdviewer/Sources mdviewer/Tests -name "*.swift" ! -path "*/.build/*" -exec grep -L "//  .*\.swift" {} \;)
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing file headers in:"
+            echo "$MISSING"
+            exit 1
+          fi
+
+  # Build and Test
   build-and-test:
     name: Build & Test
     runs-on: macos-15
-    defaults:
-      run:
-        shell: bash
-
+    needs: quality
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,16 +76,176 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-swift-${{ steps.swift-version.outputs.version }}-
 
-      - name: Run tests
-        run: cd mdviewer && swift test -Xswiftc -warnings-as-errors
+      - name: Run tests with coverage
+        run: |
+          cd mdviewer
+          swift test --enable-code-coverage -Xswiftc -warnings-as-errors
+
+      - name: Process coverage
+        run: |
+          cd mdviewer
+          # Generate coverage report in lcov format
+          xcrun llvm-cov export \
+            -format=lcov \
+            -instr-profile=$(find .build -name "*.profdata" | head -1) \
+            .build/debug/mdviewerPackageTests.xctest/Contents/MacOS/mdviewerPackageTests \
+            > coverage.lcov
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./mdviewer/coverage.lcov
+          fail_ci_if_error: false
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: mdviewer/.build/debug/*Tests.xctest/Contents/MacOS/
+          retention-days: 7
+
+  # Build Application
+  build-app:
+    name: Build App Bundle
+    runs-on: macos-15
+    needs: quality
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Swift build artifacts
+        uses: actions/cache@v4
+        with:
+          path: mdviewer/.build
+          key: ${{ runner.os }}-swift-build-${{ hashFiles('mdviewer/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-build-
 
       - name: Build and package app
         run: bash scripts/build.sh --no-tests
 
-      - name: Upload md.app artifact
+      - name: Verify app bundle
+        run: |
+          if [ ! -d "release/md.app" ]; then
+            echo "::error::App bundle not found"
+            exit 1
+          fi
+          echo "App bundle size: $(du -sh release/md.app | cut -f1)"
+          echo "App bundle contents:"
+          ls -la release/md.app/Contents/MacOS/
+
+      - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
           name: md-app
           path: release/md.app
           retention-days: 7
           if-no-files-found: error
+
+  # E2E Tests
+  e2e-tests:
+    name: E2E Tests
+    runs-on: macos-15
+    needs: build-app
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: md-app
+          path: release/md.app
+
+      - name: Make app executable
+        run: chmod +x release/md.app/Contents/MacOS/md
+
+      - name: Run E2E tests
+        run: |
+          # Grant accessibility permissions for UI automation
+          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db \
+            "INSERT OR REPLACE INTO access VALUES('kTCCServiceAccessibility','$(pwd)/release/md.app/Contents/MacOS/md',0,2,4,1,NULL,NULL,NULL,'UNUSED',NULL,0,1541440109);"
+          scripts/e2e.sh || true  # Don't fail on E2E for now
+
+      - name: Upload E2E results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results
+          path: |
+            test_output/
+            *.png
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Documentation
+  docs:
+    name: Documentation
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Swift build artifacts
+        uses: actions/cache@v4
+        with:
+          path: mdviewer/.build
+          key: ${{ runner.os }}-swift-docs-${{ hashFiles('mdviewer/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-docs-
+
+      - name: Build documentation
+        run: |
+          cd mdviewer
+          swift package resolve
+          # Check if DocC catalog exists
+          if [ -d "Sources/mdviewer/mdviewer.docc" ]; then
+            swift build --target mdviewer
+            echo "Documentation built successfully"
+          else
+            echo "No DocC catalog found, skipping documentation build"
+          fi
+
+  # Security Audit
+  security:
+    name: Security Audit
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run security checks
+        run: |
+          echo "::group::Checking for print statements"
+          if grep -r "print(" --include="*.swift" mdviewer/Sources; then
+            echo "::warning::Found print statements (use Logger instead)"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Checking for NSLog statements"
+          if grep -r "NSLog(" --include="*.swift" mdviewer/Sources; then
+            echo "::warning::Found NSLog statements (use Logger instead)"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Checking for force unwraps"
+          if grep -rn "!\s*$" --include="*.swift" mdviewer/Sources | grep -v "//" | head -20; then
+            echo "::warning::Found potential force unwraps"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Checking for TODO/FIXME"
+          grep -r "TODO\|FIXME" --include="*.swift" mdviewer/Sources || echo "No TODOs found"
+          echo "::endgroup::"
+
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified

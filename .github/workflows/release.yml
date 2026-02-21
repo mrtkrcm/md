@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Release
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=${{ github.event.inputs.version }}
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: $VERSION"
+
+      - name: Cache Swift build artifacts
+        uses: actions/cache@v4
+        with:
+          path: mdviewer/.build
+          key: ${{ runner.os }}-swift-release-${{ hashFiles('mdviewer/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-release-
+
+      - name: Install tools
+        run: |
+          brew install create-dmg swiftlint
+          cd mdviewer && swift package resolve
+
+      - name: Run quality checks
+        run: |
+          swiftlint lint --strict
+          cd mdviewer && swift run swiftformat --lint .
+
+      - name: Run tests
+        run: cd mdviewer && swift test
+
+      - name: Build and package
+        run: |
+          export VERSION=${{ steps.version.outputs.version }}
+          scripts/build.sh --no-tests
+
+      - name: Sign app (ad-hoc)
+        run: |
+          codesign --force --deep --sign - \
+            --entitlements mdviewer/Sources/mdviewer/Resources/mdviewer.entitlements \
+            release/md.app
+
+      - name: Create DMG
+        run: |
+          mkdir -p dist
+          create-dmg \
+            --volname "md ${{ steps.version.outputs.version }}" \
+            --window-size 800 400 \
+            --icon-size 100 \
+            --app-drop-link 600 185 \
+            --vol-icon mdviewer/Sources/mdviewer/Resources/AppIcon.icns \
+            "dist/md-${{ steps.version.outputs.version }}.dmg" \
+            release/md.app
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          shasum -a 256 *.dmg > checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "md ${{ steps.version.outputs.version }}"
+          body: |
+            ## md ${{ steps.version.outputs.version }}
+
+            ### Installation
+
+            1. Download `md-${{ steps.version.outputs.version }}.dmg`
+            2. Open the DMG and drag `md.app` to Applications
+            3. If you see "App can't be opened", right-click and select Open
+
+            ### Verification
+
+            ```bash
+            shasum -a 256 -c checksums.txt
+            ```
+
+            ### Changes
+
+            See [CHANGELOG.md](../CHANGELOG.md) for full details.
+          files: |
+            dist/*.dmg
+            dist/checksums.txt
+          generate_release_notes: true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+          retention-days: 30

@@ -1,0 +1,18 @@
+# Code Owners
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global default
+* @murat
+
+# CI/CD configuration
+/.github/ @murat
+/scripts/ @murat
+
+# Core source code
+/mdviewer/Sources/mdviewer/Models/ @murat
+/mdviewer/Sources/mdviewer/Services/ @murat
+/mdviewer/Sources/mdviewer/Theme/ @murat
+
+# Documentation
+*.md @murat
+/mdviewer/Sources/mdviewer/mdviewer.docc/ @murat

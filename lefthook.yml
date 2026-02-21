@@ -1,0 +1,39 @@
+# Lefthook configuration for mdviewer
+# https://github.com/evilmartians/lefthook
+
+# Pre-commit hooks
+pre-commit:
+  parallel: true
+  commands:
+    swiftformat:
+      glob: "*.swift"
+      run: scripts/format-check.sh {staged_files}
+    swiftlint:
+      glob: "*.swift"
+      run: swiftlint lint --strict {staged_files}
+    swift-build:
+      glob: "*.swift"
+      run: cd mdviewer && swift build 2>&1 | head -20
+
+# Pre-push hooks
+pre-push:
+  parallel: true
+  commands:
+    test:
+      run: cd mdviewer && swift test 2>&1 | tail -30
+    quality:
+      run: scripts/quality.sh --quick
+
+# Commit message validation
+commit-msg:
+  commands:
+    conventional:
+      run: scripts/validate-commit-msg.sh {1}
+
+# Local commands (manual execution)
+lint-fix:
+  commands:
+    swiftformat:
+      run: scripts/format.sh --fix
+    swiftlint:
+      run: swiftlint --fix

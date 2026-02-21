@@ -12,9 +12,9 @@ extension UTType {
             UTType(filenameExtension: "md"),
             UTType(filenameExtension: "markdown"),
             UTType(filenameExtension: "mdown"),
-            UTType(filenameExtension: "mkd")
+            UTType(filenameExtension: "mkd"),
         ]
-        return types.compactMap { $0 }
+        return types.compactMap(\.self)
     }
 }
 
@@ -106,7 +106,7 @@ struct MarkdownDocument: FileDocument {
             .utf32,
             .utf32LittleEndian,
             .utf32BigEndian,
-            .ascii
+            .ascii,
         ]
 
         return candidateEncodings.lazy.compactMap { String(data: data, encoding: $0) }.first

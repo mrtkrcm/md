@@ -26,7 +26,7 @@ enum FrontmatterParser {
             return ParsedMarkdown(source: markdown, renderedMarkdown: markdown, frontmatter: nil)
         }
 
-        let nsRange = NSRange(working.startIndex..<working.endIndex, in: working)
+        let nsRange = NSRange(working.startIndex ..< working.endIndex, in: working)
         guard let match = openingPattern.firstMatch(in: working, options: [], range: nsRange) else {
             return ParsedMarkdown(source: markdown, renderedMarkdown: markdown, frontmatter: nil)
         }

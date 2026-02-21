@@ -1,6 +1,6 @@
 internal import Foundation
 #if os(macOS)
-internal import AppKit
+    internal import AppKit
 #endif
 
 // MARK: - Markdown Rendering Protocol

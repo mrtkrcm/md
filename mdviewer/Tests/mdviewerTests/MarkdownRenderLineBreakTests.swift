@@ -1,7 +1,20 @@
+//
+//  MarkdownRenderLineBreakTests.swift
+//  mdviewer
+//
+
+//
+//  MarkdownRenderLineBreakTests.swift
+//  mdviewer
+//
+
 #if canImport(XCTest)
     internal import XCTest
     #if os(macOS)
         @testable internal import mdviewer
+
+        /// Suppress deprecation warnings for testing legacy properties
+        @available(*, deprecated)
 
         final class MarkdownRenderLineBreakTests: XCTestCase {
             func testRenderMergesSoftWrappedLinesIntoOneParagraph() async {

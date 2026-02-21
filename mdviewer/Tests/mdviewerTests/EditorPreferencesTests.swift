@@ -1,3 +1,8 @@
+//
+//  EditorPreferencesTests.swift
+//  mdviewer
+//
+
 #if canImport(XCTest)
     internal import XCTest
     #if os(macOS)

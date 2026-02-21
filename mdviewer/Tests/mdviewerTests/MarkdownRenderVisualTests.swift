@@ -1,9 +1,22 @@
+//
+//  MarkdownRenderVisualTests.swift
+//  mdviewer
+//
+
+//
+//  MarkdownRenderVisualTests.swift
+//  mdviewer
+//
+
 #if canImport(XCTest)
     internal import XCTest
     #if os(macOS)
         internal import AppKit
         internal import SwiftUI
         @testable internal import mdviewer
+
+        /// Suppress deprecation warnings for testing legacy properties
+        @available(*, deprecated)
 
         final class MarkdownRenderVisualTests: XCTestCase {
             // MARK: - Private helpers

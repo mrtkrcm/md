@@ -1,3 +1,8 @@
+//
+//  StarterTemplate.swift
+//  mdviewer
+//
+
 internal import Foundation
 
 enum StarterTemplate {

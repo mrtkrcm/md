@@ -1,3 +1,8 @@
+//
+//  NativeThemePalette.swift
+//  mdviewer
+//
+
 internal import AppKit
 internal import SwiftUI
 

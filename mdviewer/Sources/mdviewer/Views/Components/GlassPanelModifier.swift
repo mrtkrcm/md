@@ -1,3 +1,8 @@
+//
+//  GlassPanelModifier.swift
+//  mdviewer
+//
+
 internal import SwiftUI
 
 // MARK: - Glass Panel Modifier

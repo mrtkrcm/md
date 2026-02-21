@@ -1,3 +1,8 @@
+//
+//  Frontmatter.swift
+//  mdviewer
+//
+
 internal import Foundation
 
 struct ParsedMarkdown: Equatable, Sendable {

@@ -1,3 +1,8 @@
+//
+//  RenderedMarkdown.swift
+//  mdviewer
+//
+
 internal import Foundation
 
 #if os(macOS)

@@ -1,3 +1,8 @@
+//
+//  FloatingMetadataEntryView.swift
+//  mdviewer
+//
+
 internal import SwiftUI
 
 // MARK: - FloatingMetadataEntryView

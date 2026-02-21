@@ -1,3 +1,8 @@
+//
+//  StoredPreference.swift
+//  mdviewer
+//
+
 internal import SwiftUI
 
 // MARK: - Stored Preference Protocol

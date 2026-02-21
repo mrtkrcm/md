@@ -1,3 +1,8 @@
+//
+//  NativeSyntaxStyle.swift
+//  mdviewer
+//
+
 #if os(macOS)
     internal import AppKit
 

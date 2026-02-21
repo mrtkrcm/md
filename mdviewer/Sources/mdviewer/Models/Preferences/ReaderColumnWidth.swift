@@ -1,3 +1,8 @@
+//
+//  ReaderColumnWidth.swift
+//  mdviewer
+//
+
 internal import Foundation
 
 // MARK: - Reader Column Width

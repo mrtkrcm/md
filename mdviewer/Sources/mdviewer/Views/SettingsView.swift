@@ -1,3 +1,8 @@
+//
+//  SettingsView.swift
+//  mdviewer
+//
+
 internal import SwiftUI
 
 // MARK: - Settings View

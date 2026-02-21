@@ -1,3 +1,8 @@
+//
+//  RawMarkdownTextView.swift
+//  mdviewer
+//
+
 internal import SwiftUI
 #if os(macOS)
     @preconcurrency internal import AppKit

@@ -1,3 +1,8 @@
+//
+//  BlockSeparatorInjector.swift
+//  mdviewer
+//
+
 internal import Foundation
 #if os(macOS)
     internal import AppKit

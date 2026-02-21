@@ -1,3 +1,8 @@
+//
+//  AppearanceMode.swift
+//  mdviewer
+//
+
 internal import SwiftUI
 
 // MARK: - Appearance Mode

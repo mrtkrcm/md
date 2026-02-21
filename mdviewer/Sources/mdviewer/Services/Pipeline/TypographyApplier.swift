@@ -1,3 +1,8 @@
+//
+//  TypographyApplier.swift
+//  mdviewer
+//
+
 internal import Foundation
 #if os(macOS)
     @preconcurrency internal import AppKit

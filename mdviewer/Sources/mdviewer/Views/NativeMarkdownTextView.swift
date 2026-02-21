@@ -1,3 +1,8 @@
+//
+//  NativeMarkdownTextView.swift
+//  mdviewer
+//
+
 internal import SwiftUI
 internal import Foundation
 #if os(macOS)

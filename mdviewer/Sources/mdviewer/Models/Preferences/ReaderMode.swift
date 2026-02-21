@@ -1,3 +1,8 @@
+//
+//  ReaderMode.swift
+//  mdviewer
+//
+
 internal import Foundation
 
 // MARK: - Reader Mode

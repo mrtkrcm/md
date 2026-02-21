@@ -7,3 +7,9 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 }
+
+extension AppTheme: StoredPreference {
+    static func from(rawValue: String) -> AppTheme {
+        AppTheme(rawValue: rawValue) ?? .basic
+    }
+}

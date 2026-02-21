@@ -16,7 +16,7 @@ let package = Package(
         .executableTarget(
             name: "mdviewer",
             dependencies: [],
-            exclude: ["Info.plist"],
+            exclude: ["Info.plist", "Resources"],
             swiftSettings: swift6Settings
         ),
         .testTarget(

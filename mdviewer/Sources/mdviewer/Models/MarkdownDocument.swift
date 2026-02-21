@@ -4,10 +4,7 @@ internal import OSLog
 
 extension UTType {
     static var markdownDocument: UTType {
-        if #available(macOS 11.0, iOS 14.0, *) {
-            return UTType(importedAs: "net.daringfireball.markdown")
-        }
-        return UTType(filenameExtension: "md") ?? .plainText
+        UTType(importedAs: "net.daringfireball.markdown")
     }
 
     static var markdownExtensions: [UTType] {

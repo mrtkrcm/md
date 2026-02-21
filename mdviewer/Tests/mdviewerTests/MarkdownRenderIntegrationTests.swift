@@ -284,6 +284,73 @@ final class MarkdownRenderIntegrationTests: XCTestCase {
             "Different font families should produce different cache keys")
     }
 
+    // MARK: - Maple Mono body-font background regression
+
+    /// Regression: when body font is Maple Mono NF (monospaced), applyCodeStyling must NOT
+    /// stamp .backgroundColor on regular body text.  The old font-trait detection treated
+    /// every monospaced-body paragraph as "code".
+    func testMapleMono_bodyTextHasNoBackgroundColor() async {
+        let markdown = "Plain body text with no code whatsoever."
+        let result = await render(markdown, family: .mapleMonoNF)
+
+        var foundBackground = false
+        result.enumerateAttribute(
+            .backgroundColor,
+            in: NSRange(location: 0, length: result.length),
+            options: []
+        ) { value, _, _ in
+            if value != nil { foundBackground = true }
+        }
+        XCTAssertFalse(foundBackground,
+            "Body text with Maple Mono NF font must not receive a .backgroundColor attribute")
+    }
+
+    func testMapleMono_inlineCodeHasBackgroundColor() async {
+        let markdown = "Use `let x = 42` in your code."
+        let result = await render(markdown, family: .mapleMonoNF)
+
+        let loc = (result.string as NSString).range(of: "let x = 42").location
+        XCTAssertNotEqual(loc, NSNotFound, "Inline code should appear in rendered output")
+
+        if loc != NSNotFound {
+            let bg = result.attribute(.backgroundColor, at: loc, effectiveRange: nil)
+            XCTAssertNotNil(bg,
+                "Inline code must have .backgroundColor even when body font is Maple Mono NF")
+        }
+    }
+
+    func testMapleMono_fencedCodeHasBackgroundColor() async {
+        let markdown = "```swift\nlet x = 42\n```"
+        let result = await render(markdown, family: .mapleMonoNF)
+
+        let loc = (result.string as NSString).range(of: "let x = 42").location
+        XCTAssertNotEqual(loc, NSNotFound, "Fenced code text should appear in rendered output")
+
+        if loc != NSNotFound {
+            let bg = result.attribute(.backgroundColor, at: loc, effectiveRange: nil)
+            XCTAssertNotNil(bg,
+                "Fenced code block must have .backgroundColor even when body font is Maple Mono NF")
+        }
+    }
+
+    /// Body text must not receive backgroundColor for any font family.
+    func testNoFontFamilyStampsBackgroundOnBodyText() async {
+        let markdown = "Just a plain paragraph with no inline code."
+        for family in ReaderFontFamily.allCases {
+            let result = await render(markdown, family: family)
+            var foundBackground = false
+            result.enumerateAttribute(
+                .backgroundColor,
+                in: NSRange(location: 0, length: result.length),
+                options: []
+            ) { value, _, _ in
+                if value != nil { foundBackground = true }
+            }
+            XCTAssertFalse(foundBackground,
+                "\(family.rawValue): body text must not receive .backgroundColor")
+        }
+    }
+
     func testDifferentReadableWidthsProduceDifferentCacheKeys() {
         let narrow = RenderRequest(
             markdown: "# Test",

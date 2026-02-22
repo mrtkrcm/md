@@ -1,28 +1,18 @@
 //
-//  Frontmatter.swift
+//  FrontmatterParser.swift
 //  mdviewer
+//
+//  Parser for YAML frontmatter in markdown documents.
 //
 
 internal import Foundation
 
-struct ParsedMarkdown: Equatable, Sendable {
-    let source: String
-    let renderedMarkdown: String
-    let frontmatter: Frontmatter?
-}
-
-struct Frontmatter: Equatable, Sendable {
-    struct Entry: Equatable, Sendable {
-        let key: String
-        let value: String
-    }
-
-    let rawYAML: String
-    let entries: [Entry]
-    let metadata: [String: String]
-}
-
+/// Parses YAML frontmatter from markdown documents.
 enum FrontmatterParser {
+    /// Parses frontmatter from markdown text.
+    ///
+    /// - Parameter markdown: The markdown text to parse.
+    /// - Returns: A `ParsedMarkdown` containing the body and any frontmatter.
     static func parse(_ markdown: String) -> ParsedMarkdown {
         let normalized = stripLeadingUTF8BOM(from: markdown)
         let working = stripLeadingBlankLines(from: normalized)
@@ -51,6 +41,8 @@ enum FrontmatterParser {
         return ParsedMarkdown(source: markdown, renderedMarkdown: body, frontmatter: frontmatter)
     }
 
+    // MARK: - Private Helpers
+
     private static func stripLeadingUTF8BOM(from markdown: String) -> String {
         guard markdown.unicodeScalars.first?.value == 0xFEFF else { return markdown }
         return String(markdown.unicodeScalars.dropFirst())
@@ -69,6 +61,7 @@ enum FrontmatterParser {
         return String(markdown[index...])
     }
 
+    /// Sanitizes markdown by removing HTML comments outside code fences.
     private static func sanitizeRenderedMarkdown(_ markdown: String) -> String {
         var sanitizedLines: [String] = []
         sanitizedLines.reserveCapacity(64)
@@ -115,7 +108,7 @@ enum FrontmatterParser {
 
     private static let openingPattern: NSRegularExpression = {
         // Supports YAML frontmatter bounded by --- ... --- or --- ... ...
-        let pattern = #"(?s)\A---[ \t]*\r?\n(.*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|\z)"#
+        let pattern = #"(?s)\A---[ \t]*\r?\n(.*?)\r?\n(?:---|\.{3})[ \t]*(?:\r?\n|\z)"#
         do {
             return try NSRegularExpression(pattern: pattern)
         } catch {
@@ -123,6 +116,7 @@ enum FrontmatterParser {
         }
     }()
 
+    /// Parses YAML entries, handling simple key-value pairs and list items.
     private static func parseEntries(from yaml: String) -> [Frontmatter.Entry] {
         var orderedKeys: [String] = []
         var valuesByKey: [String: String] = [:]

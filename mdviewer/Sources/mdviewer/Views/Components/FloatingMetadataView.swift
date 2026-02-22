@@ -24,10 +24,7 @@ struct FloatingMetadataView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Collapsed button — sole layout contributor
             Button {
-                withAnimation(.spring(
-                    response: 0.28,
-                    dampingFraction: 0.82
-                )) {
+                withAnimation(.bouncy) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -38,7 +35,8 @@ struct FloatingMetadataView: View {
                             weight: .semibold
                         ))
                         .foregroundStyle(.secondary)
-                        .liquidAnimation(isExpanded, duration: DesignTokens.Animation.fast)
+                        .bouncyAnimation(isExpanded)
+                        .accessibilityHidden(true)
 
                     Label("Metadata", systemImage: "tag")
                         .font(.system(
@@ -61,12 +59,15 @@ struct FloatingMetadataView: View {
                             Color.primary.opacity(DesignTokens.Opacity.mediumLight),
                             in: Capsule()
                         )
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, DesignTokens.Spacing.comfortable)
                 .padding(.vertical, 7)
             }
             .buttonStyle(.plain)
             .glassPanel()
+            .accessibilityLabel("Document Metadata")
+            .accessibilityHint(isExpanded ? "Double tap to collapse" : "Double tap to expand and view document metadata")
 
             // Zero-height anchor: expanded panel anchors here, contributing no layout height
             Color.clear

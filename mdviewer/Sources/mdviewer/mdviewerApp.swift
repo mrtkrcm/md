@@ -12,92 +12,92 @@ internal import SwiftUI
 struct mdviewerApp: App {
     #if os(macOS)
         @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-        @AppStorage("readerFontSize") private var readerFontSizeRaw = ReaderFontSize.standard.rawValue
-        @AppStorage("readerMode") private var readerModeRaw = ReaderMode.rendered.rawValue
+        @FocusedValue(\.editorActions) private var focusedEditorActions
     #endif
 
     var body: some Scene {
         DocumentGroup(newDocument: MarkdownDocument()) { file in
             ContentView(document: file.$document)
                 .frame(minWidth: 600, minHeight: 400)
+                .environment(\.preferences, AppPreferences.shared)
         }
         .defaultSize(width: 900, height: 700)
         #if os(macOS)
+        .windowResizability(.contentMinSize)
+        .windowToolbarStyle(.unified)
         .commands {
-            // File Menu additions
-            CommandGroup(before: .newItem) {
-                // Open Recent is automatically handled by NSDocumentController
-                // We just need to ensure recent documents are tracked
-                EmptyView()
-            }
-
-            // Edit Menu - Markdown editing commands
+            // Edit Menu - Markdown editing commands using focused values
             CommandMenu("Edit") {
                 Button("Toggle Bold") {
-                    NotificationCenter.default.post(name: .toggleBold, object: nil)
+                    sendEditorAction(\.insertBold)
                 }
                 .keyboardShortcut("b", modifiers: [.command])
+                .disabled(focusedEditorActions == nil)
 
                 Button("Toggle Italic") {
-                    NotificationCenter.default.post(name: .toggleItalic, object: nil)
+                    sendEditorAction(\.insertItalic)
                 }
                 .keyboardShortcut("i", modifiers: [.command])
+                .disabled(focusedEditorActions == nil)
 
                 Button("Insert Code Block") {
-                    NotificationCenter.default.post(name: .insertCodeBlock, object: nil)
+                    sendEditorAction(\.insertCodeBlock)
                 }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(focusedEditorActions == nil)
 
                 Divider()
 
                 Button("Insert Link") {
-                    NotificationCenter.default.post(name: .insertLink, object: nil)
+                    sendEditorAction(\.insertLink)
                 }
                 .keyboardShortcut("k", modifiers: [.command])
+                .disabled(focusedEditorActions == nil)
 
                 Button("Insert Image") {
-                    NotificationCenter.default.post(name: .insertImage, object: nil)
+                    sendEditorAction(\.insertImage)
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(focusedEditorActions == nil)
             }
 
             // View Menu
             CommandMenu("View") {
                 Button("Rendered Mode") {
-                    readerModeRaw = ReaderMode.rendered.rawValue
+                    AppPreferences.shared.setRenderedMode()
                 }
                 .keyboardShortcut("r", modifiers: [.command, .option])
-                .disabled(readerMode == .rendered)
+                .disabled(AppPreferences.shared.readerMode == .rendered)
 
                 Button("Raw Mode") {
-                    readerModeRaw = ReaderMode.raw.rawValue
+                    AppPreferences.shared.setRawMode()
                 }
                 .keyboardShortcut("e", modifiers: [.command, .option])
-                .disabled(readerMode == .raw)
+                .disabled(AppPreferences.shared.readerMode == .raw)
 
                 Divider()
 
                 Button("Zoom In") {
-                    increaseReaderFontSize()
+                    AppPreferences.shared.increaseFontSize()
                 }
                 .keyboardShortcut("=", modifiers: [.command])
-                .disabled(!canIncreaseReaderFontSize)
+                .disabled(!AppPreferences.shared.canIncreaseFontSize)
 
                 Button("Zoom Out") {
-                    decreaseReaderFontSize()
+                    AppPreferences.shared.decreaseFontSize()
                 }
                 .keyboardShortcut("-", modifiers: [.command])
-                .disabled(!canDecreaseReaderFontSize)
+                .disabled(!AppPreferences.shared.canDecreaseFontSize)
 
                 Button("Reset Zoom") {
-                    readerFontSizeRaw = ReaderFontSize.standard.rawValue
+                    AppPreferences.shared.resetFontSize()
                 }
                 .keyboardShortcut("0", modifiers: [.command])
 
                 Divider()
 
                 Button("Show Appearance Settings") {
-                    NotificationCenter.default.post(name: .showAppearanceSettings, object: nil)
+                    sendEditorAction(\.showAppearanceSettings)
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
             }
@@ -117,48 +117,21 @@ struct mdviewerApp: App {
         #if os(macOS)
             Settings {
                 SettingsView()
+                    .frame(minWidth: 520, minHeight: 480)
             }
             .defaultSize(width: 520, height: 480)
         #endif
     }
 
     #if os(macOS)
-    private var readerMode: ReaderMode {
-        ReaderMode.from(rawValue: readerModeRaw)
+    /// Sends an action to the focused editor if available
+    private func sendEditorAction(_ keyPath: KeyPath<EditorActions, () -> Void>) {
+        focusedEditorActions?[keyPath: keyPath]()
     }
     #endif
 }
 
 #if os(macOS)
-    private extension mdviewerApp {
-        var orderedReaderSizes: [ReaderFontSize] {
-            ReaderFontSize.allCases.sorted { $0.rawValue < $1.rawValue }
-        }
-
-        var currentReaderFontSizeIndex: Int {
-            let current = ReaderFontSize.from(rawValue: readerFontSizeRaw)
-            return orderedReaderSizes.firstIndex(of: current) ?? 0
-        }
-
-        var canIncreaseReaderFontSize: Bool {
-            currentReaderFontSizeIndex < orderedReaderSizes.count - 1
-        }
-
-        var canDecreaseReaderFontSize: Bool {
-            currentReaderFontSizeIndex > 0
-        }
-
-        func increaseReaderFontSize() {
-            guard canIncreaseReaderFontSize else { return }
-            readerFontSizeRaw = orderedReaderSizes[currentReaderFontSizeIndex + 1].rawValue
-        }
-
-        func decreaseReaderFontSize() {
-            guard canDecreaseReaderFontSize else { return }
-            readerFontSizeRaw = orderedReaderSizes[currentReaderFontSizeIndex - 1].rawValue
-        }
-    }
-
     @MainActor
     final class AppDelegate: NSObject, NSApplicationDelegate {
         func applicationDidFinishLaunching(_ notification: Notification) {
@@ -218,15 +191,5 @@ struct mdviewerApp: App {
 
             return URL(fileURLWithPath: resolvedPath)
         }
-    }
-
-    // MARK: - Notifications
-    extension Notification.Name {
-        static let toggleBold = Notification.Name("toggleBold")
-        static let toggleItalic = Notification.Name("toggleItalic")
-        static let insertCodeBlock = Notification.Name("insertCodeBlock")
-        static let insertLink = Notification.Name("insertLink")
-        static let insertImage = Notification.Name("insertImage")
-        static let showAppearanceSettings = Notification.Name("showAppearanceSettings")
     }
 #endif

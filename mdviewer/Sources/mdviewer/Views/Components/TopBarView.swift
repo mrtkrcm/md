@@ -29,6 +29,7 @@ struct TopBarView: View {
                         weight: .semibold
                     ))
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
 
                 Picker("Reader Mode", selection: $readerMode) {
                     ForEach(ReaderMode.allCases) { mode in
@@ -39,24 +40,33 @@ struct TopBarView: View {
                 .pickerStyle(.segmented)
                 .frame(width: DesignTokens.Layout.readerModePickerWidth)
                 .help("Switch between rendered preview and raw markdown")
+                .accessibilityLabel("Reader Mode")
+                .accessibilityHint("Switch between rendered preview and raw markdown")
             }
             .padding(.leading, DesignTokens.Spacing.tight)
 
             Divider()
                 .frame(height: 18)
+                .accessibilityHidden(true)
 
             ToolIconButton(icon: "slider.horizontal.3", isActive: showAppearancePopover) {
                 showAppearancePopover.toggle()
             }
             .help("Appearance settings")
+            .accessibilityLabel("Appearance Settings")
+            .accessibilityHint("Open appearance and typography settings")
 
             ShareIconButton(shareItem: shareItem)
                 .help("Share markdown")
+                .accessibilityLabel("Share Document")
+                .accessibilityHint("Share the current markdown document")
 
             ToolIconButton(icon: "folder") {
                 openAction()
             }
             .help("Open markdown file")
+            .accessibilityLabel("Open File")
+            .accessibilityHint("Open a markdown file from disk")
         }
         .padding(.horizontal, DesignTokens.Spacing.comfortable)
         .padding(.vertical, 7)

@@ -2,100 +2,30 @@
 //  SettingsView.swift
 //  mdviewer
 //
+//  Settings panel with liquid design styling.
+//
 
 internal import SwiftUI
 
-// MARK: - Settings View
-
 /// Settings panel with liquid design styling.
+///
 /// Uses glass panel effect and subtle animations for consistent macOS aesthetic.
+/// Preferences are automatically persisted via the shared `AppPreferences` object.
 struct SettingsView: View {
-    @AppStorage("theme") private var selectedThemeRaw = AppTheme.basic.rawValue
-    @AppStorage("syntaxPalette") private var syntaxPaletteRaw = SyntaxPalette.midnight.rawValue
-    @AppStorage("readerFontSize") private var readerFontSizeRaw = ReaderFontSize.standard.rawValue
-    @AppStorage("codeFontSize") private var codeFontSizeRaw = CodeFontSize.medium.rawValue
-    @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.auto.rawValue
-    @AppStorage("readerFontFamily") private var readerFontFamilyRaw = ReaderFontFamily.newYork.rawValue
-    @AppStorage("readerMode") private var readerModeRaw = ReaderMode.rendered.rawValue
-    @AppStorage("readerTextSpacing") private var readerTextSpacingRaw = ReaderTextSpacing.balanced.rawValue
-    @AppStorage("readerColumnWidth") private var readerColumnWidthRaw = ReaderColumnWidth.balanced.rawValue
+    @Environment(\.preferences) private var preferences
 
     var body: some View {
         ZStack {
-            // Liquid background for consistent design language
             LiquidBackground()
                 .ignoresSafeArea()
 
-            // Glass panel container
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.extraLarge) {
-                    // Appearance Section
-                    settingsSection(title: "Appearance") {
-                        Picker("Mode", selection: appearanceModeBinding) {
-                            ForEach(AppearanceMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
-
+                    appearanceSection
                     Divider()
-
-                    // Markdown Section
-                    settingsSection(title: "Markdown") {
-                        Picker("Default View", selection: readerModeBinding) {
-                            ForEach(ReaderMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-
-                        Picker("Theme", selection: selectedThemeBinding) {
-                            ForEach(AppTheme.allCases) { theme in
-                                Text(theme.rawValue).tag(theme)
-                            }
-                        }
-
-                        Picker("Font", selection: readerFontFamilyBinding) {
-                            ForEach(ReaderFontFamily.allCases) { family in
-                                Text(family.rawValue).tag(family)
-                            }
-                        }
-
-                        Picker("Text Size", selection: readerFontSizeBinding) {
-                            ForEach(ReaderFontSize.allCases) { size in
-                                Text(size.label).tag(size)
-                            }
-                        }
-
-                        Picker("Text Spacing", selection: readerTextSpacingBinding) {
-                            ForEach(ReaderTextSpacing.allCases) { spacing in
-                                Text(spacing.rawValue).tag(spacing)
-                            }
-                        }
-
-                        Picker("Column Width", selection: readerColumnWidthBinding) {
-                            ForEach(ReaderColumnWidth.allCases) { width in
-                                Text(width.rawValue).tag(width)
-                            }
-                        }
-                    }
-
+                    markdownSection
                     Divider()
-
-                    // Syntax Section
-                    settingsSection(title: "Syntax Highlighting") {
-                        Picker("Palette", selection: syntaxPaletteBinding) {
-                            ForEach(SyntaxPalette.allCases) { palette in
-                                Text(palette.rawValue).tag(palette)
-                            }
-                        }
-
-                        Picker("Code Size", selection: codeFontSizeBinding) {
-                            ForEach(CodeFontSize.allCases) { size in
-                                Text(size.label).tag(size)
-                            }
-                        }
-                    }
+                    syntaxSection
                 }
                 .padding(DesignTokens.Spacing.extraLarge)
             }
@@ -106,16 +36,99 @@ struct SettingsView: View {
             width: DesignTokens.Layout.settingsWidth,
             height: DesignTokens.Layout.settingsHeight
         )
-        .liquidAnimation(selectedThemeRaw)
+        .liquidAnimation(preferences.theme)
     }
 
-    // MARK: - Section Builder
+    // MARK: - Sections
 
     @ViewBuilder
-    private func settingsSection<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
+    private var appearanceSection: some View {
+        SettingsSection(title: "Appearance") {
+            Picker("Mode", selection: binding(\.appearanceMode)) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    @ViewBuilder
+    private var markdownSection: some View {
+        SettingsSection(title: "Markdown") {
+            Picker("Default View", selection: binding(\.readerMode)) {
+                ForEach(ReaderMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+
+            Picker("Theme", selection: binding(\.theme)) {
+                ForEach(AppTheme.allCases) { theme in
+                    Text(theme.rawValue).tag(theme)
+                }
+            }
+
+            Picker("Font", selection: binding(\.readerFontFamily)) {
+                ForEach(ReaderFontFamily.allCases) { family in
+                    Text(family.rawValue).tag(family)
+                }
+            }
+
+            Picker("Text Size", selection: binding(\.readerFontSize)) {
+                ForEach(ReaderFontSize.allCases) { size in
+                    Text(size.label).tag(size)
+                }
+            }
+
+            Picker("Text Spacing", selection: binding(\.readerTextSpacing)) {
+                ForEach(ReaderTextSpacing.allCases) { spacing in
+                    Text(spacing.rawValue).tag(spacing)
+                }
+            }
+
+            Picker("Column Width", selection: binding(\.readerColumnWidth)) {
+                ForEach(ReaderColumnWidth.allCases) { width in
+                    Text(width.rawValue).tag(width)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var syntaxSection: some View {
+        SettingsSection(title: "Syntax Highlighting") {
+            Picker("Palette", selection: binding(\.syntaxPalette)) {
+                ForEach(SyntaxPalette.allCases) { palette in
+                    Text(palette.rawValue).tag(palette)
+                }
+            }
+
+            Picker("Code Size", selection: binding(\.codeFontSize)) {
+                ForEach(CodeFontSize.allCases) { size in
+                    Text(size.label).tag(size)
+                }
+            }
+        }
+    }
+
+    // MARK: - Binding Helper
+
+    private func binding<T>(_ keyPath: ReferenceWritableKeyPath<AppPreferences, T>) -> Binding<T> {
+        Binding(
+            get: { preferences[keyPath: keyPath] },
+            set: { preferences[keyPath: keyPath] = $0 }
+        )
+    }
+}
+
+// MARK: - Settings Section
+
+/// Reusable section container for settings views.
+private struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.relaxed) {
             Text(title)
                 .font(.system(
@@ -124,19 +137,7 @@ struct SettingsView: View {
                 ))
                 .foregroundStyle(.secondary)
 
-            content()
+            content
         }
     }
-
-    // MARK: - Bindings
-
-    private var selectedThemeBinding: Binding<AppTheme> { $selectedThemeRaw.stored() }
-    private var syntaxPaletteBinding: Binding<SyntaxPalette> { $syntaxPaletteRaw.stored() }
-    private var readerFontSizeBinding: Binding<ReaderFontSize> { $readerFontSizeRaw.stored() }
-    private var codeFontSizeBinding: Binding<CodeFontSize> { $codeFontSizeRaw.stored() }
-    private var appearanceModeBinding: Binding<AppearanceMode> { $appearanceModeRaw.stored() }
-    private var readerFontFamilyBinding: Binding<ReaderFontFamily> { $readerFontFamilyRaw.stored() }
-    private var readerModeBinding: Binding<ReaderMode> { $readerModeRaw.stored() }
-    private var readerTextSpacingBinding: Binding<ReaderTextSpacing> { $readerTextSpacingRaw.stored() }
-    private var readerColumnWidthBinding: Binding<ReaderColumnWidth> { $readerColumnWidthRaw.stored() }
 }

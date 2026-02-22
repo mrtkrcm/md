@@ -5,7 +5,7 @@
 
 internal import SwiftUI
 #if os(macOS)
-    internal import AppKit
+    @preconcurrency internal import AppKit
 #endif
 
 // MARK: - Design Tokens
@@ -169,5 +169,28 @@ extension View {
         damping: CGFloat = 0.82
     ) -> some View {
         animation(.spring(response: response, dampingFraction: damping), value: value)
+    }
+
+    /// Applies a modern smooth animation (macOS 15+/iOS 17+) with fallback.
+    @ViewBuilder
+    func smoothAnimation<Value: Equatable>(
+        _ value: Value,
+        duration: TimeInterval = DesignTokens.Animation.normal
+    ) -> some View {
+        if #available(macOS 15.0, iOS 17.0, *) {
+            self.animation(.smooth(duration: duration), value: value)
+        } else {
+            self.animation(.easeInOut(duration: duration), value: value)
+        }
+    }
+
+    /// Applies a bouncy spring animation for playful interactions.
+    @ViewBuilder
+    func bouncyAnimation<Value: Equatable>(_ value: Value) -> some View {
+        if #available(macOS 15.0, iOS 17.0, *) {
+            self.animation(.bouncy, value: value)
+        } else {
+            self.animation(.spring(response: 0.35, dampingFraction: 0.7), value: value)
+        }
     }
 }

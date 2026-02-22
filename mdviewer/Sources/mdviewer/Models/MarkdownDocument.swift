@@ -50,14 +50,22 @@ struct MarkdownDocument: FileDocument {
         self.text = text
     }
 
+    // MARK: - FileDocument Conformance
+
+    /// Enable autosave in place for seamless document versioning
+    static var autosavesInPlace: Bool { true }
+
+    /// Autosave every 30 seconds when there are changes
+    static var autosaveBeforeExternalChanges: Bool { true }
+
     static var readableContentTypes: [UTType] {
         var seen = Set<String>()
-        let types = [UTType.markdownDocument] + UTType.markdownExtensions + [.plainText]
+        let types = [UTType.markdownDocument] + UTType.markdownExtensions + [.plainText, .text]
         return types.filter { seen.insert($0.identifier).inserted }
     }
 
     static var writableContentTypes: [UTType] {
-        [.markdownDocument]
+        [UTType.markdownDocument, .plainText, .text]
     }
 
     init(configuration: ReadConfiguration) throws {
@@ -85,6 +93,8 @@ struct MarkdownDocument: FileDocument {
         }
         return FileWrapper(regularFileWithContents: data)
     }
+
+    // MARK: - Encoding/Decoding
 
     static func decode(data: Data) -> String? {
         if data.starts(with: [0xEF, 0xBB, 0xBF]) {

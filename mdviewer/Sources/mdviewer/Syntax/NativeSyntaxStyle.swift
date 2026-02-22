@@ -4,7 +4,7 @@
 //
 
 #if os(macOS)
-    internal import AppKit
+    @preconcurrency internal import AppKit
 
     // MARK: - Native Syntax Style
 

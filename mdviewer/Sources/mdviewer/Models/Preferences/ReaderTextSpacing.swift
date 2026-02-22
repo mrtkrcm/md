@@ -5,7 +5,7 @@
 
 internal import Foundation
 #if os(macOS)
-    internal import AppKit
+    @preconcurrency internal import AppKit
 #endif
 
 // MARK: - Reader Text Spacing

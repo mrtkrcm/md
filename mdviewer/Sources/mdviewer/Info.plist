@@ -53,9 +53,40 @@
                 <array>
                     <string>md</string>
                     <string>markdown</string>
+                    <string>mdown</string>
+                    <string>mkd</string>
+                    <string>mkdn</string>
                 </array>
             </dict>
         </dict>
     </array>
+
+    <!-- Window State Restoration -->
+    <key>NSQuitAlwaysKeepsWindows</key>
+    <true/>
+
+    <!-- Auto Save -->
+    <key>NSAutomaticDocumentSavingEnabled</key>
+    <true/>
+
+    <!-- Enhanced File Type Icons -->
+    <key>CFBundleTypeExtensions</key>
+    <array>
+        <string>md</string>
+        <string>markdown</string>
+        <string>mdown</string>
+        <string>mkd</string>
+        <string>mkdn</string>
+    </array>
+
+    <!-- Security-scoped bookmarks for sandboxing -->
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.document-scope</key>
+    <true/>
+
+    <!-- High resolution support -->
+    <key>NSRequiresAquaSystemAppearance</key>
+    <false/>
 </dict>
 </plist>

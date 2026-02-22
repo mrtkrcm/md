@@ -21,6 +21,7 @@ internal import SwiftUI
 
         func makeNSView(context: Context) -> NSScrollView {
             let textView = NSTextView()
+            context.coordinator.textView = textView
             textView.delegate = context.coordinator
             textView.isEditable = true
             textView.isSelectable = true
@@ -81,6 +82,7 @@ internal import SwiftUI
             private var currentFontSize: CGFloat = 14
             private var currentSyntaxPalette: SyntaxPalette = .midnight
             private var currentColorScheme: ColorScheme = .light
+            weak var textView: NSTextView?
 
             private let headingRegex = try? NSRegularExpression(pattern: #"(?m)^(#{1,6})\s.*$"#)
             private let blockquoteRegex = try? NSRegularExpression(pattern: #"(?m)^>\s.*$"#)
@@ -92,6 +94,47 @@ internal import SwiftUI
 
             init(text: Binding<String>) {
                 _text = text
+                super.init()
+                registerNotificationObserver()
+            }
+
+            deinit {
+                NotificationCenter.default.removeObserver(self)
+            }
+
+            private func registerNotificationObserver() {
+                NotificationCenter.default.addObserver(
+                    self,
+                    selector: #selector(handleInsertText(_:)),
+                    name: .insertText,
+                    object: nil
+                )
+            }
+
+            @MainActor @objc private func handleInsertText(_ notification: Notification) {
+                guard let textView = textView else { return }
+                guard let userInfo = notification.userInfo,
+                      let prefix = userInfo["prefix"] as? String,
+                      let suffix = userInfo["suffix"] as? String else { return }
+
+                let selectedRange = textView.selectedRange()
+                let selectedText = (textView.string as NSString).substring(with: selectedRange)
+
+                let newText = prefix + selectedText + suffix
+                let finalRange = NSRange(location: selectedRange.location, length: newText.utf16.count)
+
+                textView.textStorage?.replaceCharacters(in: selectedRange, with: newText)
+
+                // Position cursor between prefix and suffix if no text was selected
+                if selectedText.isEmpty {
+                    let cursorPosition = selectedRange.location + prefix.utf16.count
+                    textView.setSelectedRange(NSRange(location: cursorPosition, length: 0))
+                } else {
+                    textView.setSelectedRange(finalRange)
+                }
+
+                // Trigger text change notification
+                textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
             }
 
             @MainActor

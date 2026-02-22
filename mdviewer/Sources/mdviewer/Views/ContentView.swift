@@ -26,6 +26,7 @@ struct ContentView: View {
     @Environment(\.openDocument) private var openDocument
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.undoManager) private var undoManager
 
     @State private var openErrorMessage: String?
     @State private var showStartupWelcome = true
@@ -60,11 +61,15 @@ struct ContentView: View {
             topOverlay(frontmatter: parsed.frontmatter)
         }
         .preferredColorScheme(appearanceMode.preferredColorScheme)
+        .toolbar {
+            toolbarContent
+        }
         .onAppear {
             if !document.isEffectivelyEmpty {
                 showStartupWelcome = false
             }
             registerInteraction()
+            registerNotificationObservers()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -84,6 +89,7 @@ struct ContentView: View {
         .onDisappear {
             idleHideTask?.cancel()
             idleHideTask = nil
+            removeNotificationObservers()
         }
         .popover(isPresented: $showAppearancePopover, arrowEdge: .top) {
             AppearancePopoverView(
@@ -311,6 +317,140 @@ struct ContentView: View {
         revealTopBar()
         scheduleTopBarHide()
     }
+
+    // MARK: - Toolbar Content
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(id: "mode", placement: .navigation) {
+            Picker("Mode", selection: $readerModeRaw) {
+                Image(systemName: "eye")
+                    .help("Rendered View")
+                    .tag(ReaderMode.rendered.rawValue)
+                Image(systemName: "pencil.line")
+                    .help("Raw Markdown")
+                    .tag(ReaderMode.raw.rawValue)
+            }
+            .pickerStyle(.segmented)
+            .help("Switch between rendered and raw view")
+        }
+
+        ToolbarItem(id: "appearance", placement: .primaryAction) {
+            Button(action: { showAppearancePopover = true }) {
+                Image(systemName: "paintbrush")
+            }
+            .help("Appearance Settings")
+        }
+
+        ToolbarItem(id: "share", placement: .primaryAction) {
+            ShareLink(item: document.text) {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .help("Share Document")
+        }
+    }
+
+    // MARK: - Notification Handling
+
+    private func registerNotificationObservers() {
+        NotificationCenter.default.addObserver(
+            forName: .toggleBold,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                insertMarkdownSyntax(wrap: "**")
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .toggleItalic,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                insertMarkdownSyntax(wrap: "*")
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .insertCodeBlock,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                insertMarkdownSyntax(prefix: "\n```\n", suffix: "\n```\n")
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .insertLink,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                insertMarkdownSyntax(prefix: "[", suffix: "](url)")
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .insertImage,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                insertMarkdownSyntax(prefix: "![", suffix: "](image-url)")
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .showAppearanceSettings,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                showAppearancePopover = true
+            }
+        }
+    }
+
+    private func removeNotificationObservers() {
+        NotificationCenter.default.removeObserver(self, name: .toggleBold, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .toggleItalic, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .insertCodeBlock, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .insertLink, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .insertImage, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .showAppearanceSettings, object: nil)
+    }
+
+    private func insertMarkdownSyntax(wrap: String) {
+        insertMarkdownSyntax(prefix: wrap, suffix: wrap)
+    }
+
+    private func insertMarkdownSyntax(prefix: String, suffix: String) {
+        // Only works in raw mode
+        guard readerMode == .raw else {
+            // Switch to raw mode first
+            readerModeRaw = ReaderMode.raw.rawValue
+            // Post again after a short delay to apply the insertion
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                NotificationCenter.default.post(name: .insertCodeBlock, object: nil)
+            }
+            return
+        }
+
+        // Post notification to the editor to insert text
+        NotificationCenter.default.post(
+            name: .insertText,
+            object: nil,
+            userInfo: ["prefix": prefix, "suffix": suffix]
+        )
+    }
+}
+
+// MARK: - Additional Notifications
+extension Notification.Name {
+    static let insertText = Notification.Name("insertText")
 }
 
 // MARK: - Extracted Components

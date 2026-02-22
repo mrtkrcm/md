@@ -91,30 +91,32 @@ final class AppPreferences {
     private init() {
         let defaults = UserDefaults.standard
 
-        self.theme = AppTheme.from(rawValue: defaults.string(forKey: Keys.theme) ?? "")
-        self.syntaxPalette = SyntaxPalette.from(rawValue: defaults.string(forKey: Keys.syntaxPalette) ?? "")
-        self.readerFontSize = ReaderFontSize.from(rawValue: defaults.integer(forKey: Keys.readerFontSize))
-        self.codeFontSize = CodeFontSize.from(rawValue: defaults.integer(forKey: Keys.codeFontSize))
-        self.appearanceMode = AppearanceMode.from(rawValue: defaults.string(forKey: Keys.appearanceMode) ?? "")
-        self.readerFontFamily = ReaderFontFamily.from(rawValue: defaults.string(forKey: Keys.readerFontFamily) ?? "")
-        self.readerMode = ReaderMode.from(rawValue: defaults.string(forKey: Keys.readerMode) ?? "")
-        self.readerTextSpacing = ReaderTextSpacing.from(rawValue: defaults.string(forKey: Keys.readerTextSpacing) ?? "")
-        self.readerColumnWidth = ReaderColumnWidth.from(rawValue: defaults.string(forKey: Keys.readerColumnWidth) ?? "")
+        theme = AppTheme.from(rawValue: defaults.string(forKey: Keys.theme) ?? "")
+        syntaxPalette = SyntaxPalette.from(rawValue: defaults.string(forKey: Keys.syntaxPalette) ?? "")
+        readerFontSize = ReaderFontSize.from(rawValue: defaults.integer(forKey: Keys.readerFontSize))
+        codeFontSize = CodeFontSize.from(rawValue: defaults.integer(forKey: Keys.codeFontSize))
+        appearanceMode = AppearanceMode.from(rawValue: defaults.string(forKey: Keys.appearanceMode) ?? "")
+        readerFontFamily = ReaderFontFamily.from(rawValue: defaults.string(forKey: Keys.readerFontFamily) ?? "")
+        readerMode = ReaderMode.from(rawValue: defaults.string(forKey: Keys.readerMode) ?? "")
+        readerTextSpacing = ReaderTextSpacing.from(rawValue: defaults.string(forKey: Keys.readerTextSpacing) ?? "")
+        readerColumnWidth = ReaderColumnWidth.from(rawValue: defaults.string(forKey: Keys.readerColumnWidth) ?? "")
     }
 
     // MARK: - Font Size Actions
 
     func increaseFontSize() {
         let sizes = ReaderFontSize.allCases.sorted { $0.rawValue < $1.rawValue }
-        guard let currentIndex = sizes.firstIndex(of: readerFontSize),
-              currentIndex < sizes.count - 1 else { return }
+        guard
+            let currentIndex = sizes.firstIndex(of: readerFontSize),
+            currentIndex < sizes.count - 1 else { return }
         readerFontSize = sizes[currentIndex + 1]
     }
 
     func decreaseFontSize() {
         let sizes = ReaderFontSize.allCases.sorted { $0.rawValue < $1.rawValue }
-        guard let currentIndex = sizes.firstIndex(of: readerFontSize),
-              currentIndex > 0 else { return }
+        guard
+            let currentIndex = sizes.firstIndex(of: readerFontSize),
+            currentIndex > 0 else { return }
         readerFontSize = sizes[currentIndex - 1]
     }
 
@@ -136,8 +138,8 @@ final class AppPreferences {
 // MARK: - Environment Key
 
 private struct PreferencesKey: EnvironmentKey {
-    // Access the shared instance in a way compatible with EnvironmentKey
-    // The MainActor isolation is handled internally by AppPreferences
+    /// Access the shared instance in a way compatible with EnvironmentKey
+    /// The MainActor isolation is handled internally by AppPreferences
     static var defaultValue: AppPreferences {
         MainActor.assumeIsolated { AppPreferences.shared }
     }
@@ -149,4 +151,3 @@ extension EnvironmentValues {
         set { self[PreferencesKey.self] = newValue }
     }
 }
-

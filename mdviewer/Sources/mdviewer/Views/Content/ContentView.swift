@@ -23,8 +23,8 @@ struct ContentView: View {
 
     @State private var showStartupWelcome = true
     @State private var openErrorMessage: String?
-    @State private var topBarManager = TopBarVisibilityManager()
     @State private var showMetadataInspector = false
+    @State private var showAppearancePopover = false
 
     private let logger = Logger(subsystem: "mdviewer", category: "ui")
 
@@ -50,7 +50,7 @@ struct ContentView: View {
             insertCodeBlock: { markdownEditor.insertSyntax(prefix: "\n```\n", suffix: "\n```\n") },
             insertLink: { markdownEditor.insertSyntax(prefix: "[", suffix: "](url)") },
             insertImage: { markdownEditor.insertSyntax(prefix: "![", suffix: "](image-url)") },
-            showAppearanceSettings: { topBarManager.showAppearancePopover = true }
+            showAppearanceSettings: { showAppearancePopover = true }
         )
     }
 
@@ -63,7 +63,7 @@ struct ContentView: View {
             Color(nsColor: .windowBackgroundColor)
                 .ignoresSafeArea()
 
-            if showStartupWelcome && document.isEffectivelyEmpty {
+            if showStartupWelcome, document.isEffectivelyEmpty {
                 WelcomeStartView(
                     openAction: documentOps.openFromDisk,
                     useStarterAction: documentOps.resetToStarter
@@ -79,34 +79,24 @@ struct ContentView: View {
                 )
                 .transition(.opacity)
             }
-
-            TopBarOverlay(
-                frontmatter: parsed.frontmatter,
-                preferences: preferences,
-                topBarManager: topBarManager,
-                documentOps: documentOps,
-                documentText: document.text
-            )
         }
         .preferredColorScheme(preferences.effectiveColorScheme)
         .toolbar {
             ContentToolbar(
                 preferences: preferences,
-                showAppearancePopover: $topBarManager.showAppearancePopover,
+                showAppearancePopover: $showAppearancePopover,
                 showMetadataInspector: $showMetadataInspector,
+                openAction: documentOps.openFromDisk,
                 documentText: document.text
             )
         }
         .inspector(isPresented: $showMetadataInspector) {
-            if let frontmatter = parsed.frontmatter,
-               !frontmatter.rawYAML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                InspectorMetadataView(frontmatter: frontmatter)
-                    .inspectorColumnWidth(min: 200, ideal: 280, max: 400)
+            if let metadataView = InspectorMetadataView(frontmatter: parsed.frontmatter) {
+                metadataView
+                    .inspectorColumnWidth(min: 220, ideal: 280, max: 400)
             } else {
-                ContentUnavailableView {
-                    Label("No Metadata", systemImage: "tag.slash")
-                } description: {
-                    Text("This document has no YAML frontmatter")
+                MetadataEmptyView {
+                    showMetadataInspector = false
                 }
                 .inspectorColumnWidth(min: 200, ideal: 250, max: 300)
             }
@@ -116,22 +106,8 @@ struct ContentView: View {
             if !document.isEffectivelyEmpty {
                 showStartupWelcome = false
             }
-            topBarManager.registerInteraction()
         }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                topBarManager.registerInteraction()
-            } else {
-                topBarManager.cleanup()
-            }
-        }
-        .onChange(of: topBarManager.showAppearancePopover) { _, shown in
-            topBarManager.handlePopoverChange(isPresented: shown)
-        }
-        .onDisappear {
-            topBarManager.cleanup()
-        }
-        .popover(isPresented: $topBarManager.showAppearancePopover, arrowEdge: .top) {
+        .popover(isPresented: $showAppearancePopover, arrowEdge: .top) {
             AppearancePopover(
                 preferences: preferences
             )
@@ -175,7 +151,7 @@ private struct ReaderContentView: View {
                         rawContent
                     }
                 }
-                .padding(.top, geometry.safeAreaInsets.top + 42)
+                .padding(.top, geometry.safeAreaInsets.top + 8)
                 .smoothAnimation(preferences.readerMode)
                 .smoothAnimation(preferences.readerFontSize)
                 .smoothAnimation(preferences.readerColumnWidth)
@@ -220,93 +196,17 @@ private struct ReaderContentView: View {
     }
 }
 
-/// Floating top bar overlay with metadata and toolbar.
-private struct TopBarOverlay: View {
-    let frontmatter: Frontmatter?
-    let preferences: AppPreferences
-    @Bindable var topBarManager: TopBarVisibilityManager
-    let documentOps: DocumentOperations
-    let documentText: String
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: DesignTokens.Spacing.relaxed) {
-                metadataSection
-                Spacer(minLength: 20)
-                toolbarSection
-            }
-            .padding(.top, DesignTokens.Spacing.topBarTop)
-            .padding(.horizontal, DesignTokens.Spacing.topBarHorizontal)
-
-            Spacer()
-        }
-        .overlay(alignment: .top) {
-            revealZone
-        }
-    }
-
-    @ViewBuilder
-    private var metadataSection: some View {
-        if preferences.readerMode == .rendered,
-           let frontmatter,
-           !frontmatter.rawYAML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            FloatingMetadataView(frontmatter: frontmatter)
-                .zIndex(10)
-                .opacity(topBarManager.shouldShow ? 1 : 0)
-                .allowsHitTesting(topBarManager.shouldShow)
-                .liquidAnimation(topBarManager.shouldShow)
-                .onHover { hovering in
-                    topBarManager.isHoveringTopBar = hovering
-                    if hovering { topBarManager.registerInteraction() } else { topBarManager.scheduleHide() }
-                }
-        }
-    }
-
-    @ViewBuilder
-    private var toolbarSection: some View {
-        TopBarView(
-            showAppearancePopover: $topBarManager.showAppearancePopover,
-            readerMode: preferenceBinding(\.readerMode),
-            openAction: documentOps.openFromDisk,
-            shareItem: documentText
-        )
-        .onHover { hovering in
-            topBarManager.isHoveringTopBar = hovering
-            if hovering { topBarManager.registerInteraction() } else { topBarManager.scheduleHide() }
-        }
-        .opacity(topBarManager.shouldShow ? 1 : 0)
-        .allowsHitTesting(topBarManager.shouldShow)
-        .liquidAnimation(topBarManager.shouldShow)
-    }
-
-    @ViewBuilder
-    private var revealZone: some View {
-        Color.clear
-            .frame(height: DesignTokens.Layout.revealZoneHeight)
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                topBarManager.isHoveringRevealZone = hovering
-                if hovering { topBarManager.registerInteraction() } else { topBarManager.scheduleHide() }
-            }
-    }
-
-    private func preferenceBinding<T>(_ keyPath: ReferenceWritableKeyPath<AppPreferences, T>) -> Binding<T> {
-        Binding(
-            get: { preferences[keyPath: keyPath] },
-            set: { preferences[keyPath: keyPath] = $0 }
-        )
-    }
-}
-
 /// Toolbar content for the content view.
 private struct ContentToolbar: ToolbarContent {
     let preferences: AppPreferences
     @Binding var showAppearancePopover: Bool
     @Binding var showMetadataInspector: Bool
+    let openAction: () -> Void
     let documentText: String
 
     var body: some ToolbarContent {
-        ToolbarItem(id: "mode", placement: .navigation) {
+        // Mode picker - principal placement for centered importance
+        ToolbarItem(id: "mode", placement: .principal) {
             Picker("Mode", selection: preferenceBinding(\.readerMode)) {
                 Image(systemName: "eye")
                     .help("Rendered View")
@@ -316,12 +216,14 @@ private struct ContentToolbar: ToolbarContent {
                     .tag(ReaderMode.raw)
             }
             .pickerStyle(.segmented)
+            .controlSize(.small)
             .help("Switch between rendered and raw view")
             .accessibilityLabel("Reader Mode")
             .accessibilityHint("Switch between rendered and raw markdown view")
         }
 
-        ToolbarItem(id: "metadata", placement: .secondaryAction) {
+        // Trailing action items - organized in logical order
+        ToolbarItem(id: "metadata", placement: .automatic) {
             Button(action: { showMetadataInspector.toggle() }) {
                 Image(systemName: "sidebar.right")
             }
@@ -330,7 +232,7 @@ private struct ContentToolbar: ToolbarContent {
             .accessibilityHint("Show or hide document metadata inspector")
         }
 
-        ToolbarItem(id: "appearance", placement: .primaryAction) {
+        ToolbarItem(id: "appearance", placement: .automatic) {
             Button(action: { showAppearancePopover = true }) {
                 Image(systemName: "paintbrush")
             }
@@ -339,13 +241,22 @@ private struct ContentToolbar: ToolbarContent {
             .accessibilityHint("Open appearance and typography settings")
         }
 
-        ToolbarItem(id: "share", placement: .primaryAction) {
+        ToolbarItem(id: "share", placement: .automatic) {
             ShareLink(item: documentText) {
                 Image(systemName: "square.and.arrow.up")
             }
             .help("Share Document")
             .accessibilityLabel("Share Document")
             .accessibilityHint("Share the current markdown document")
+        }
+
+        ToolbarItem(id: "open", placement: .automatic) {
+            Button(action: openAction) {
+                Image(systemName: "folder")
+            }
+            .help("Open markdown file")
+            .accessibilityLabel("Open File")
+            .accessibilityHint("Open a markdown file from disk")
         }
     }
 
@@ -379,5 +290,23 @@ private struct AppearancePopover: View {
             get: { preferences[keyPath: keyPath] },
             set: { preferences[keyPath: keyPath] = $0 }
         )
+    }
+}
+
+/// Empty state view for metadata inspector with helpful actions.
+private struct MetadataEmptyView: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("No Metadata", systemImage: "tag.slash")
+        } description: {
+            Text("This document has no YAML frontmatter")
+        } actions: {
+            Button("Close Inspector") {
+                onDismiss()
+            }
+            .controlSize(.small)
+        }
     }
 }

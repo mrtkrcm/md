@@ -23,95 +23,95 @@ struct mdviewerApp: App {
         }
         .defaultSize(width: 900, height: 700)
         #if os(macOS)
-        .windowResizability(.contentMinSize)
-        .windowToolbarStyle(.unified)
-        .commands {
-            // Edit Menu - Markdown editing commands using focused values
-            CommandMenu("Edit") {
-                Button("Toggle Bold") {
-                    sendEditorAction(\.insertBold)
-                }
-                .keyboardShortcut("b", modifiers: [.command])
-                .disabled(focusedEditorActions == nil)
+            .windowResizability(.contentMinSize)
+            .windowToolbarStyle(.unifiedCompact)
+            .commands {
+                // Edit Menu - Markdown editing commands using focused values
+                CommandMenu("Edit") {
+                    Button("Toggle Bold") {
+                        sendEditorAction(\.insertBold)
+                    }
+                    .keyboardShortcut("b", modifiers: [.command])
+                    .disabled(focusedEditorActions == nil)
 
-                Button("Toggle Italic") {
-                    sendEditorAction(\.insertItalic)
-                }
-                .keyboardShortcut("i", modifiers: [.command])
-                .disabled(focusedEditorActions == nil)
+                    Button("Toggle Italic") {
+                        sendEditorAction(\.insertItalic)
+                    }
+                    .keyboardShortcut("i", modifiers: [.command])
+                    .disabled(focusedEditorActions == nil)
 
-                Button("Insert Code Block") {
-                    sendEditorAction(\.insertCodeBlock)
-                }
-                .keyboardShortcut("k", modifiers: [.command, .shift])
-                .disabled(focusedEditorActions == nil)
+                    Button("Insert Code Block") {
+                        sendEditorAction(\.insertCodeBlock)
+                    }
+                    .keyboardShortcut("k", modifiers: [.command, .shift])
+                    .disabled(focusedEditorActions == nil)
 
-                Divider()
+                    Divider()
 
-                Button("Insert Link") {
-                    sendEditorAction(\.insertLink)
-                }
-                .keyboardShortcut("k", modifiers: [.command])
-                .disabled(focusedEditorActions == nil)
+                    Button("Insert Link") {
+                        sendEditorAction(\.insertLink)
+                    }
+                    .keyboardShortcut("k", modifiers: [.command])
+                    .disabled(focusedEditorActions == nil)
 
-                Button("Insert Image") {
-                    sendEditorAction(\.insertImage)
+                    Button("Insert Image") {
+                        sendEditorAction(\.insertImage)
+                    }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                    .disabled(focusedEditorActions == nil)
                 }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
-                .disabled(focusedEditorActions == nil)
+
+                // View Menu
+                CommandMenu("View") {
+                    Button("Rendered Mode") {
+                        AppPreferences.shared.setRenderedMode()
+                    }
+                    .keyboardShortcut("r", modifiers: [.command, .option])
+                    .disabled(AppPreferences.shared.readerMode == .rendered)
+
+                    Button("Raw Mode") {
+                        AppPreferences.shared.setRawMode()
+                    }
+                    .keyboardShortcut("e", modifiers: [.command, .option])
+                    .disabled(AppPreferences.shared.readerMode == .raw)
+
+                    Divider()
+
+                    Button("Zoom In") {
+                        AppPreferences.shared.increaseFontSize()
+                    }
+                    .keyboardShortcut("=", modifiers: [.command])
+                    .disabled(!AppPreferences.shared.canIncreaseFontSize)
+
+                    Button("Zoom Out") {
+                        AppPreferences.shared.decreaseFontSize()
+                    }
+                    .keyboardShortcut("-", modifiers: [.command])
+                    .disabled(!AppPreferences.shared.canDecreaseFontSize)
+
+                    Button("Reset Zoom") {
+                        AppPreferences.shared.resetFontSize()
+                    }
+                    .keyboardShortcut("0", modifiers: [.command])
+
+                    Divider()
+
+                    Button("Show Appearance Settings") {
+                        sendEditorAction(\.showAppearanceSettings)
+                    }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                }
+
+                // Window Menu - Add Full Screen shortcut explicitly
+                CommandGroup(after: .windowSize) {
+                    Divider()
+
+                    Button("Enter Full Screen") {
+                        NSApplication.shared.keyWindow?.toggleFullScreen(nil)
+                    }
+                    .keyboardShortcut("f", modifiers: [.command, .control])
+                }
             }
-
-            // View Menu
-            CommandMenu("View") {
-                Button("Rendered Mode") {
-                    AppPreferences.shared.setRenderedMode()
-                }
-                .keyboardShortcut("r", modifiers: [.command, .option])
-                .disabled(AppPreferences.shared.readerMode == .rendered)
-
-                Button("Raw Mode") {
-                    AppPreferences.shared.setRawMode()
-                }
-                .keyboardShortcut("e", modifiers: [.command, .option])
-                .disabled(AppPreferences.shared.readerMode == .raw)
-
-                Divider()
-
-                Button("Zoom In") {
-                    AppPreferences.shared.increaseFontSize()
-                }
-                .keyboardShortcut("=", modifiers: [.command])
-                .disabled(!AppPreferences.shared.canIncreaseFontSize)
-
-                Button("Zoom Out") {
-                    AppPreferences.shared.decreaseFontSize()
-                }
-                .keyboardShortcut("-", modifiers: [.command])
-                .disabled(!AppPreferences.shared.canDecreaseFontSize)
-
-                Button("Reset Zoom") {
-                    AppPreferences.shared.resetFontSize()
-                }
-                .keyboardShortcut("0", modifiers: [.command])
-
-                Divider()
-
-                Button("Show Appearance Settings") {
-                    sendEditorAction(\.showAppearanceSettings)
-                }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
-            }
-
-            // Window Menu - Add Full Screen shortcut explicitly
-            CommandGroup(after: .windowSize) {
-                Divider()
-
-                Button("Enter Full Screen") {
-                    NSApplication.shared.keyWindow?.toggleFullScreen(nil)
-                }
-                .keyboardShortcut("f", modifiers: [.command, .control])
-            }
-        }
         #endif
 
         #if os(macOS)
@@ -124,10 +124,10 @@ struct mdviewerApp: App {
     }
 
     #if os(macOS)
-    /// Sends an action to the focused editor if available
-    private func sendEditorAction(_ keyPath: KeyPath<EditorActions, () -> Void>) {
-        focusedEditorActions?[keyPath: keyPath]()
-    }
+        /// Sends an action to the focused editor if available
+        private func sendEditorAction(_ keyPath: KeyPath<EditorActions, () -> Void>) {
+            focusedEditorActions?[keyPath: keyPath]()
+        }
     #endif
 }
 

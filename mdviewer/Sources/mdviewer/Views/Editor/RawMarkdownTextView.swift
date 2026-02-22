@@ -111,11 +111,13 @@ internal import SwiftUI
                 )
             }
 
-            @MainActor @objc private func handleInsertText(_ notification: Notification) {
-                guard let textView = textView else { return }
-                guard let userInfo = notification.userInfo,
-                      let prefix = userInfo["prefix"] as? String,
-                      let suffix = userInfo["suffix"] as? String else { return }
+            @MainActor @objc
+            private func handleInsertText(_ notification: Notification) {
+                guard let textView else { return }
+                guard
+                    let userInfo = notification.userInfo,
+                    let prefix = userInfo["prefix"] as? String,
+                    let suffix = userInfo["suffix"] as? String else { return }
 
                 let selectedRange = textView.selectedRange()
                 let selectedText = (textView.string as NSString).substring(with: selectedRange)

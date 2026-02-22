@@ -107,8 +107,6 @@ enum DesignTokens {
     // MARK: - Layout
 
     enum Layout {
-        /// Top bar reveal zone height (10pt)
-        static let revealZoneHeight: CGFloat = 10
         /// Metadata panel width (280pt)
         static let metadataWidth: CGFloat = 280
         /// Metadata panel max height (280pt)
@@ -119,8 +117,6 @@ enum DesignTokens {
         static let settingsWidth: CGFloat = 460
         /// Settings view height (320pt)
         static let settingsHeight: CGFloat = 320
-        /// Reader mode picker width (148pt)
-        static let readerModePickerWidth: CGFloat = 148
         /// Minimum content height (480pt)
         static let minContentHeight: CGFloat = 480
         /// Welcome view max width (380pt)
@@ -178,9 +174,9 @@ extension View {
         duration: TimeInterval = DesignTokens.Animation.normal
     ) -> some View {
         if #available(macOS 15.0, iOS 17.0, *) {
-            self.animation(.smooth(duration: duration), value: value)
+            animation(.smooth(duration: duration), value: value)
         } else {
-            self.animation(.easeInOut(duration: duration), value: value)
+            animation(.easeInOut(duration: duration), value: value)
         }
     }
 
@@ -188,9 +184,9 @@ extension View {
     @ViewBuilder
     func bouncyAnimation<Value: Equatable>(_ value: Value) -> some View {
         if #available(macOS 15.0, iOS 17.0, *) {
-            self.animation(.bouncy, value: value)
+            animation(.bouncy, value: value)
         } else {
-            self.animation(.spring(response: 0.35, dampingFraction: 0.7), value: value)
+            animation(.spring(response: 0.35, dampingFraction: 0.7), value: value)
         }
     }
 }

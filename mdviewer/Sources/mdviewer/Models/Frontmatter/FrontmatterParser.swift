@@ -7,6 +7,107 @@
 
 internal import Foundation
 
+// MARK: - Value Type Detection
+
+extension FrontmatterParser {
+    /// Detects the type of a frontmatter value and returns the appropriate ValueType.
+    static func detectValueType(_ value: String) -> Frontmatter.ValueType {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+
+        // Empty value
+        if trimmed.isEmpty {
+            return .text("")
+        }
+
+        // Boolean values
+        let lowercased = trimmed.lowercased()
+        if ["true", "yes", "on"].contains(lowercased) {
+            return .boolean(true)
+        }
+        if ["false", "no", "off"].contains(lowercased) {
+            return .boolean(false)
+        }
+
+        // URL detection
+        if let url = detectURL(trimmed) {
+            return .url(url)
+        }
+
+        // Date detection (ISO 8601 and common formats)
+        if let date = detectDate(trimmed) {
+            return .date(date)
+        }
+
+        // Number detection
+        if let number = detectNumber(trimmed) {
+            return .number(number)
+        }
+
+        // Default to text
+        return .text(trimmed)
+    }
+
+    private static func detectURL(_ value: String) -> URL? {
+        // Check for common URL schemes
+        let urlSchemes = ["http://", "https://", "mailto:", "file://"]
+        let hasScheme = urlSchemes.contains { value.lowercased().hasPrefix($0) }
+
+        if hasScheme, let url = URL(string: value), url.host != nil || url.scheme == "mailto" || url.scheme == "file" {
+            return url
+        }
+
+        return nil
+    }
+
+    private static func detectDate(_ value: String) -> Date? {
+        let formats = [
+            "yyyy-MM-dd",
+            "yyyy-MM-dd HH:mm",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+            "dd/MM/yyyy",
+            "MM/dd/yyyy",
+            "dd-MM-yyyy",
+            "MMM d, yyyy",
+            "MMMM d, yyyy",
+        ]
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: value) {
+                return date
+            }
+        }
+
+        // Try ISO8601DateFormatter for standard ISO dates
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = isoFormatter.date(from: value) {
+            return date
+        }
+
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        if let date = isoFormatter.date(from: value) {
+            return date
+        }
+
+        return nil
+    }
+
+    private static func detectNumber(_ value: String) -> Double? {
+        // Handle integers and decimals
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.allowsFloats = true
+        return formatter.number(from: value)?.doubleValue
+    }
+}
+
 /// Parses YAML frontmatter from markdown documents.
 enum FrontmatterParser {
     /// Parses frontmatter from markdown text.
@@ -36,7 +137,7 @@ enum FrontmatterParser {
         let yaml = String(working[yamlRange])
         let body = sanitizeRenderedMarkdown(String(working[fullRange.upperBound...]))
         let entries = parseEntries(from: yaml)
-        let metadata = Dictionary(uniqueKeysWithValues: entries.map { ($0.key, $0.value) })
+        let metadata = Dictionary(uniqueKeysWithValues: entries.map { ($0.key, $0.rawValue) })
         let frontmatter = Frontmatter(rawYAML: yaml, entries: entries, metadata: metadata)
         return ParsedMarkdown(source: markdown, renderedMarkdown: body, frontmatter: frontmatter)
     }
@@ -120,6 +221,7 @@ enum FrontmatterParser {
     private static func parseEntries(from yaml: String) -> [Frontmatter.Entry] {
         var orderedKeys: [String] = []
         var valuesByKey: [String: String] = [:]
+        var listItemsByKey: [String: [String]] = [:]
 
         var activeListKey: String?
         var activeListItems: [String] = []
@@ -127,7 +229,10 @@ enum FrontmatterParser {
 
         func closeActiveListIfNeeded() {
             guard let key = activeListKey else { return }
-            valuesByKey[key] = activeListItems.joined(separator: ", ")
+            if !activeListItems.isEmpty {
+                listItemsByKey[key] = activeListItems
+                valuesByKey[key] = activeListItems.joined(separator: ", ")
+            }
             activeListKey = nil
             activeListItems.removeAll(keepingCapacity: true)
         }
@@ -155,7 +260,8 @@ enum FrontmatterParser {
                         activeListKey = key
                         valuesByKey[key] = ""
                     } else {
-                        valuesByKey[key] = trimmedWrappingQuotes(from: String(valuePart))
+                        let cleanValue = trimmedWrappingQuotes(from: String(valuePart))
+                        valuesByKey[key] = cleanValue
                     }
                     lastAssignedKey = key
                     continue
@@ -186,8 +292,20 @@ enum FrontmatterParser {
         closeActiveListIfNeeded()
 
         return orderedKeys.compactMap { key in
-            guard let value = valuesByKey[key] else { return nil }
-            return Frontmatter.Entry(key: key, value: value)
+            guard let rawValue = valuesByKey[key] else { return nil }
+
+            // Check if this key had list items
+            if let listItems = listItemsByKey[key], !listItems.isEmpty {
+                return Frontmatter.Entry(
+                    key: key,
+                    rawValue: rawValue,
+                    typedValue: .list(listItems)
+                )
+            }
+
+            // Otherwise detect the value type
+            let typedValue = detectValueType(rawValue)
+            return Frontmatter.Entry(key: key, rawValue: rawValue, typedValue: typedValue)
         }
     }
 

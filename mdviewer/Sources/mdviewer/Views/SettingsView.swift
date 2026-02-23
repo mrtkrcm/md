@@ -141,3 +141,10 @@ private struct SettingsSection<Content: View>: View {
         }
     }
 }
+
+// MARK: - Previews
+
+#Preview("Settings") {
+    SettingsView()
+        .environment(\.preferences, AppPreferences.shared)
+}

@@ -4,13 +4,14 @@
 //
 
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 
     // MARK: - ReaderTextView
 
     /// Custom NSTextView subclass that constrains its text container to a readable
     /// width and centers the column horizontally within the enclosing scroll view.
-    final class ReaderTextView: NSTextView {
+    @MainActor
+    final class ReaderTextView: NSTextView, @unchecked Sendable {
         var preferredReadableWidth: CGFloat = 760
         private let minimumHorizontalInset: CGFloat = 24
 

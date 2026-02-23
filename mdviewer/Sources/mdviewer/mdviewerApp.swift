@@ -5,7 +5,7 @@
 
 internal import SwiftUI
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 #endif
 
 @main
@@ -102,8 +102,20 @@ struct mdviewerApp: App {
                     .keyboardShortcut("t", modifiers: [.command, .shift])
                 }
 
-                // Window Menu - Add Full Screen shortcut explicitly
+                // Window Menu - Tabbing and Full Screen
                 CommandGroup(after: .windowSize) {
+                    Divider()
+
+                    Button("Show All Tabs") {
+                        NSApplication.shared.keyWindow?.toggleTabOverview(nil)
+                    }
+                    .keyboardShortcut("\\", modifiers: [.command, .shift])
+
+                    Button("New Tab") {
+                        NSDocumentController.shared.newDocument(nil)
+                    }
+                    .keyboardShortcut("t", modifiers: [.command])
+
                     Divider()
 
                     Button("Enter Full Screen") {
@@ -136,7 +148,16 @@ struct mdviewerApp: App {
     final class AppDelegate: NSObject, NSApplicationDelegate {
         func applicationDidFinishLaunching(_ notification: Notification) {
             NSWindow.allowsAutomaticWindowTabbing = true
+            // Configure default window to support tabbing
+            if let window = NSApplication.shared.windows.first {
+                window.tabbingMode = .preferred
+            }
             openDocumentFromCLIIfNeeded()
+        }
+
+        func application(_ application: NSApplication, didCreateWindow window: NSWindow) {
+            // Enable tabbing for all new windows
+            window.tabbingMode = .preferred
         }
 
         func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

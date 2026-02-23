@@ -307,3 +307,24 @@ extension InspectorMetadataView {
         self.frontmatter = frontmatter
     }
 }
+
+// MARK: - Previews
+
+#Preview("Metadata Inspector") {
+    InspectorMetadataView(frontmatter: Frontmatter(
+        rawYAML: """
+        title: Sample Document
+        author: John Doe
+        date: 2024-01-15
+        tags: [swift, markdown, macos]
+        published: true
+        views: 1234
+        """,
+        entries: [],
+        metadata: [:]
+    ))
+}
+
+#Preview("Metadata Inspector - Empty") {
+    InspectorMetadataView(frontmatter: Frontmatter(rawYAML: "", entries: [], metadata: [:]))
+}

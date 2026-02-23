@@ -5,10 +5,7 @@
 
 internal import SwiftUI
 
-/// Centralized application preferences using modern @Observable pattern.
-///
-/// Replaces scattered @AppStorage properties with a type-safe, observable
-/// object that automatically persists to UserDefaults.
+/// Centralized application preferences using @Observable with manual observation support.
 @MainActor
 @Observable
 final class AppPreferences {
@@ -16,42 +13,128 @@ final class AppPreferences {
 
     static let shared = AppPreferences()
 
-    // MARK: - Properties
+    // MARK: - Published Properties (for observation)
 
     var theme: AppTheme {
-        didSet { UserDefaults.standard.set(theme.rawValue, forKey: Keys.theme) }
+        get {
+            access(keyPath: \.theme)
+            return AppTheme(rawValue: UserDefaults.standard.string(forKey: Keys.theme) ?? "") ?? .github
+        }
+        set {
+            withMutation(keyPath: \.theme) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.theme)
+            }
+        }
     }
 
     var syntaxPalette: SyntaxPalette {
-        didSet { UserDefaults.standard.set(syntaxPalette.rawValue, forKey: Keys.syntaxPalette) }
+        get {
+            access(keyPath: \.syntaxPalette)
+            return SyntaxPalette(rawValue: UserDefaults.standard.string(forKey: Keys.syntaxPalette) ?? "") ?? .midnight
+        }
+        set {
+            withMutation(keyPath: \.syntaxPalette) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.syntaxPalette)
+            }
+        }
     }
 
     var readerFontSize: ReaderFontSize {
-        didSet { UserDefaults.standard.set(readerFontSize.rawValue, forKey: Keys.readerFontSize) }
+        get {
+            access(keyPath: \.readerFontSize)
+            return ReaderFontSize(rawValue: UserDefaults.standard.integer(forKey: Keys.readerFontSize)) ?? .standard
+        }
+        set {
+            withMutation(keyPath: \.readerFontSize) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerFontSize)
+            }
+        }
     }
 
     var codeFontSize: CodeFontSize {
-        didSet { UserDefaults.standard.set(codeFontSize.rawValue, forKey: Keys.codeFontSize) }
+        get {
+            access(keyPath: \.codeFontSize)
+            return CodeFontSize(rawValue: UserDefaults.standard.integer(forKey: Keys.codeFontSize)) ?? .medium
+        }
+        set {
+            withMutation(keyPath: \.codeFontSize) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.codeFontSize)
+            }
+        }
     }
 
     var appearanceMode: AppearanceMode {
-        didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: Keys.appearanceMode) }
+        get {
+            access(keyPath: \.appearanceMode)
+            return AppearanceMode(rawValue: UserDefaults.standard.string(forKey: Keys.appearanceMode) ?? "") ?? .auto
+        }
+        set {
+            withMutation(keyPath: \.appearanceMode) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.appearanceMode)
+            }
+        }
     }
 
     var readerFontFamily: ReaderFontFamily {
-        didSet { UserDefaults.standard.set(readerFontFamily.rawValue, forKey: Keys.readerFontFamily) }
+        get {
+            access(keyPath: \.readerFontFamily)
+            return ReaderFontFamily(rawValue: UserDefaults.standard.string(forKey: Keys.readerFontFamily) ?? "") ?? .newYork
+        }
+        set {
+            withMutation(keyPath: \.readerFontFamily) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerFontFamily)
+            }
+        }
     }
 
     var readerMode: ReaderMode {
-        didSet { UserDefaults.standard.set(readerMode.rawValue, forKey: Keys.readerMode) }
+        get {
+            access(keyPath: \.readerMode)
+            return ReaderMode(rawValue: UserDefaults.standard.string(forKey: Keys.readerMode) ?? "") ?? .rendered
+        }
+        set {
+            withMutation(keyPath: \.readerMode) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerMode)
+            }
+        }
     }
 
     var readerTextSpacing: ReaderTextSpacing {
-        didSet { UserDefaults.standard.set(readerTextSpacing.rawValue, forKey: Keys.readerTextSpacing) }
+        get {
+            access(keyPath: \.readerTextSpacing)
+            return ReaderTextSpacing(rawValue: UserDefaults.standard.string(forKey: Keys.readerTextSpacing) ?? "") ?? .balanced
+        }
+        set {
+            withMutation(keyPath: \.readerTextSpacing) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerTextSpacing)
+            }
+        }
     }
 
     var readerColumnWidth: ReaderColumnWidth {
-        didSet { UserDefaults.standard.set(readerColumnWidth.rawValue, forKey: Keys.readerColumnWidth) }
+        get {
+            access(keyPath: \.readerColumnWidth)
+            return ReaderColumnWidth(rawValue: UserDefaults.standard.string(forKey: Keys.readerColumnWidth) ?? "") ?? .balanced
+        }
+        set {
+            withMutation(keyPath: \.readerColumnWidth) {
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerColumnWidth)
+            }
+        }
+    }
+
+    // MARK: - UserDefaults Keys
+
+    private enum Keys {
+        static let theme = "theme"
+        static let syntaxPalette = "syntaxPalette"
+        static let readerFontSize = "readerFontSize"
+        static let codeFontSize = "codeFontSize"
+        static let appearanceMode = "appearanceMode"
+        static let readerFontFamily = "readerFontFamily"
+        static let readerMode = "readerMode"
+        static let readerTextSpacing = "readerTextSpacing"
+        static let readerColumnWidth = "readerColumnWidth"
     }
 
     // MARK: - Computed Properties
@@ -72,35 +155,9 @@ final class AppPreferences {
         return currentIndex > 0
     }
 
-    // MARK: - UserDefaults Keys
-
-    private enum Keys {
-        static let theme = "theme"
-        static let syntaxPalette = "syntaxPalette"
-        static let readerFontSize = "readerFontSize"
-        static let codeFontSize = "codeFontSize"
-        static let appearanceMode = "appearanceMode"
-        static let readerFontFamily = "readerFontFamily"
-        static let readerMode = "readerMode"
-        static let readerTextSpacing = "readerTextSpacing"
-        static let readerColumnWidth = "readerColumnWidth"
-    }
-
     // MARK: - Initialization
 
-    private init() {
-        let defaults = UserDefaults.standard
-
-        theme = AppTheme.from(rawValue: defaults.string(forKey: Keys.theme) ?? "")
-        syntaxPalette = SyntaxPalette.from(rawValue: defaults.string(forKey: Keys.syntaxPalette) ?? "")
-        readerFontSize = ReaderFontSize.from(rawValue: defaults.integer(forKey: Keys.readerFontSize))
-        codeFontSize = CodeFontSize.from(rawValue: defaults.integer(forKey: Keys.codeFontSize))
-        appearanceMode = AppearanceMode.from(rawValue: defaults.string(forKey: Keys.appearanceMode) ?? "")
-        readerFontFamily = ReaderFontFamily.from(rawValue: defaults.string(forKey: Keys.readerFontFamily) ?? "")
-        readerMode = ReaderMode.from(rawValue: defaults.string(forKey: Keys.readerMode) ?? "")
-        readerTextSpacing = ReaderTextSpacing.from(rawValue: defaults.string(forKey: Keys.readerTextSpacing) ?? "")
-        readerColumnWidth = ReaderColumnWidth.from(rawValue: defaults.string(forKey: Keys.readerColumnWidth) ?? "")
-    }
+    private init() {}
 
     // MARK: - Font Size Actions
 

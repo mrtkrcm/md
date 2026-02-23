@@ -9,7 +9,7 @@ internal import os.signpost
 internal import SwiftUI
 
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 
     // MARK: - MarkdownRenderService
 

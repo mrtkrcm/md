@@ -109,3 +109,18 @@ struct AppearancePopoverView: View {
         }
     }
 }
+
+// MARK: - Previews
+
+#Preview("Appearance Popover") {
+    AppearancePopoverView(
+        selectedTheme: .constant(.github),
+        readerFontSize: .constant(.standard),
+        readerFontFamily: .constant(.newYork),
+        syntaxPalette: .constant(.midnight),
+        codeFontSize: .constant(.medium),
+        appearanceMode: .constant(.auto),
+        readerTextSpacing: .constant(.balanced),
+        readerColumnWidth: .constant(.balanced)
+    )
+}

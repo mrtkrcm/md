@@ -6,7 +6,7 @@
 internal import SwiftUI
 internal import OSLog
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 #endif
 
 /// Handles document operations like opening files and resetting content.

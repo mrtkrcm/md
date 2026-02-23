@@ -5,7 +5,7 @@
 
 internal import SwiftUI
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 #endif
 
 // MARK: - Reader Font Family

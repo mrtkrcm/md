@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Markdown Viewer Terminology">
+    <suite name="Markdown Viewer Suite" code="MDvw" description="Markdown Viewer specific classes.">
+        <class name="application" code="capp" description="The Markdown Viewer application." inherits="application">
+            <cocoa class="NSApplication"/>
+            <property name="frontmost" code="pisf" description="Is this the active application?" type="boolean"/>
+            <property name="version" code="vers" description="The version of Markdown Viewer." type="text"/>
+        </class>
+
+        <class name="document" code="docu" description="A markdown document." inherits="document">
+            <cocoa class="MarkdownDocument"/>
+            <property name="text" code="ctxt" description="The markdown text content." type="text">
+                <cocoa key="text"/>
+            </property>
+            <property name="name" code="pnam" description="The name of the document." type="text"/>
+            <property name="path" code="ppth" description="The file path of the document." type="text"/>
+        </class>
+
+        <command name="open" code="aevtoapp" description="Open a document.">
+            <cocoa class="NSOpenCommand"/>
+            <direct-parameter type="file"/>
+        </command>
+
+        <command name="quit" code="aevtquit" description="Quit Markdown Viewer.">
+            <cocoa class="NSQuitCommand"/>
+        </command>
+    </suite>
+
+    <suite name="Standard Suite" code="????" description="Common classes and commands.">
+        <class name="application" code="capp" description="An application.">
+            <cocoa class="NSApplication"/>
+        </class>
+
+        <class name="document" code="docu" description="A document.">
+            <cocoa class="NSDocument"/>
+        </class>
+    </suite>
+</dictionary>

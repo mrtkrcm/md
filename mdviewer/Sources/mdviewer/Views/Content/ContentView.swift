@@ -8,7 +8,7 @@
 internal import SwiftUI
 internal import OSLog
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 #endif
 
 /// Main content view that coordinates document display, editing, and toolbar.
@@ -144,18 +144,19 @@ private struct ReaderContentView: View {
                 LiquidBackground()
                     .ignoresSafeArea()
 
-                Group {
-                    if preferences.readerMode == .rendered {
-                        renderedContent(geometry: geometry)
-                    } else {
-                        rawContent
-                    }
-                }
-                .padding(.top, geometry.safeAreaInsets.top + 8)
-                .smoothAnimation(preferences.readerMode)
-                .smoothAnimation(preferences.readerFontSize)
-                .smoothAnimation(preferences.readerColumnWidth)
+                contentView(geometry: geometry)
+                    .padding(.top, geometry.safeAreaInsets.top + 8)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func contentView(geometry: GeometryProxy) -> some View {
+        switch preferences.readerMode {
+        case .rendered:
+            renderedContent(geometry: geometry)
+        case .raw:
+            rawContent
         }
     }
 
@@ -173,10 +174,8 @@ private struct ReaderContentView: View {
             readableWidth: min(preferences.readerColumnWidth.points, geometry.size.width - 48)
         )
         .id("rendered_\(preferences.theme)_\(preferences.readerFontFamily)_\(preferences.readerFontSize)")
-        .transition(.asymmetric(
-            insertion: .opacity.combined(with: .scale(scale: 0.98)),
-            removal: .opacity
-        ))
+        .smoothAnimation(preferences.readerFontSize)
+        .smoothAnimation(preferences.readerColumnWidth)
     }
 
     @ViewBuilder
@@ -189,10 +188,7 @@ private struct ReaderContentView: View {
             colorScheme: preferences.effectiveColorScheme ?? colorScheme
         )
         .id("raw_\(preferences.readerFontFamily)_\(preferences.readerFontSize)")
-        .transition(.asymmetric(
-            insertion: .move(edge: .bottom).combined(with: .opacity),
-            removal: .move(edge: .top).combined(with: .opacity)
-        ))
+        .smoothAnimation(preferences.readerFontSize)
     }
 }
 
@@ -207,56 +203,49 @@ private struct ContentToolbar: ToolbarContent {
     var body: some ToolbarContent {
         // Mode picker - principal placement for centered importance
         ToolbarItem(id: "mode", placement: .principal) {
-            Picker("Mode", selection: preferenceBinding(\.readerMode)) {
-                Image(systemName: "eye")
-                    .help("Rendered View")
-                    .tag(ReaderMode.rendered)
-                Image(systemName: "pencil.line")
-                    .help("Raw Markdown")
-                    .tag(ReaderMode.raw)
-            }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .help("Switch between rendered and raw view")
-            .accessibilityLabel("Reader Mode")
-            .accessibilityHint("Switch between rendered and raw markdown view")
+            ModePicker(readerMode: preferenceBinding(\.readerMode))
         }
 
         // Trailing action items - organized in logical order
         ToolbarItem(id: "metadata", placement: .automatic) {
-            Button(action: { showMetadataInspector.toggle() }) {
-                Image(systemName: "sidebar.right")
-            }
-            .help("Toggle Metadata Panel")
-            .accessibilityLabel("Metadata Panel")
-            .accessibilityHint("Show or hide document metadata inspector")
+            ToolbarButton(
+                action: { showMetadataInspector.toggle() },
+                systemImage: "sidebar.right",
+                isActive: showMetadataInspector,
+                helpText: "Toggle Metadata Panel"
+            )
         }
 
         ToolbarItem(id: "appearance", placement: .automatic) {
-            Button(action: { showAppearancePopover = true }) {
-                Image(systemName: "paintbrush")
-            }
-            .help("Appearance Settings")
-            .accessibilityLabel("Appearance Settings")
-            .accessibilityHint("Open appearance and typography settings")
+            ToolbarButton(
+                action: { showAppearancePopover = true },
+                systemImage: "paintbrush",
+                helpText: "Appearance Settings"
+            )
         }
 
         ToolbarItem(id: "share", placement: .automatic) {
             ShareLink(item: documentText) {
                 Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.clear)
+                    )
             }
+            .buttonStyle(.plain)
             .help("Share Document")
-            .accessibilityLabel("Share Document")
-            .accessibilityHint("Share the current markdown document")
         }
 
         ToolbarItem(id: "open", placement: .automatic) {
-            Button(action: openAction) {
-                Image(systemName: "folder")
-            }
-            .help("Open markdown file")
-            .accessibilityLabel("Open File")
-            .accessibilityHint("Open a markdown file from disk")
+            ToolbarButton(
+                action: openAction,
+                systemImage: "folder",
+                helpText: "Open markdown file"
+            )
         }
     }
 
@@ -265,6 +254,149 @@ private struct ContentToolbar: ToolbarContent {
             get: { preferences[keyPath: keyPath] },
             set: { preferences[keyPath: keyPath] = $0 }
         )
+    }
+}
+
+/// Modern mode picker with custom styling - icons only
+private struct ModePicker: View {
+    @Binding var readerMode: ReaderMode
+    @State private var hoverMode: ReaderMode?
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ModeButton(
+                mode: .rendered,
+                icon: "doc.text.image",
+                isSelected: readerMode == .rendered,
+                isHovered: hoverMode == .rendered
+            ) {
+                readerMode = .rendered
+            }
+            .onHover { isHovered in
+                hoverMode = isHovered ? .rendered : nil
+            }
+
+            ModeButton(
+                mode: .raw,
+                icon: "doc.plaintext",
+                isSelected: readerMode == .raw,
+                isHovered: hoverMode == .raw
+            ) {
+                readerMode = .raw
+            }
+            .onHover { isHovered in
+                hoverMode = isHovered ? .raw : nil
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(
+                    color: .black.opacity(0.04),
+                    radius: 1,
+                    x: 0,
+                    y: 1
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+        )
+        .help("Switch between rendered and raw view")
+    }
+}
+
+/// Individual mode button with smooth animations - icon only
+private struct ModeButton: View {
+    let mode: ReaderMode
+    let icon: String
+    let isSelected: Bool
+    let isHovered: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .frame(width: 32, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(backgroundColor)
+                .shadow(
+                    color: isSelected ? .black.opacity(0.08) : .clear,
+                    radius: 0.5,
+                    x: 0,
+                    y: 0.5
+                )
+        )
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+    }
+
+    private var backgroundColor: Color {
+        if isSelected {
+            return Color(nsColor: .selectedControlColor)
+        } else if isHovered {
+            return Color.primary.opacity(0.06)
+        }
+        return Color.clear
+    }
+}
+
+/// Modern toolbar button with hover and active states
+private struct ToolbarButton: View {
+    let action: () -> Void
+    let systemImage: String
+    var isActive: Bool = false
+    let helpText: String
+    @State private var isHovered = false
+    @State private var isPressed = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(isActive ? .primary : .secondary)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(backgroundColor)
+                )
+                .scaleEffect(isPressed ? 0.92 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .help(helpText)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+        .pressEvents {
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isPressed = true
+            }
+        } onRelease: {
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isPressed = false
+            }
+        }
+    }
+
+    private var backgroundColor: Color {
+        if isActive {
+            return Color(nsColor: .selectedControlColor).opacity(0.6)
+        } else if isPressed {
+            return Color.primary.opacity(0.12)
+        } else if isHovered {
+            return Color.primary.opacity(0.08)
+        }
+        return Color.clear
     }
 }
 
@@ -309,4 +441,57 @@ private struct MetadataEmptyView: View {
             .controlSize(.small)
         }
     }
+}
+
+// MARK: - View Extensions
+
+extension View {
+    /// Adds press down/up event handlers to a view
+    func pressEvents(onPress: @escaping () -> Void, onRelease: @escaping () -> Void) -> some View {
+        modifier(PressEventsModifier(onPress: onPress, onRelease: onRelease))
+    }
+}
+
+/// Modifier for handling press down/up events
+private struct PressEventsModifier: ViewModifier {
+    let onPress: () -> Void
+    let onRelease: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        onPress()
+                    }
+                    .onEnded { _ in
+                        onRelease()
+                    }
+            )
+    }
+}
+
+// MARK: - Previews
+
+#Preview("Content View - Empty") {
+    ContentView(document: .constant(MarkdownDocument()))
+        .environment(\.preferences, AppPreferences.shared)
+}
+
+#Preview("Content View - With Content") {
+    ContentView(document: .constant(MarkdownDocument(text: """
+    # Hello World
+
+    This is a **markdown** document.
+
+    - Item 1
+    - Item 2
+    - Item 3
+
+    ```swift
+    let greeting = "Hello"
+    print(greeting)
+    ```
+    """)))
+        .environment(\.preferences, AppPreferences.shared)
 }

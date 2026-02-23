@@ -6,7 +6,7 @@
 internal import SwiftUI
 internal import Foundation
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 
     struct NativeMarkdownTextView: NSViewRepresentable {
         let markdown: String

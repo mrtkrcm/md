@@ -52,3 +52,12 @@ struct WelcomeStartView: View {
         .frame(maxWidth: .infinity)
     }
 }
+
+// MARK: - Previews
+
+#Preview("Welcome Start") {
+    WelcomeStartView(
+        openAction: {},
+        useStarterAction: {}
+    )
+}

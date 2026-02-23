@@ -4,7 +4,7 @@
 //
 
 #if os(macOS)
-    @preconcurrency internal import Foundation
+    internal import Foundation
 
     // MARK: - Shared Swift Syntax Regexes
 

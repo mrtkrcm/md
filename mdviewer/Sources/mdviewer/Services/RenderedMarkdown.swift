@@ -6,7 +6,7 @@
 internal import Foundation
 
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 
     // MARK: - RenderedMarkdown
 

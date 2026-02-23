@@ -4,7 +4,7 @@
 //
 
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 
     // MARK: - Markdown Parser
 

@@ -33,15 +33,29 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.1-dev.13</string>
+	<string>1.0.1-dev.17</string>
+	<key>CFBundleTypeExtensions</key>
+	<array>
+		<string>md</string>
+		<string>markdown</string>
+		<string>mdown</string>
+		<string>mkd</string>
+		<string>mkdn</string>
+	</array>
 	<key>CFBundleVersion</key>
-	<string>32</string>
+	<string>36</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>NSAutomaticDocumentSavingEnabled</key>
+	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSQuitAlwaysKeepsWindows</key>
+	<true/>
+	<key>NSRequiresAquaSystemAppearance</key>
+	<false/>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -59,9 +73,16 @@
 				<array>
 					<string>md</string>
 					<string>markdown</string>
+					<string>mdown</string>
+					<string>mkd</string>
+					<string>mkdn</string>
 				</array>
 			</dict>
 		</dict>
 	</array>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.document-scope</key>
+	<true/>
 </dict>
 </plist>

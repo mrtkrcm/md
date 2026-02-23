@@ -5,7 +5,7 @@
 
 internal import SwiftUI
 #if os(macOS)
-    @preconcurrency internal import AppKit
+    internal import AppKit
 #endif
 
 // MARK: - Design Tokens
@@ -188,5 +188,25 @@ extension View {
         } else {
             animation(.spring(response: 0.35, dampingFraction: 0.7), value: value)
         }
+    }
+}
+
+// MARK: - Transitions
+
+extension AnyTransition {
+    /// Smooth fade transition with slight scale
+    static var smoothFade: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.995)),
+            removal: .opacity.combined(with: .scale(scale: 1.005))
+        )
+    }
+
+    /// Slide and fade transition for directional changes
+    static func slideFade(edge: Edge) -> AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: edge).combined(with: .opacity),
+            removal: .move(edge: edge).combined(with: .opacity)
+        )
     }
 }

@@ -324,7 +324,8 @@ internal import SwiftUI
             textView.isRichText = true
             textView.usesFindBar = true
             textView.allowsUndo = true
-            textView.drawsBackground = false
+            textView.drawsBackground = true
+            textView.backgroundColor = NSColor(named: "WindowBackgroundColor") ?? .controlBackgroundColor
             textView.focusRingType = .none
             textView.textContainerInset = Layout.inset
             textView.textContainer?.lineFragmentPadding = 0

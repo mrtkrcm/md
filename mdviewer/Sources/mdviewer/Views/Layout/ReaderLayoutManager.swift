@@ -283,7 +283,7 @@
 
                 // Only draw line number for the first fragment of each line
                 let isFirstFragment = (lineStart == span.charStart) ||
-                    (text.string as NSString).character(at: lineStart - 1) == 0x0A
+                    (lineStart > 0 && lineStart - 1 < text.length && (text.string as NSString).character(at: lineStart - 1) == 0x0A)
 
                 if isFirstFragment {
                     let numberString = "\(lineNumber)" as NSString

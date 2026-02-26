@@ -10,10 +10,11 @@ internal import Foundation
 
 // MARK: - Syntax Highlighter
 
-/// Applies Swift syntax highlighting to code blocks.
+/// Applies syntax highlighting to code blocks for multiple languages.
 ///
 /// This component uses regex-based pattern matching to identify and colorize
-/// Swift language constructs within code blocks.
+/// language constructs within code blocks. Supports automatic language detection
+/// when no language is specified.
 struct SyntaxHighlighter: SyntaxHighlighting {
     // MARK: - Highlighting
 
@@ -23,13 +24,27 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         let codeBlocks = findCodeBlocks(in: text, range: range)
 
         for (codeRange, language) in codeBlocks {
-            guard language?.lowercased() == "swift" else { continue }
+            // Get language definition from explicit language tag or auto-detect
+            let definition: LanguageDefinition?
+            if let language, !language.isEmpty {
+                definition = LanguageRegistry.definition(for: language)
+            } else {
+                // Auto-detect language from code content
+                let codeText = text.string
+                let start = codeRange.location
+                let end = min(start + codeRange.length, codeText.count)
+                let substring = (codeText as NSString).substring(with: NSRange(location: start, length: end - start))
+                definition = LanguageRegistry.detectLanguage(in: substring)
+            }
 
-            applySwiftHighlighting(
-                to: text,
-                in: codeRange,
-                syntax: syntax
-            )
+            if let definition {
+                applyHighlighting(
+                    to: text,
+                    in: codeRange,
+                    definition: definition,
+                    syntax: syntax
+                )
+            }
         }
     }
 
@@ -58,16 +73,17 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         return blocks
     }
 
-    private func applySwiftHighlighting(
+    private func applyHighlighting(
         to text: NSMutableAttributedString,
         in range: NSRange,
+        definition: LanguageDefinition,
         syntax: NativeSyntaxStyle
     ) {
         var protectedRanges: [NSRange] = []
 
         // Apply highlighting in priority order (strings/comments first, then keywords)
         applyHighlights(
-            for: SwiftSyntaxRegexes.strings,
+            for: definition.patterns.strings,
             in: text,
             range: range,
             color: syntax.string,
@@ -75,7 +91,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         )
 
         applyHighlights(
-            for: SwiftSyntaxRegexes.blockComments,
+            for: definition.patterns.blockComments,
             in: text,
             range: range,
             color: syntax.comment,
@@ -83,7 +99,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         )
 
         applyHighlights(
-            for: SwiftSyntaxRegexes.lineComments,
+            for: definition.patterns.lineComments,
             in: text,
             range: range,
             color: syntax.comment,
@@ -91,7 +107,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         )
 
         applyHighlights(
-            for: SwiftSyntaxRegexes.keywords,
+            for: definition.patterns.keywords,
             in: text,
             range: range,
             color: syntax.keyword,
@@ -100,7 +116,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         )
 
         applyHighlights(
-            for: SwiftSyntaxRegexes.numbers,
+            for: definition.patterns.numbers,
             in: text,
             range: range,
             color: syntax.number,
@@ -109,7 +125,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         )
 
         applyHighlights(
-            for: SwiftSyntaxRegexes.types,
+            for: definition.patterns.types,
             in: text,
             range: range,
             color: syntax.type,
@@ -118,7 +134,17 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         )
 
         applyHighlights(
-            for: SwiftSyntaxRegexes.calls,
+            for: definition.patterns.calls,
+            in: text,
+            range: range,
+            color: syntax.call,
+            protectedRanges: &protectedRanges,
+            skipProtected: true
+        )
+
+        // Apply property highlighting (same color as calls)
+        applyHighlights(
+            for: definition.patterns.properties,
             in: text,
             range: range,
             color: syntax.call,

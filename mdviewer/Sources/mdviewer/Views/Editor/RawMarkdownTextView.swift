@@ -40,39 +40,48 @@ internal import SwiftUI
 
         // MARK: - Touch Bar Actions
 
-        @objc func insertBold(_ sender: Any?) {
+        @objc
+        func insertBold(_ sender: Any?) {
             insertMarkdownSyntax(prefix: "**", suffix: "**")
         }
 
-        @objc func insertItalic(_ sender: Any?) {
+        @objc
+        func insertItalic(_ sender: Any?) {
             insertMarkdownSyntax(prefix: "*", suffix: "*")
         }
 
-        @objc func insertCode(_ sender: Any?) {
+        @objc
+        func insertCode(_ sender: Any?) {
             insertMarkdownSyntax(prefix: "`", suffix: "`")
         }
 
-        @objc func insertCodeBlock(_ sender: Any?) {
+        @objc
+        func insertCodeBlock(_ sender: Any?) {
             insertMarkdownSyntax(prefix: "\n```\n", suffix: "\n```\n")
         }
 
-        @objc func insertLink(_ sender: Any?) {
+        @objc
+        func insertLink(_ sender: Any?) {
             insertMarkdownSyntax(prefix: "[", suffix: "](url)")
         }
 
-        @objc func insertImage(_ sender: Any?) {
+        @objc
+        func insertImage(_ sender: Any?) {
             insertMarkdownSyntax(prefix: "![", suffix: "](image-url)")
         }
 
-        @objc func insertHeading(_ sender: Any?) {
+        @objc
+        func insertHeading(_ sender: Any?) {
             insertMarkdownSyntax(prefix: "# ", suffix: "")
         }
 
-        @objc func insertQuote(_ sender: Any?) {
+        @objc
+        func insertQuote(_ sender: Any?) {
             insertMarkdownSyntax(prefix: "> ", suffix: "")
         }
 
-        @objc func insertList(_ sender: Any?) {
+        @objc
+        func insertList(_ sender: Any?) {
             insertMarkdownSyntax(prefix: "- ", suffix: "")
         }
 
@@ -99,18 +108,26 @@ internal import SwiftUI
 
         // MARK: - Services Menu Support
 
-        override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?, returnType: NSPasteboard.PasteboardType?) -> Any? {
+        override func validRequestor(
+            forSendType sendType: NSPasteboard.PasteboardType?,
+            returnType: NSPasteboard.PasteboardType?
+        ) -> Any? {
             // Support sending/receiving text via Services menu
-            if let sendType = sendType, sendType == .string {
+            if let sendType, sendType == .string {
                 return self
             }
-            if let returnType = returnType, returnType == .string {
+            if let returnType, returnType == .string {
                 return self
             }
             return super.validRequestor(forSendType: sendType, returnType: returnType)
         }
 
-        @objc func insertTextFromService(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        @objc
+        func insertTextFromService(
+            _ pasteboard: NSPasteboard,
+            userData: String?,
+            error: AutoreleasingUnsafeMutablePointer<NSString?>
+        ) {
             guard let text = pasteboard.string(forType: .string) else {
                 error.pointee = "No text found on pasteboard" as NSString
                 return
@@ -118,7 +135,12 @@ internal import SwiftUI
             insertText(text, replacementRange: selectedRange())
         }
 
-        @objc func replaceTextFromService(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        @objc
+        func replaceTextFromService(
+            _ pasteboard: NSPasteboard,
+            userData: String?,
+            error: AutoreleasingUnsafeMutablePointer<NSString?>
+        ) {
             guard let text = pasteboard.string(forType: .string) else {
                 error.pointee = "No text found on pasteboard" as NSString
                 return
@@ -177,33 +199,34 @@ internal import SwiftUI
                     title: "Heading",
                     imageName: "textformat.size",
                     action: #selector(insertHeading)
-                    )
-                case .quoteButton:
-                    return makeTouchBarButton(
-                        identifier: identifier,
-                        title: "Quote",
-                        imageName: "text.quote",
-                        action: #selector(insertQuote)
-                    )
-                case .listButton:
-                    return makeTouchBarButton(
-                        identifier: identifier,
-                        title: "List",
-                        imageName: "list.bullet",
-                        action: #selector(insertList)
-                    )
-                default:
-                    return nil
-                }
+                )
+            case .quoteButton:
+                return makeTouchBarButton(
+                    identifier: identifier,
+                    title: "Quote",
+                    imageName: "text.quote",
+                    action: #selector(insertQuote)
+                )
+            case .listButton:
+                return makeTouchBarButton(
+                    identifier: identifier,
+                    title: "List",
+                    imageName: "list.bullet",
+                    action: #selector(insertList)
+                )
+            default:
+                return nil
             }
+        }
 
-            private func makeTouchBarButton(
+        private func makeTouchBarButton(
             identifier: NSTouchBarItem.Identifier,
             title: String,
             imageName: String,
             action: Selector
         ) -> NSTouchBarItem {
-            let button = NSButton(image: NSImage(systemSymbolName: imageName, accessibilityDescription: title)!, target: self, action: action)
+            let image = NSImage(systemSymbolName: imageName, accessibilityDescription: title) ?? NSImage()
+            let button = NSButton(image: image, target: self, action: action)
             button.bezelStyle = .texturedRounded
 
             let item = NSCustomTouchBarItem(identifier: identifier)
@@ -232,36 +255,24 @@ internal import SwiftUI
     /// with markdown syntax highlighting for headings, code blocks,
     /// links, lists, blockquotes, and fenced Swift code.
     struct RawMarkdownTextView: NSViewRepresentable {
+        private enum Layout {
+            static let inset = NSSize(width: 14, height: 14)
+            static let rulerThickness: CGFloat = 40
+        }
+
         @Binding var text: String
         let fontFamily: ReaderFontFamily
         let fontSize: CGFloat
         let syntaxPalette: SyntaxPalette
         let colorScheme: ColorScheme
+        let showLineNumbers: Bool
 
         func makeNSView(context: Context) -> NSScrollView {
-            let textView = MarkdownEditorTextView()
-            context.coordinator.textView = textView
-            textView.delegate = context.coordinator
-            textView.isEditable = true
-            textView.isSelectable = true
-            textView.isRichText = true
-            textView.usesFindBar = true
-            textView.allowsUndo = true
-            textView.drawsBackground = false
-            textView.focusRingType = .none
-            textView.textContainerInset = NSSize(width: 14, height: 14)
-            textView.textContainer?.lineFragmentPadding = 0
-            textView.textContainer?.widthTracksTextView = true
-            textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+            let textView = makeConfiguredTextView(context: context)
+            let scrollView = makeConfiguredScrollView(textView: textView)
 
-            let scrollView = NSScrollView()
-            scrollView.drawsBackground = false
-            scrollView.borderType = .noBorder
-            scrollView.focusRingType = .none
-            scrollView.hasVerticalScroller = true
-            scrollView.hasHorizontalScroller = false
-            scrollView.autohidesScrollers = true
-            scrollView.documentView = textView
+            updateTextContainerSize(textView: textView, in: scrollView)
+            configureLineNumberRuler(for: scrollView, textView: textView)
 
             context.coordinator.applyTextIfNeeded(text, to: textView)
             context.coordinator.applyHighlighting(
@@ -278,6 +289,9 @@ internal import SwiftUI
         func updateNSView(_ scrollView: NSScrollView, context: Context) {
             guard let textView = scrollView.documentView as? NSTextView else { return }
 
+            updateTextContainerSize(textView: textView, in: scrollView)
+            configureLineNumberRuler(for: scrollView, textView: textView)
+
             context.coordinator.applyTextIfNeeded(text, to: textView)
             context.coordinator.applyHighlighting(
                 to: textView,
@@ -290,6 +304,80 @@ internal import SwiftUI
 
         func makeCoordinator() -> Coordinator {
             Coordinator(text: $text)
+        }
+
+        private func makeConfiguredTextView(context: Context) -> MarkdownEditorTextView {
+            let textStorage = NSTextStorage()
+            let layoutManager = NSLayoutManager()
+            textStorage.addLayoutManager(layoutManager)
+
+            let textContainer = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+            textContainer.lineFragmentPadding = 0
+            textContainer.widthTracksTextView = true
+            layoutManager.addTextContainer(textContainer)
+
+            let textView = MarkdownEditorTextView(frame: .zero, textContainer: textContainer)
+            context.coordinator.textView = textView
+            textView.delegate = context.coordinator
+            textView.isEditable = true
+            textView.isSelectable = true
+            textView.isRichText = true
+            textView.usesFindBar = true
+            textView.allowsUndo = true
+            textView.drawsBackground = false
+            textView.focusRingType = .none
+            textView.textContainerInset = Layout.inset
+            textView.textContainer?.lineFragmentPadding = 0
+            textView.textContainer?.widthTracksTextView = true
+            textView.minSize = .zero
+            textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            textView.isVerticallyResizable = true
+            textView.isHorizontallyResizable = false
+            textView.autoresizingMask = [.width]
+
+            return textView
+        }
+
+        private func makeConfiguredScrollView(textView: NSTextView) -> NSScrollView {
+            let scrollView = NSScrollView()
+            scrollView.drawsBackground = false
+            scrollView.borderType = .noBorder
+            scrollView.focusRingType = .none
+            scrollView.hasVerticalScroller = true
+            scrollView.hasHorizontalScroller = false
+            scrollView.autohidesScrollers = true
+            scrollView.documentView = textView
+            return scrollView
+        }
+
+        private func updateTextContainerSize(textView: NSTextView, in scrollView: NSScrollView) {
+            let contentSize = scrollView.contentSize
+            textView.minSize = NSSize(width: 0, height: contentSize.height)
+            textView.textContainer?.containerSize = NSSize(
+                width: contentSize.width,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+        }
+
+        private func configureLineNumberRuler(for scrollView: NSScrollView, textView: NSTextView) {
+            if showLineNumbers {
+                if scrollView.verticalRulerView == nil {
+                    let rulerView = LineNumberRulerView(scrollView: scrollView)
+                    rulerView.clientView = textView
+                    scrollView.verticalRulerView = rulerView
+                }
+                scrollView.hasHorizontalRuler = false
+                scrollView.hasVerticalRuler = true
+                scrollView.rulersVisible = true
+                if let rulerView = scrollView.verticalRulerView as? LineNumberRulerView {
+                    rulerView.ruleThickness = Layout.rulerThickness
+                    rulerView.needsDisplay = true
+                }
+            } else {
+                scrollView.rulersVisible = false
+                scrollView.hasVerticalRuler = false
+                scrollView.verticalRulerView = nil
+            }
         }
 
         // MARK: - Coordinator
@@ -397,18 +485,16 @@ internal import SwiftUI
                 let fullRange = NSRange(location: 0, length: storage.length)
                 let selection = textView.selectedRanges
                 let syntax = syntaxPalette.nativeSyntax
-                let baseForeground: NSColor = colorScheme == .dark
-                    ? NSColor(calibratedWhite: 0.90, alpha: 1)
-                    : NSColor(calibratedWhite: 0.16, alpha: 1)
-                let secondaryForeground: NSColor = colorScheme == .dark
-                    ? NSColor(calibratedWhite: 0.65, alpha: 1)
-                    : NSColor(calibratedWhite: 0.40, alpha: 1)
+
+                // Use theme palette for consistency with renderer
+                let palette = NativeThemePalette(theme: .basic, scheme: colorScheme)
+                let baseForeground = palette.textPrimary
+                let secondaryForeground = palette.textSecondary
+
                 let baseFont = fontFamily.nsFont(size: fontSize)
                 let boldFont = fontFamily.nsFont(size: fontSize, traits: .bold)
                 let codeFont = fontFamily.nsFont(size: fontSize, monospaced: true)
-                let codeBackground: NSColor = colorScheme == .dark
-                    ? NSColor(calibratedWhite: 0.16, alpha: 1)
-                    : NSColor(calibratedWhite: 0.95, alpha: 1)
+                let codeBackground = palette.codeBackground
 
                 isApplyingProgrammaticChange = true
                 storage.beginEditing()
@@ -531,6 +617,131 @@ internal import SwiftUI
                     guard let target = result?.range, target.location != NSNotFound, target.length > 0 else { return }
                     handler(target)
                 }
+            }
+        }
+    }
+
+    // MARK: - Line Number Ruler
+
+    /// A custom ruler view that displays line numbers for NSTextView
+    final class LineNumberRulerView: NSRulerView {
+        private var font: NSFont = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        private var textColor: NSColor = .secondaryLabelColor
+        private var separatorColor: NSColor = .separatorColor
+
+        init(scrollView: NSScrollView?) {
+            super.init(scrollView: scrollView, orientation: .verticalRuler)
+            ruleThickness = 40
+            needsDisplay = true
+        }
+
+        required init(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func awakeFromNib() {
+            super.awakeFromNib()
+            MainActor.assumeIsolated {
+                self.ruleThickness = 40
+            }
+        }
+
+        /// Define the required thickness for the ruler
+        override var requiredThickness: CGFloat {
+            40
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            // Fill background
+            NSColor.controlBackgroundColor.setFill()
+            dirtyRect.fill()
+
+            // Draw separator line on the right edge
+            let separatorPath = NSBezierPath()
+            separatorPath.move(to: NSPoint(x: bounds.maxX - 0.5, y: dirtyRect.minY))
+            separatorPath.line(to: NSPoint(x: bounds.maxX - 0.5, y: dirtyRect.maxY))
+            separatorColor.withAlphaComponent(0.3).setStroke()
+            separatorPath.lineWidth = 0.5
+            separatorPath.stroke()
+
+            // Draw line numbers
+            drawLineNumbers(in: dirtyRect)
+        }
+
+        private func drawLineNumbers(in rect: NSRect) {
+            guard
+                let textView = clientView as? NSTextView,
+                let layoutManager = textView.layoutManager,
+                let textContainer = textView.textContainer else { return }
+
+            // Get the visible glyph range
+            let visibleRect = textView.visibleRect
+            let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
+            let characterRange = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+
+            guard glyphRange.length > 0 || textView.string.isEmpty else { return }
+
+            let string = textView.string as NSString
+            var lineNumber = 1
+
+            // Count lines up to the visible range start
+            if characterRange.location > 0 {
+                let prevRange = NSRange(location: 0, length: characterRange.location)
+                let prevString = string.substring(with: prevRange)
+                lineNumber = prevString.components(separatedBy: .newlines).count
+            }
+
+            // Get the text view's coordinate conversion
+            layoutManager
+                .enumerateLineFragments(forGlyphRange: glyphRange) { [weak self] lineRect, _, _, glyphRangeForLine, _ in
+                    guard let self else { return }
+
+                    // Get the character range for this line fragment
+                    let charRange = layoutManager.characterRange(
+                        forGlyphRange: glyphRangeForLine,
+                        actualGlyphRange: nil
+                    )
+                    let lineStart = charRange.location
+
+                    // Only draw line number for the first fragment of each line (not soft wraps)
+                    let isFirstFragment = lineStart == 0 ||
+                        (lineStart > 0 && lineStart - 1 < string.length && string.character(at: lineStart - 1) == 0x0A)
+
+                    if isFirstFragment {
+                        // Convert the line rect to ruler coordinates
+                        let convertedRect = textView.convert(lineRect, to: self)
+
+                        // Only draw if visible in the ruler's dirty rect
+                        if convertedRect.intersects(rect) {
+                            let numberString = "\(lineNumber)" as NSString
+                            let attributes: [NSAttributedString.Key: Any] = [
+                                .font: font,
+                                .foregroundColor: textColor,
+                            ]
+                            let stringSize = numberString.size(withAttributes: attributes)
+
+                            // Right-align the number with padding
+                            let x = ruleThickness - stringSize.width - 8
+                            let y = convertedRect.minY + (convertedRect.height - stringSize.height) / 2
+
+                            numberString.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
+                        }
+
+                        lineNumber += 1
+                    }
+                }
+
+            // Handle empty document case - show line 1
+            if textView.string.isEmpty {
+                let numberString = "1" as NSString
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: textColor,
+                ]
+                let stringSize = numberString.size(withAttributes: attributes)
+                let x = ruleThickness - stringSize.width - 8
+                let y = textView.textContainerInset.height + (font.pointSize - stringSize.height) / 2
+                numberString.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
             }
         }
     }

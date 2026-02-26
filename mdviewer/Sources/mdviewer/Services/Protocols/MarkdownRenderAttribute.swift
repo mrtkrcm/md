@@ -44,4 +44,9 @@ enum MarkdownRenderAttribute {
     ///
     /// Used to mark boundaries between block-level elements.
     static let paragraphSeparator = NSAttributedString.Key("mdv.paragraphSeparator")
+
+    /// Key indicating a code block for line numbering.
+    ///
+    /// The value is a `Bool` indicating this range is part of a code block.
+    static let codeBlock = NSAttributedString.Key("mdv.codeBlock")
 }

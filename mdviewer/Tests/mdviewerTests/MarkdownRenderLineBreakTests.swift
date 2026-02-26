@@ -30,7 +30,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: ReaderColumnWidth.balanced.points
+                    readableWidth: ReaderColumnWidth.balanced.points,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -61,7 +62,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: ReaderColumnWidth.balanced.points
+                    readableWidth: ReaderColumnWidth.balanced.points,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -91,7 +93,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: ReaderColumnWidth.balanced.points
+                    readableWidth: ReaderColumnWidth.balanced.points,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -117,7 +120,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: ReaderColumnWidth.balanced.points
+                    readableWidth: ReaderColumnWidth.balanced.points,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -145,7 +149,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: ReaderColumnWidth.balanced.points
+                    readableWidth: ReaderColumnWidth.balanced.points,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -171,7 +176,8 @@
                         syntaxPalette: .midnight,
                         colorScheme: .light,
                         textSpacing: spacing,
-                        readableWidth: ReaderColumnWidth.balanced.points
+                        readableWidth: ReaderColumnWidth.balanced.points,
+                        showLineNumbers: false
                     )
 
                     let rendered = await MarkdownRenderService.shared.render(request)
@@ -199,7 +205,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .relaxed,
-                    readableWidth: ReaderColumnWidth.balanced.points
+                    readableWidth: ReaderColumnWidth.balanced.points,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)

@@ -19,6 +19,7 @@ struct InspectorMetadataView: View {
                 headerView
 
                 Divider()
+                    .padding(.vertical, DesignTokens.Spacing.compact)
 
                 // Content
                 if frontmatter.entries.isEmpty {

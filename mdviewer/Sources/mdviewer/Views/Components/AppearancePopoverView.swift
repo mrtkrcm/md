@@ -18,6 +18,7 @@ struct AppearancePopoverView: View {
     @Binding var appearanceMode: AppearanceMode
     @Binding var readerTextSpacing: ReaderTextSpacing
     @Binding var readerColumnWidth: ReaderColumnWidth
+    @Binding var showLineNumbers: Bool
 
     var body: some View {
         ScrollView {
@@ -82,6 +83,8 @@ struct AppearancePopoverView: View {
                             Text(size.label).tag(size)
                         }
                     }
+
+                    Toggle("Line Numbers", isOn: $showLineNumbers)
                 }
             }
             .padding(DesignTokens.Spacing.extraLarge)
@@ -121,6 +124,7 @@ struct AppearancePopoverView: View {
         codeFontSize: .constant(.medium),
         appearanceMode: .constant(.auto),
         readerTextSpacing: .constant(.balanced),
-        readerColumnWidth: .constant(.balanced)
+        readerColumnWidth: .constant(.balanced),
+        showLineNumbers: .constant(true)
     )
 }

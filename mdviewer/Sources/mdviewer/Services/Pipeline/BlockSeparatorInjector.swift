@@ -28,11 +28,12 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
 
     /// Identifies block boundaries from PresentationIntent attributes and marks them
     /// for the layout manager to render with proper spacing.
+    ///
+    /// IMPORTANT: This component only marks existing newlines. It does NOT inject new ones.
+    /// Injecting newlines would double-space content when combined with NSParagraphStyle.paragraphSpacing.
+    /// All visual spacing between blocks is handled by TypographyApplier's paragraph styles.
     private func injectSeparatorsAtBlockBoundaries(into text: NSMutableAttributedString, length: Int) {
         let fullRange = NSRange(location: 0, length: length)
-
-        // Collect all block ranges from presentation intents
-        var blockRanges: [NSRange] = []
 
         text.enumerateAttribute(
             MarkdownRenderAttribute.presentationIntent,
@@ -44,54 +45,21 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
             for component in intent.components {
                 switch component.kind {
                 case .paragraph, .header, .codeBlock, .blockQuote, .unorderedList, .orderedList:
-                    blockRanges.append(range)
+                    let endLocation = range.location + range.length
+
+                    // Mark existing newlines at block boundaries
+                    if endLocation < length {
+                        let nextChar = (text.string as NSString).character(at: endLocation)
+                        if CharacterSet.newlines.contains(UnicodeScalar(nextChar)!) {
+                            text.addAttribute(
+                                MarkdownRenderAttribute.paragraphSeparator,
+                                value: true,
+                                range: NSRange(location: endLocation, length: 1)
+                            )
+                        }
+                    }
                 default:
                     break
-                }
-            }
-        }
-
-        // Sort ranges by location
-        blockRanges.sort { $0.location < $1.location }
-
-        // Mark the end of each block (except the last one) with a separator attribute
-        // The actual spacing is handled by paragraph styles applied in TypographyApplier
-        for i in 0 ..< (blockRanges.count - 1) {
-            let currentRange = blockRanges[i]
-            let endLocation = currentRange.location + currentRange.length
-
-            // Ensure there's a newline at the end of the block
-            if endLocation < length {
-                let nextChar = (text.string as NSString).character(at: endLocation)
-                if !CharacterSet.newlines.contains(UnicodeScalar(nextChar)!) {
-                    // Insert a newline character
-                    text.insert(NSAttributedString(string: "\n"), at: endLocation)
-
-                    // Update length and remaining ranges
-                    let insertedLength = 1
-
-                    // Mark this as a paragraph separator
-                    text.addAttribute(
-                        MarkdownRenderAttribute.paragraphSeparator,
-                        value: true,
-                        range: NSRange(location: endLocation, length: insertedLength)
-                    )
-
-                    // Adjust subsequent ranges
-                    for j in (i + 1) ..< blockRanges.count {
-                        let oldRange = blockRanges[j]
-                        blockRanges[j] = NSRange(
-                            location: oldRange.location + insertedLength,
-                            length: oldRange.length
-                        )
-                    }
-                } else {
-                    // Already has newline, just mark it
-                    text.addAttribute(
-                        MarkdownRenderAttribute.paragraphSeparator,
-                        value: true,
-                        range: NSRange(location: endLocation, length: 1)
-                    )
                 }
             }
         }

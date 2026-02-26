@@ -15,18 +15,18 @@
         // MARK: - ReaderTextSpacing.lineSpacing(for:)
 
         func testLineSpacingCompactAt16pt() {
-            // compact: 16 * 1.4 - 16 = 6.4
-            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 6.4, accuracy: 0.001)
+            // compact: 16 * 1.5 - 16 = 8.0
+            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 8.0, accuracy: 0.001)
         }
 
         func testLineSpacingBalancedAt16pt() {
-            // balanced: 16 * 1.55 - 16 = 8.8
-            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 8.8, accuracy: 0.001)
+            // balanced: 16 * 1.65 - 16 = 10.4
+            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 10.4, accuracy: 0.001)
         }
 
         func testLineSpacingRelaxedAt16pt() {
-            // relaxed: 16 * 1.7 - 16 = 11.2
-            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 11.2, accuracy: 0.001)
+            // relaxed: 16 * 1.8 - 16 = 12.8
+            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 12.8, accuracy: 0.001)
         }
 
         func testLineSpacingNeverNegative() {
@@ -61,18 +61,18 @@
         // MARK: - ReaderTextSpacing.paragraphSpacing(for:)
 
         func testParagraphSpacingCompactAt16pt() {
-            // 16*1.4=22.4; 22.4*0.5=11.2
-            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 11.2, accuracy: 0.001)
+            // 16*1.5=24.0; 24.0*0.6=14.4
+            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 14.4, accuracy: 0.001)
         }
 
         func testParagraphSpacingBalancedAt16pt() {
-            // 16*1.55=24.8; 24.8*0.75=18.6
-            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 18.6, accuracy: 0.001)
+            // 16*1.65=26.4; 26.4*0.9=23.76
+            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 23.76, accuracy: 0.001)
         }
 
         func testParagraphSpacingRelaxedAt16pt() {
-            // 16*1.7=27.2; 27.2*1.0=27.2
-            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 27.2, accuracy: 0.001)
+            // 16*1.8=28.8; 28.8*1.2=34.56
+            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 34.56, accuracy: 0.001)
         }
 
         func testParagraphSpacingOrderPreserved() {
@@ -96,9 +96,10 @@
         // MARK: - ReaderTextSpacing kern/hyphenation
 
         func testKernValues() {
-            XCTAssertEqual(ReaderTextSpacing.compact.kern, 0.04, accuracy: 0.001)
-            XCTAssertEqual(ReaderTextSpacing.balanced.kern, 0.10, accuracy: 0.001)
-            XCTAssertEqual(ReaderTextSpacing.relaxed.kern, 0.16, accuracy: 0.001)
+            // Updated for improved typography: negative for compact, neutral for balanced, slight positive for relaxed
+            XCTAssertEqual(ReaderTextSpacing.compact.kern, -0.01, accuracy: 0.001)
+            XCTAssertEqual(ReaderTextSpacing.balanced.kern, 0.0, accuracy: 0.001)
+            XCTAssertEqual(ReaderTextSpacing.relaxed.kern, 0.02, accuracy: 0.001)
         }
 
         func testKernMonotonicallyIncreases() {

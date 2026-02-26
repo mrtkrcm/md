@@ -10,13 +10,21 @@ default:
 
 # ===== Build Commands =====
 
-# Build the project in debug mode
+# Build the project in debug mode (also installs to /Applications)
 build:
+    #!/usr/bin/env bash
+    set -euo pipefail
     cd mdviewer && swift build
+    cd ..
+    scripts/build.sh --no-tests
 
-# Build the project in release mode
+# Build the project in release mode (also installs to /Applications)
 build-release:
+    #!/usr/bin/env bash
+    set -euo pipefail
     cd mdviewer && swift build -c release
+    cd ..
+    scripts/build.sh --no-tests
 
 # Build the full macOS app bundle
 build-app:

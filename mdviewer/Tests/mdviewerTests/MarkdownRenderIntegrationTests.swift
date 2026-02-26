@@ -34,7 +34,8 @@
                         syntaxPalette: palette,
                         colorScheme: scheme,
                         textSpacing: spacing,
-                        readableWidth: readableWidth
+                        readableWidth: readableWidth,
+                        showLineNumbers: false
                     )
                 ).attributedString
             }
@@ -207,7 +208,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
                 let github = RenderRequest(
                     markdown: "# Test",
@@ -218,7 +220,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
                 XCTAssertNotEqual(
                     base.cacheKey,
@@ -237,7 +240,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
                 let sunset = RenderRequest(
                     markdown: "# Test",
@@ -248,7 +252,8 @@
                     syntaxPalette: .sunset,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
                 XCTAssertNotEqual(
                     midnight.cacheKey,
@@ -267,7 +272,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
                 let dark = RenderRequest(
                     markdown: "# Test",
@@ -278,7 +284,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .dark,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
                 XCTAssertNotEqual(
                     light.cacheKey,
@@ -297,7 +304,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
                 let sfPro = RenderRequest(
                     markdown: "# Test",
@@ -308,7 +316,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
                 XCTAssertNotEqual(
                     newYork.cacheKey,
@@ -402,7 +411,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
                 let wide = RenderRequest(
                     markdown: "# Test",
@@ -413,7 +423,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 860
+                    readableWidth: 860,
+                    showLineNumbers: false
                 )
                 XCTAssertNotEqual(
                     narrow.cacheKey,

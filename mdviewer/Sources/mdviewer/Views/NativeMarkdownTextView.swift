@@ -18,6 +18,7 @@ internal import Foundation
         let colorScheme: ColorScheme
         let textSpacing: ReaderTextSpacing
         let readableWidth: CGFloat
+        let showLineNumbers: Bool
 
         func makeNSView(context: Context) -> NSScrollView {
             // Force TextKit 1 (NSLayoutManager) — TextKit 2 (the macOS 14+ default) does not
@@ -77,7 +78,8 @@ internal import Foundation
                 syntaxPalette: syntaxPalette,
                 colorScheme: colorScheme,
                 textSpacing: textSpacing,
-                readableWidth: readableWidth
+                readableWidth: readableWidth,
+                showLineNumbers: showLineNumbers
             )
 
             let coordinator = context.coordinator

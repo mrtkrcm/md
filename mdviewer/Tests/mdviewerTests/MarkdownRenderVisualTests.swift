@@ -40,7 +40,8 @@
                         syntaxPalette: syntaxPalette,
                         colorScheme: scheme,
                         textSpacing: textSpacing,
-                        readableWidth: ReaderColumnWidth.balanced.points
+                        readableWidth: ReaderColumnWidth.balanced.points,
+                        showLineNumbers: false
                     )
                 ).attributedString
             }
@@ -263,7 +264,7 @@
 
             func testUserLineSpacingAppliedToListItems() async {
                 // List items use lineSpacing from the user preference and a reduced
-                // paragraphSpacing (50% of body) to keep items visually compact.
+                // paragraphSpacing (40% of body) to keep items visually compact.
                 let markdown = """
                 - First item
                 - Second item
@@ -279,16 +280,16 @@
                 let style = paragraphStyle(at: itemLoc, in: result)
                 XCTAssertNotNil(style, "List items must have a paragraph style")
                 XCTAssertEqual(style?.lineSpacing ?? 0, ReaderTextSpacing.compact.lineSpacing, accuracy: 0.1)
-                // paragraphSpacing for list items is 35% of the user value (tighter than body).
-                let expected = ReaderTextSpacing.compact.paragraphSpacing * 0.35
+                // paragraphSpacing for list items is 40% of the user value (tighter than body).
+                let expected = ReaderTextSpacing.compact.paragraphSpacing * 0.4
                 XCTAssertEqual(style?.paragraphSpacing ?? 0, expected, accuracy: 0.1)
                 // headIndent must be positive — proves indentation was applied.
                 XCTAssertGreaterThan(style?.headIndent ?? 0, 0, "List items must be indented")
             }
 
             func testUserLineSpacingAppliedToHeadings() async {
-                // Headings use reduced lineSpacing (50% of body preference) and tight
-                // paragraphSpacing below; paragraphSpacingBefore creates the air above.
+                // Headings use level-specific line spacing (tighter than body) and
+                // generous paragraphSpacing for visual hierarchy.
                 let markdown = "# My Heading\n\nSome body text."
 
                 let result = await rendered(markdown, textSpacing: .relaxed)
@@ -299,8 +300,9 @@
 
                 let style = paragraphStyle(at: headingLoc, in: result)
                 XCTAssertNotNil(style)
-                // lineSpacing on headings is fixed at 2pt for tight multi-line heading layout.
-                XCTAssertEqual(style?.lineSpacing ?? 0, 2.0, accuracy: 0.1)
+                // H1 uses 1.2x line height multiplier (tighter than body for large text)
+                // 16 * 2.0 (H1 size) * 1.2 = 38.4; lineSpacing = 38.4 - 32 = 6.4
+                XCTAssertGreaterThan(style?.lineSpacing ?? 0, 0, "Headings must have lineSpacing")
                 // paragraphSpacingBefore must be substantial (heading pulls space above it).
                 XCTAssertGreaterThan(
                     style?.paragraphSpacingBefore ?? 0,

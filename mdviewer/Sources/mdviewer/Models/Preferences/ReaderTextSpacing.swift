@@ -23,16 +23,16 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
 
     // MARK: - Ratio-Based Typography
 
-    /// Line height multiplier for ratio-based leading.
+    /// Line height multiplier for ratio-based leading using the golden ratio (1.618).
     /// Returns the line height as a multiple of font size.
-    /// - Compact: 1.4x (tight, code-like)
-    /// - Balanced: 1.55x (classic book typography)
-    /// - Relaxed: 1.7x (airy, accessible)
+    /// - Compact: 1.5x (tight but readable)
+    /// - Balanced: 1.65x (optimal reading, closer to golden ratio)
+    /// - Relaxed: 1.8x (airy, accessible, good for long-form)
     var lineHeightMultiplier: CGFloat {
         switch self {
-        case .compact: return 1.4
-        case .balanced: return 1.55
-        case .relaxed: return 1.7
+        case .compact: return 1.5
+        case .balanced: return 1.65
+        case .relaxed: return 1.8
         }
     }
 
@@ -44,13 +44,27 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// Calculates paragraph spacing as a multiple of line height.
-    /// This maintains visual separation proportional to text size.
+    /// Uses larger spacing for better visual separation and breathing room.
+    /// - Compact: 0.6x line height
+    /// - Balanced: 0.9x line height (generous but not excessive)
+    /// - Relaxed: 1.2x line height (maximum breathing room)
     func paragraphSpacing(for fontSize: CGFloat) -> CGFloat {
         let lineHeight = fontSize * lineHeightMultiplier
         switch self {
-        case .compact: return lineHeight * 0.5
-        case .balanced: return lineHeight * 0.75
-        case .relaxed: return lineHeight * 1.0
+        case .compact: return lineHeight * 0.6
+        case .balanced: return lineHeight * 0.9
+        case .relaxed: return lineHeight * 1.2
+        }
+    }
+
+    /// Spacing before paragraphs for visual hierarchy.
+    /// Creates more pronounced separation between content blocks.
+    func paragraphSpacingBefore(for fontSize: CGFloat) -> CGFloat {
+        let lineHeight = fontSize * lineHeightMultiplier
+        switch self {
+        case .compact: return lineHeight * 0.3
+        case .balanced: return lineHeight * 0.5
+        case .relaxed: return lineHeight * 0.7
         }
     }
 
@@ -68,12 +82,16 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
         paragraphSpacing(for: 16)
     }
 
-    /// Letter spacing (tracking) for fine-tuning text density.
+    /// Letter spacing (tracking) optimized for screen reading.
+    /// Uses negative tracking for larger sizes, slight positive for body text.
+    /// - Compact: -0.01 (tighter, more words per line)
+    /// - Balanced: 0.0 (neutral, optimal for body text)
+    /// - Relaxed: 0.02 (slightly open, aids readability at distance)
     var kern: CGFloat {
         switch self {
-        case .compact: return 0.04
-        case .balanced: return 0.10
-        case .relaxed: return 0.16
+        case .compact: return -0.01
+        case .balanced: return 0.0
+        case .relaxed: return 0.02
         }
     }
 

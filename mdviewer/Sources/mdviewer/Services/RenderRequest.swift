@@ -21,6 +21,7 @@ internal import SwiftUI
         let colorScheme: ColorScheme
         let textSpacing: ReaderTextSpacing
         let readableWidth: CGFloat
+        let showLineNumbers: Bool
 
         var cacheKey: String {
             let payload = [
@@ -33,6 +34,7 @@ internal import SwiftUI
                 colorScheme == .dark ? "dark" : "light",
                 textSpacing.rawValue,
                 String(format: "%.0f", readableWidth),
+                showLineNumbers ? "ln" : "no-ln",
             ].joined(separator: "|")
 
             let digest = SHA256.hash(data: Data(payload.utf8))

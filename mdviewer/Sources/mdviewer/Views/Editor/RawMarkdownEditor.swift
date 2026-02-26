@@ -16,6 +16,7 @@ struct RawMarkdownEditor: View {
     let fontSize: CGFloat
     let syntaxPalette: SyntaxPalette
     let colorScheme: ColorScheme
+    let showLineNumbers: Bool
 
     var body: some View {
         RawMarkdownTextView(
@@ -23,11 +24,9 @@ struct RawMarkdownEditor: View {
             fontFamily: fontFamily,
             fontSize: fontSize,
             syntaxPalette: syntaxPalette,
-            colorScheme: colorScheme
+            colorScheme: colorScheme,
+            showLineNumbers: showLineNumbers
         )
-        .frame(minHeight: DesignTokens.Layout.minContentHeight, alignment: .topLeading)
-        .glassPanel(cornerRadius: DesignTokens.CornerRadius.medium)
-        .padding(.horizontal, DesignTokens.Spacing.large)
-        .padding(.vertical, DesignTokens.Spacing.extraLarge)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

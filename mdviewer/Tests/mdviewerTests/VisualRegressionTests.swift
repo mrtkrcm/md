@@ -30,7 +30,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -72,7 +73,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -105,7 +107,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -144,7 +147,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -184,7 +188,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -214,7 +219,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -241,7 +247,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -274,7 +281,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -311,7 +319,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .compact,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -343,7 +352,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .relaxed,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -396,7 +406,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: 760
+                    readableWidth: 760,
+                    showLineNumbers: false
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)

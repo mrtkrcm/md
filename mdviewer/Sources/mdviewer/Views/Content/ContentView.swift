@@ -69,7 +69,7 @@ struct ContentView: View {
                     useStarterAction: documentOps.resetToStarter
                 )
                 .padding(.top, 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(.elegantSlide(from: .bottom))
             } else {
                 ReaderContentView(
                     document: $document,
@@ -78,6 +78,7 @@ struct ContentView: View {
                     colorScheme: colorScheme
                 )
                 .transition(.opacity)
+                .smoothAnimation(showStartupWelcome)
             }
         }
         .preferredColorScheme(preferences.effectiveColorScheme)
@@ -111,7 +112,9 @@ struct ContentView: View {
             AppearancePopover(
                 preferences: preferences
             )
+            .transition(.popupScale)
         }
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: showAppearancePopover)
         .alert("Unable to Open Document", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -145,7 +148,7 @@ private struct ReaderContentView: View {
                     .ignoresSafeArea()
 
                 contentView(geometry: geometry)
-                    .padding(.top, geometry.safeAreaInsets.top + 8)
+                    .padding(.top, max(0, geometry.safeAreaInsets.top - 4))
             }
         }
     }
@@ -171,9 +174,12 @@ private struct ReaderContentView: View {
             syntaxPalette: preferences.syntaxPalette,
             colorScheme: preferences.effectiveColorScheme ?? colorScheme,
             textSpacing: preferences.readerTextSpacing,
-            readableWidth: min(preferences.readerColumnWidth.points, geometry.size.width - 48)
+            readableWidth: min(preferences.readerColumnWidth.points, geometry.size.width - 48),
+            showLineNumbers: preferences.showLineNumbers
         )
-        .id("rendered_\(preferences.theme)_\(preferences.readerFontFamily)_\(preferences.readerFontSize)")
+        .id(
+            "rendered_\(preferences.theme)_\(preferences.readerFontFamily)_\(preferences.readerFontSize)_\(preferences.showLineNumbers)"
+        )
         .smoothAnimation(preferences.readerFontSize)
         .smoothAnimation(preferences.readerColumnWidth)
     }
@@ -185,9 +191,10 @@ private struct ReaderContentView: View {
             fontFamily: preferences.readerFontFamily,
             fontSize: preferences.readerFontSize.points,
             syntaxPalette: preferences.syntaxPalette,
-            colorScheme: preferences.effectiveColorScheme ?? colorScheme
+            colorScheme: preferences.effectiveColorScheme ?? colorScheme,
+            showLineNumbers: preferences.showLineNumbers
         )
-        .id("raw_\(preferences.readerFontFamily)_\(preferences.readerFontSize)")
+        .id("raw_\(preferences.readerFontFamily)_\(preferences.readerFontSize)_\(preferences.showLineNumbers)")
         .smoothAnimation(preferences.readerFontSize)
     }
 }
@@ -413,7 +420,8 @@ private struct AppearancePopover: View {
             codeFontSize: preferenceBinding(\.codeFontSize),
             appearanceMode: preferenceBinding(\.appearanceMode),
             readerTextSpacing: preferenceBinding(\.readerTextSpacing),
-            readerColumnWidth: preferenceBinding(\.readerColumnWidth)
+            readerColumnWidth: preferenceBinding(\.readerColumnWidth),
+            showLineNumbers: preferenceBinding(\.showLineNumbers)
         )
     }
 
@@ -493,5 +501,5 @@ private struct PressEventsModifier: ViewModifier {
     print(greeting)
     ```
     """)))
-        .environment(\.preferences, AppPreferences.shared)
+    .environment(\.preferences, AppPreferences.shared)
 }

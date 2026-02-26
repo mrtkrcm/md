@@ -78,7 +78,8 @@ final class AppPreferences {
     var readerFontFamily: ReaderFontFamily {
         get {
             access(keyPath: \.readerFontFamily)
-            return ReaderFontFamily(rawValue: UserDefaults.standard.string(forKey: Keys.readerFontFamily) ?? "") ?? .newYork
+            return ReaderFontFamily(rawValue: UserDefaults.standard.string(forKey: Keys.readerFontFamily) ?? "") ??
+                .newYork
         }
         set {
             withMutation(keyPath: \.readerFontFamily) {
@@ -102,7 +103,8 @@ final class AppPreferences {
     var readerTextSpacing: ReaderTextSpacing {
         get {
             access(keyPath: \.readerTextSpacing)
-            return ReaderTextSpacing(rawValue: UserDefaults.standard.string(forKey: Keys.readerTextSpacing) ?? "") ?? .balanced
+            return ReaderTextSpacing(rawValue: UserDefaults.standard.string(forKey: Keys.readerTextSpacing) ?? "") ??
+                .balanced
         }
         set {
             withMutation(keyPath: \.readerTextSpacing) {
@@ -114,11 +116,24 @@ final class AppPreferences {
     var readerColumnWidth: ReaderColumnWidth {
         get {
             access(keyPath: \.readerColumnWidth)
-            return ReaderColumnWidth(rawValue: UserDefaults.standard.string(forKey: Keys.readerColumnWidth) ?? "") ?? .balanced
+            return ReaderColumnWidth(rawValue: UserDefaults.standard.string(forKey: Keys.readerColumnWidth) ?? "") ??
+                .balanced
         }
         set {
             withMutation(keyPath: \.readerColumnWidth) {
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerColumnWidth)
+            }
+        }
+    }
+
+    var showLineNumbers: Bool {
+        get {
+            access(keyPath: \.showLineNumbers)
+            return UserDefaults.standard.bool(forKey: Keys.showLineNumbers)
+        }
+        set {
+            withMutation(keyPath: \.showLineNumbers) {
+                UserDefaults.standard.set(newValue, forKey: Keys.showLineNumbers)
             }
         }
     }
@@ -135,6 +150,7 @@ final class AppPreferences {
         static let readerMode = "readerMode"
         static let readerTextSpacing = "readerTextSpacing"
         static let readerColumnWidth = "readerColumnWidth"
+        static let showLineNumbers = "showLineNumbers"
     }
 
     // MARK: - Computed Properties

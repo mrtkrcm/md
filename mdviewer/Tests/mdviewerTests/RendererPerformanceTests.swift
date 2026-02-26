@@ -26,7 +26,8 @@
                     syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
-                    readableWidth: ReaderColumnWidth.balanced.points
+                    readableWidth: ReaderColumnWidth.balanced.points,
+                    showLineNumbers: false
                 )
 
                 // Cold render: first render, no cache entry.

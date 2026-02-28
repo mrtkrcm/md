@@ -15,18 +15,18 @@
         // MARK: - ReaderTextSpacing.lineSpacing(for:)
 
         func testLineSpacingCompactAt16pt() {
-            // compact: 16 * 1.5 - 16 = 8.0
-            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 8.0, accuracy: 0.001)
+            // compact: 16 * 1.6 - 16 = 9.6
+            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 9.6, accuracy: 0.001)
         }
 
         func testLineSpacingBalancedAt16pt() {
-            // balanced: 16 * 1.65 - 16 = 10.4
-            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 10.4, accuracy: 0.001)
+            // balanced: 16 * 1.75 - 16 = 12.0
+            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 12.0, accuracy: 0.001)
         }
 
         func testLineSpacingRelaxedAt16pt() {
-            // relaxed: 16 * 1.8 - 16 = 12.8
-            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 12.8, accuracy: 0.001)
+            // relaxed: 16 * 1.9 - 16 = 14.4
+            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 14.4, accuracy: 0.001)
         }
 
         func testLineSpacingNeverNegative() {
@@ -61,18 +61,18 @@
         // MARK: - ReaderTextSpacing.paragraphSpacing(for:)
 
         func testParagraphSpacingCompactAt16pt() {
-            // 16*1.5=24.0; 24.0*0.6=14.4
-            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 14.4, accuracy: 0.001)
+            // 16*1.6=25.6; 25.6*0.6=15.36 (improved for readability)
+            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 15.36, accuracy: 0.001)
         }
 
         func testParagraphSpacingBalancedAt16pt() {
-            // 16*1.65=26.4; 26.4*0.9=23.76
-            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 23.76, accuracy: 0.001)
+            // 16*1.75=28.0; 28.0*0.9=25.2 (improved for readability)
+            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 25.2, accuracy: 0.001)
         }
 
         func testParagraphSpacingRelaxedAt16pt() {
-            // 16*1.8=28.8; 28.8*1.2=34.56
-            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 34.56, accuracy: 0.001)
+            // 16*1.9=30.4; 30.4*1.2=36.48 (improved for readability)
+            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 36.48, accuracy: 0.001)
         }
 
         func testParagraphSpacingOrderPreserved() {
@@ -96,10 +96,10 @@
         // MARK: - ReaderTextSpacing kern/hyphenation
 
         func testKernValues() {
-            // Updated for improved typography: negative for compact, neutral for balanced, slight positive for relaxed
-            XCTAssertEqual(ReaderTextSpacing.compact.kern, -0.01, accuracy: 0.001)
-            XCTAssertEqual(ReaderTextSpacing.balanced.kern, 0.0, accuracy: 0.001)
-            XCTAssertEqual(ReaderTextSpacing.relaxed.kern, 0.02, accuracy: 0.001)
+            // Improved for readability: neutral for compact, slight positive for balanced and relaxed
+            XCTAssertEqual(ReaderTextSpacing.compact.kern, 0.0, accuracy: 0.001)
+            XCTAssertEqual(ReaderTextSpacing.balanced.kern, 0.01, accuracy: 0.001)
+            XCTAssertEqual(ReaderTextSpacing.relaxed.kern, 0.025, accuracy: 0.001)
         }
 
         func testKernMonotonicallyIncreases() {
@@ -116,9 +116,9 @@
         // MARK: - ReaderColumnWidth
 
         func testColumnWidthPoints() {
-            XCTAssertEqual(ReaderColumnWidth.narrow.points, 680, accuracy: 0.001)
-            XCTAssertEqual(ReaderColumnWidth.balanced.points, 760, accuracy: 0.001)
-            XCTAssertEqual(ReaderColumnWidth.wide.points, 860, accuracy: 0.001)
+            XCTAssertEqual(ReaderColumnWidth.narrow.points, 640, accuracy: 0.001)
+            XCTAssertEqual(ReaderColumnWidth.balanced.points, 720, accuracy: 0.001)
+            XCTAssertEqual(ReaderColumnWidth.wide.points, 840, accuracy: 0.001)
         }
 
         func testColumnWidthOrderPreserved() {
@@ -129,22 +129,39 @@
         // MARK: - ReaderFontSize
 
         func testFontSizePointValues() {
-            XCTAssertEqual(ReaderFontSize.compact.points, 13, accuracy: 0.001)
-            XCTAssertEqual(ReaderFontSize.standard.points, 16, accuracy: 0.001)
-            XCTAssertEqual(ReaderFontSize.comfortable.points, 17, accuracy: 0.001)
+            XCTAssertEqual(ReaderFontSize.compact.points, 15, accuracy: 0.001)
+            XCTAssertEqual(ReaderFontSize.standard.points, 17, accuracy: 0.001)
+            XCTAssertEqual(ReaderFontSize.comfortable.points, 19, accuracy: 0.001)
         }
 
         // MARK: - CodeFontSize
 
         func testCodeFontSizeFromKnown() {
-            XCTAssertEqual(CodeFontSize.from(rawValue: 12), .small)
-            XCTAssertEqual(CodeFontSize.from(rawValue: 14), .medium)
-            XCTAssertEqual(CodeFontSize.from(rawValue: 16), .large)
+            XCTAssertEqual(CodeFontSize.from(rawValue: 13), .small)
+            XCTAssertEqual(CodeFontSize.from(rawValue: 15), .medium)
+            XCTAssertEqual(CodeFontSize.from(rawValue: 17), .large)
         }
 
         func testCodeFontSizeFromUnknownDefaultsMedium() {
             XCTAssertEqual(CodeFontSize.from(rawValue: 0), .medium)
             XCTAssertEqual(CodeFontSize.from(rawValue: 99), .medium)
+        }
+
+        func testCodeFontSizePointValues() {
+            XCTAssertEqual(CodeFontSize.small.points, 13, accuracy: 0.001)
+            XCTAssertEqual(CodeFontSize.medium.points, 15, accuracy: 0.001)
+            XCTAssertEqual(CodeFontSize.large.points, 17, accuracy: 0.001)
+        }
+
+        func testCodeFontSizePointsMatchRawValue() {
+            for size in CodeFontSize.allCases {
+                XCTAssertEqual(
+                    size.points,
+                    CGFloat(size.rawValue),
+                    accuracy: 0.001,
+                    "\(size.label) points should equal CGFloat(rawValue)"
+                )
+            }
         }
 
         // MARK: - SyntaxPalette exhaustive

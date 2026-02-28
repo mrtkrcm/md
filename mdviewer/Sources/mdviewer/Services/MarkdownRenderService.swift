@@ -40,16 +40,6 @@ internal import SwiftUI
         /// Use this for standard rendering throughout the app.
         static let shared = MarkdownRenderService()
 
-        /// Statistics for monitoring render performance.
-        struct Stats: Sendable {
-            /// Number of times a render result was served from cache
-            var cacheHits: Int = 0
-            /// Number of times a render required full processing
-            var cacheMisses: Int = 0
-            /// Duration of the last render operation in milliseconds
-            var lastRenderDurationMs: Int = 0
-        }
-
         // MARK: - Dependencies
 
         private let parser: MarkdownParsing
@@ -62,7 +52,7 @@ internal import SwiftUI
         private let logger = Logger(subsystem: "mdviewer", category: "render")
         private let signpostLog = OSLog(subsystem: "mdviewer", category: "render-signpost")
         private let cache: NSCache<NSString, RenderedMarkdown>
-        private var stats = Stats()
+        private var stats = RenderStats()
 
         // MARK: - Initialization
 
@@ -104,8 +94,7 @@ internal import SwiftUI
             let cacheKey = NSString(string: request.cacheKey)
             if let cached = cache.object(forKey: cacheKey) {
                 stats.cacheHits += 1
-                logger
-                    .debug("Cache hit for key: \(cacheKey.substring(to: min(8, cacheKey.length)), privacy: .public)...")
+                logger.debug("Cache hit for key: \(String(request.cacheKey.prefix(8)), privacy: .public)...")
                 return cached
             }
             stats.cacheMisses += 1
@@ -143,10 +132,10 @@ internal import SwiftUI
             return rendered
         }
 
-        /// Returns current cache statistics for monitoring performance.
+        /// Returns a snapshot of current cache statistics for monitoring performance.
         ///
-        /// - Returns: Statistics including cache hits, misses
-        func snapshotStats() -> Stats {
+        /// - Returns: A ``RenderStats`` value with cache hits, misses, and last duration
+        func snapshotStats() -> RenderStats {
             stats
         }
 
@@ -218,7 +207,7 @@ internal import SwiftUI
         /// Clears the cache and resets statistics.
         func resetForTesting() {
             cache.removeAllObjects()
-            stats = Stats()
+            stats = RenderStats()
             logger.debug("Service reset for testing")
         }
     }

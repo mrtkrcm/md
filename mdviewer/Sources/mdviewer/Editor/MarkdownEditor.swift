@@ -8,7 +8,8 @@ internal import SwiftUI
 /// Handles markdown text insertion operations.
 @MainActor
 struct MarkdownEditor {
-    let preferences: AppPreferences
+    let getReaderMode: () -> ReaderMode
+    let setReaderMode: (ReaderMode) -> Void
 
     /// Inserts markdown syntax at the current cursor position.
     /// If not in raw mode, switches to raw mode first.
@@ -19,8 +20,8 @@ struct MarkdownEditor {
     /// Inserts markdown syntax with prefix and suffix at the current cursor position.
     /// If not in raw mode, switches to raw mode first.
     func insertSyntax(prefix: String, suffix: String) {
-        guard preferences.readerMode == .raw else {
-            preferences.readerMode = .raw
+        guard getReaderMode() == .raw else {
+            setReaderMode(.raw)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 NotificationCenter.default.post(
                     name: .insertText,

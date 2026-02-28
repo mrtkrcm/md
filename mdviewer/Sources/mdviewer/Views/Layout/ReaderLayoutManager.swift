@@ -17,9 +17,11 @@
     /// used — that API's `drawBackground` is never invoked reliably in SwiftUI-hosted
     /// TK1 views on macOS 14+.
     final class ReaderLayoutManager: NSLayoutManager {
-        private static let codeCornerRadius: CGFloat = 8
-        private static let codeVPad: CGFloat = 12
+        private static let codeCornerRadius: CGFloat = 6
+        private static let codeVPad: CGFloat = 8
+        private static let codeHPadding: CGFloat = 12
         private static let bqBarWidth: CGFloat = 3
+        private static let bqHPadding: CGFloat = 12
         private static let lineNumberGutterPadding: CGFloat = 12
         private static let lineNumberMinWidth: CGFloat = 32
 
@@ -58,8 +60,10 @@
             var codeSpans: [DecorationSpan] = []
             var bqSpans: [DecorationSpan] = []
 
-            var i = charRange.location
-            while i < charRange.location + charRange.length, i < totalLen {
+            let scanStart = max(0, charRange.location)
+            let scanEnd = min(charRange.location + charRange.length, totalLen)
+            var i = scanStart
+            while i < scanEnd {
                 var effectiveRange = NSRange(location: i, length: 1)
                 let intent = ts.attribute(
                     MarkdownRenderAttribute.presentationIntent,
@@ -68,6 +72,7 @@
                 )
                     as? PresentationIntent
                 let end = min(effectiveRange.location + effectiveRange.length, totalLen)
+                guard end > i else { break } // prevent infinite loop on degenerate ranges
 
                 let isCode = intent?.components.contains {
                     if case .codeBlock = $0.kind { return true }; return false
@@ -173,13 +178,13 @@
                 let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
                 guard !rect.isNull else { continue }
 
-                // Indent increases with nesting depth.
+                // Indent increases with nesting depth
                 let leftInset = CGFloat(depth - 1) * 16 + origin.x
                 let drawRect = CGRect(
                     x: leftInset,
-                    y: rect.minY - 2,
-                    width: containerWidth - leftInset + origin.x,
-                    height: rect.height + 4
+                    y: rect.minY - 4,
+                    width: containerWidth - leftInset,
+                    height: rect.height + 8
                 )
 
                 ctx.saveGState()
@@ -223,23 +228,30 @@
         }
 
         private func calculateLineNumberGutterWidth(text: NSTextStorage, range: Range<Int>) -> CGFloat {
+            // Bounds check
+            let safeRange = range.clamped(to: 0 ..< max(1, text.length))
+            guard !safeRange.isEmpty else { return Self.lineNumberMinWidth }
+
             let lineCount = countLines(
                 in: text,
-                range: NSRange(location: range.lowerBound, length: range.upperBound - range.lowerBound)
+                range: NSRange(location: safeRange.lowerBound, length: safeRange.upperBound - safeRange.lowerBound)
             )
-            let digitCount = String(lineCount).count
-            // Approximate width: each digit is ~0.6x font size, plus padding
-            let fontSize = getCodeFontSize(in: text, at: range.lowerBound) ?? 14
+            let digitCount = max(1, String(lineCount).count)
+            let fontSize = getCodeFontSize(in: text, at: safeRange.lowerBound) ?? 14
             return max(CGFloat(digitCount) * fontSize * 0.6 + Self.lineNumberGutterPadding, Self.lineNumberMinWidth)
         }
 
         private func countLines(in text: NSTextStorage, range: NSRange) -> Int {
-            var count = 0
-            let substring = (text.string as NSString).substring(with: range)
-            // Count non-empty lines
-            let lines = substring.components(separatedBy: .newlines)
-            count = lines.count
-            // Adjust for trailing newline
+            let nsString = text.string as NSString
+            // Clamp range to valid bounds
+            let safeLocation = max(0, min(range.location, nsString.length))
+            let safeLength = max(0, min(range.length, nsString.length - safeLocation))
+            guard safeLength > 0 else { return 1 }
+
+            let safeRange = NSRange(location: safeLocation, length: safeLength)
+            let substring = nsString.substring(with: safeRange)
+            var count = substring.components(separatedBy: .newlines).count
+            // Adjust for trailing newline (it doesn't start a visible line)
             if substring.hasSuffix("\n") {
                 count -= 1
             }
@@ -247,9 +259,9 @@
         }
 
         private func getCodeFontSize(in text: NSTextStorage, at location: Int) -> CGFloat? {
-            guard let font = text.attribute(.font, at: location, effectiveRange: nil) as? NSFont else {
-                return nil
-            }
+            guard location >= 0, location < text.length,
+                  let font = text.attribute(.font, at: location, effectiveRange: nil) as? NSFont
+            else { return nil }
             return font.pointSize
         }
 
@@ -261,8 +273,11 @@
             gutterWidth: CGFloat,
             ctx: CGContext
         ) {
+            guard span.charStart >= 0, span.charEnd > span.charStart, span.charEnd <= text.length else { return }
+
             let charRange = NSRange(location: span.charStart, length: span.charEnd - span.charStart)
             let glyphRange = glyphRange(forCharacterRange: charRange, actualCharacterRange: nil)
+            guard glyphRange.length > 0 else { return }
 
             guard let font = getCodeFont(in: text, at: span.charStart) else { return }
             let fontSize = font.pointSize
@@ -305,7 +320,8 @@
         }
 
         private func getCodeFont(in text: NSTextStorage, at location: Int) -> NSFont? {
-            text.attribute(.font, at: location, effectiveRange: nil) as? NSFont
+            guard location >= 0, location < text.length else { return nil }
+            return text.attribute(.font, at: location, effectiveRange: nil) as? NSFont
         }
     }
 #endif

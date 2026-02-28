@@ -5,7 +5,12 @@
 
 internal import SwiftUI
 
-/// Centralized application preferences using @Observable with manual observation support.
+/// Centralized application preferences using @Observable with in-memory backing storage.
+///
+/// Values are read from UserDefaults once at initialization and cached in-memory backing
+/// properties. Writes update both the backing store and UserDefaults atomically inside
+/// `withMutation`, so SwiftUI observation is always notified correctly without triggering
+/// redundant UserDefaults I/O on every property access.
 @MainActor
 @Observable
 final class AppPreferences {
@@ -13,15 +18,29 @@ final class AppPreferences {
 
     static let shared = AppPreferences()
 
-    // MARK: - Published Properties (for observation)
+    // MARK: - Backing Storage
+
+    @ObservationIgnored private var _theme: AppTheme
+    @ObservationIgnored private var _syntaxPalette: SyntaxPalette
+    @ObservationIgnored private var _readerFontSize: ReaderFontSize
+    @ObservationIgnored private var _codeFontSize: CodeFontSize
+    @ObservationIgnored private var _appearanceMode: AppearanceMode
+    @ObservationIgnored private var _readerFontFamily: ReaderFontFamily
+    @ObservationIgnored private var _readerMode: ReaderMode
+    @ObservationIgnored private var _readerTextSpacing: ReaderTextSpacing
+    @ObservationIgnored private var _readerColumnWidth: ReaderColumnWidth
+    @ObservationIgnored private var _showLineNumbers: Bool
+
+    // MARK: - Observed Properties
 
     var theme: AppTheme {
         get {
             access(keyPath: \.theme)
-            return AppTheme(rawValue: UserDefaults.standard.string(forKey: Keys.theme) ?? "") ?? .github
+            return _theme
         }
         set {
             withMutation(keyPath: \.theme) {
+                _theme = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.theme)
             }
         }
@@ -30,10 +49,11 @@ final class AppPreferences {
     var syntaxPalette: SyntaxPalette {
         get {
             access(keyPath: \.syntaxPalette)
-            return SyntaxPalette(rawValue: UserDefaults.standard.string(forKey: Keys.syntaxPalette) ?? "") ?? .midnight
+            return _syntaxPalette
         }
         set {
             withMutation(keyPath: \.syntaxPalette) {
+                _syntaxPalette = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.syntaxPalette)
             }
         }
@@ -42,10 +62,11 @@ final class AppPreferences {
     var readerFontSize: ReaderFontSize {
         get {
             access(keyPath: \.readerFontSize)
-            return ReaderFontSize(rawValue: UserDefaults.standard.integer(forKey: Keys.readerFontSize)) ?? .standard
+            return _readerFontSize
         }
         set {
             withMutation(keyPath: \.readerFontSize) {
+                _readerFontSize = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerFontSize)
             }
         }
@@ -54,10 +75,11 @@ final class AppPreferences {
     var codeFontSize: CodeFontSize {
         get {
             access(keyPath: \.codeFontSize)
-            return CodeFontSize(rawValue: UserDefaults.standard.integer(forKey: Keys.codeFontSize)) ?? .medium
+            return _codeFontSize
         }
         set {
             withMutation(keyPath: \.codeFontSize) {
+                _codeFontSize = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.codeFontSize)
             }
         }
@@ -66,10 +88,11 @@ final class AppPreferences {
     var appearanceMode: AppearanceMode {
         get {
             access(keyPath: \.appearanceMode)
-            return AppearanceMode(rawValue: UserDefaults.standard.string(forKey: Keys.appearanceMode) ?? "") ?? .auto
+            return _appearanceMode
         }
         set {
             withMutation(keyPath: \.appearanceMode) {
+                _appearanceMode = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.appearanceMode)
             }
         }
@@ -78,11 +101,11 @@ final class AppPreferences {
     var readerFontFamily: ReaderFontFamily {
         get {
             access(keyPath: \.readerFontFamily)
-            return ReaderFontFamily(rawValue: UserDefaults.standard.string(forKey: Keys.readerFontFamily) ?? "") ??
-                .newYork
+            return _readerFontFamily
         }
         set {
             withMutation(keyPath: \.readerFontFamily) {
+                _readerFontFamily = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerFontFamily)
             }
         }
@@ -91,10 +114,11 @@ final class AppPreferences {
     var readerMode: ReaderMode {
         get {
             access(keyPath: \.readerMode)
-            return ReaderMode(rawValue: UserDefaults.standard.string(forKey: Keys.readerMode) ?? "") ?? .rendered
+            return _readerMode
         }
         set {
             withMutation(keyPath: \.readerMode) {
+                _readerMode = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerMode)
             }
         }
@@ -103,11 +127,11 @@ final class AppPreferences {
     var readerTextSpacing: ReaderTextSpacing {
         get {
             access(keyPath: \.readerTextSpacing)
-            return ReaderTextSpacing(rawValue: UserDefaults.standard.string(forKey: Keys.readerTextSpacing) ?? "") ??
-                .balanced
+            return _readerTextSpacing
         }
         set {
             withMutation(keyPath: \.readerTextSpacing) {
+                _readerTextSpacing = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerTextSpacing)
             }
         }
@@ -116,11 +140,11 @@ final class AppPreferences {
     var readerColumnWidth: ReaderColumnWidth {
         get {
             access(keyPath: \.readerColumnWidth)
-            return ReaderColumnWidth(rawValue: UserDefaults.standard.string(forKey: Keys.readerColumnWidth) ?? "") ??
-                .balanced
+            return _readerColumnWidth
         }
         set {
             withMutation(keyPath: \.readerColumnWidth) {
+                _readerColumnWidth = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.readerColumnWidth)
             }
         }
@@ -129,10 +153,11 @@ final class AppPreferences {
     var showLineNumbers: Bool {
         get {
             access(keyPath: \.showLineNumbers)
-            return UserDefaults.standard.bool(forKey: Keys.showLineNumbers)
+            return _showLineNumbers
         }
         set {
             withMutation(keyPath: \.showLineNumbers) {
+                _showLineNumbers = newValue
                 UserDefaults.standard.set(newValue, forKey: Keys.showLineNumbers)
             }
         }
@@ -173,7 +198,19 @@ final class AppPreferences {
 
     // MARK: - Initialization
 
-    private init() {}
+    private init() {
+        let ud = UserDefaults.standard
+        _theme = AppTheme(rawValue: ud.string(forKey: Keys.theme) ?? "") ?? .github
+        _syntaxPalette = SyntaxPalette(rawValue: ud.string(forKey: Keys.syntaxPalette) ?? "") ?? .midnight
+        _readerFontSize = ReaderFontSize(rawValue: ud.integer(forKey: Keys.readerFontSize)) ?? .standard
+        _codeFontSize = CodeFontSize(rawValue: ud.integer(forKey: Keys.codeFontSize)) ?? .medium
+        _appearanceMode = AppearanceMode(rawValue: ud.string(forKey: Keys.appearanceMode) ?? "") ?? .auto
+        _readerFontFamily = ReaderFontFamily(rawValue: ud.string(forKey: Keys.readerFontFamily) ?? "") ?? .newYork
+        _readerMode = ReaderMode(rawValue: ud.string(forKey: Keys.readerMode) ?? "") ?? .rendered
+        _readerTextSpacing = ReaderTextSpacing(rawValue: ud.string(forKey: Keys.readerTextSpacing) ?? "") ?? .balanced
+        _readerColumnWidth = ReaderColumnWidth(rawValue: ud.string(forKey: Keys.readerColumnWidth) ?? "") ?? .balanced
+        _showLineNumbers = ud.bool(forKey: Keys.showLineNumbers)
+    }
 
     // MARK: - Font Size Actions
 

@@ -36,6 +36,8 @@ internal import Foundation
             let textContainer = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
             textContainer.lineFragmentPadding = 0
             textContainer.widthTracksTextView = true
+            // Ensure proper container sizing behavior for macOS native rendering
+            textContainer.heightTracksTextView = false
             layoutManager.addTextContainer(textContainer)
 
             // This designated initialiser adopts the textContainer (and its storage chain)
@@ -48,7 +50,6 @@ internal import Foundation
             textView.usesFindBar = true
             textView.isRichText = true
             textView.allowsUndo = false
-            textView.textContainerInset = NSSize(width: 24, height: 24)
             textView.preferredReadableWidth = readableWidth
 
             let scrollView = NSScrollView()
@@ -99,8 +100,13 @@ internal import Foundation
                     let textView
                 else { return }
 
+                // Preserve scroll position across re-renders
+                let scrollPoint = textView.enclosingScrollView?.documentVisibleRect.origin
                 textView.textStorage?.setAttributedString(rendered.attributedString)
                 textView.updateContainerGeometry()
+                if let scrollPoint {
+                    textView.scroll(scrollPoint)
+                }
             }
         }
 

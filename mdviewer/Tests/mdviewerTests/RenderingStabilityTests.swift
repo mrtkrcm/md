@@ -412,6 +412,57 @@
 
                 XCTAssertGreaterThan(blockCount, 0, "Should have multiple block elements")
             }
+
+            /// Regression test: separator injection must work across block transitions
+            /// even when parser intent metadata is adjacent/overlapping semantically.
+            func testBlockSeparatorInjectorSeparatesAdjacentParagraphBlocks() throws {
+                let markdown = """
+                Alpha paragraph.
+
+                Beta paragraph.
+                """
+
+                let parsed = try MarkdownParser().parse(markdown)
+                let mutable = NSMutableAttributedString(attributedString: parsed)
+
+                BlockSeparatorInjector().injectSeparators(into: mutable)
+
+                let rendered = mutable.string as NSString
+                let alphaRange = rendered.range(of: "Alpha paragraph.")
+                let betaRange = rendered.range(of: "Beta paragraph.")
+
+                XCTAssertNotEqual(alphaRange.location, NSNotFound)
+                XCTAssertNotEqual(betaRange.location, NSNotFound)
+                XCTAssertGreaterThan(betaRange.location, alphaRange.location)
+
+                let betweenStart = alphaRange.location + alphaRange.length
+                let betweenLength = betaRange.location - betweenStart
+                let between = rendered.substring(with: NSRange(location: betweenStart, length: betweenLength))
+
+                XCTAssertTrue(
+                    between.contains(where: { $0.isNewline }),
+                    "Expected a newline separator between adjacent paragraph blocks"
+                )
+            }
+
+            /// Regression test: scanning for existing newlines must be Unicode-safe
+            /// with non-BMP characters (e.g. emoji).
+            func testBlockSeparatorInjectorIsSafeWithEmojiContent() throws {
+                let markdown = """
+                Emoji 😀 paragraph.
+
+                Next 😎 paragraph.
+                """
+
+                let parsed = try MarkdownParser().parse(markdown)
+                let mutable = NSMutableAttributedString(attributedString: parsed)
+
+                // Should not crash while scanning around block boundaries.
+                BlockSeparatorInjector().injectSeparators(into: mutable)
+
+                XCTAssertTrue(mutable.string.contains("Emoji 😀 paragraph."))
+                XCTAssertTrue(mutable.string.contains("Next 😎 paragraph."))
+            }
         }
     #endif
 #endif

@@ -25,8 +25,14 @@ struct ContentView: View {
     @State private var openErrorMessage: String?
     @State private var showMetadataInspector = false
     @State private var showAppearancePopover = false
+    @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
 
     private let logger = Logger(subsystem: "mdviewer", category: "ui")
+
+    private var windowReaderMode: ReaderMode {
+        get { ReaderMode.from(rawValue: windowReaderModeRaw) }
+        nonmutating set { windowReaderModeRaw = newValue.rawValue }
+    }
 
     // MARK: - Helpers
 
@@ -40,7 +46,10 @@ struct ContentView: View {
     }
 
     private var markdownEditor: MarkdownEditor {
-        MarkdownEditor(preferences: preferences)
+        MarkdownEditor(
+            getReaderMode: { windowReaderMode },
+            setReaderMode: { windowReaderMode = $0 }
+        )
     }
 
     private var editorActions: EditorActions {
@@ -50,6 +59,8 @@ struct ContentView: View {
             insertCodeBlock: { markdownEditor.insertSyntax(prefix: "\n```\n", suffix: "\n```\n") },
             insertLink: { markdownEditor.insertSyntax(prefix: "[", suffix: "](url)") },
             insertImage: { markdownEditor.insertSyntax(prefix: "![", suffix: "](image-url)") },
+            setRenderedMode: { windowReaderMode = .rendered },
+            setRawMode: { windowReaderMode = .raw },
             showAppearanceSettings: { showAppearancePopover = true }
         )
     }
@@ -74,6 +85,7 @@ struct ContentView: View {
                 ReaderContentView(
                     document: $document,
                     parsed: parsed,
+                    readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
                     preferences: preferences,
                     colorScheme: colorScheme
                 )
@@ -84,13 +96,14 @@ struct ContentView: View {
         .preferredColorScheme(preferences.effectiveColorScheme)
         .toolbar {
             ContentToolbar(
-                preferences: preferences,
+                readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
                 showAppearancePopover: $showAppearancePopover,
                 showMetadataInspector: $showMetadataInspector,
                 openAction: documentOps.openFromDisk,
                 documentText: document.text
             )
         }
+        .toolbarRole(.editor)
         .inspector(isPresented: $showMetadataInspector) {
             if let metadataView = InspectorMetadataView(frontmatter: parsed.frontmatter) {
                 metadataView
@@ -104,6 +117,9 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.editorActions, editorActions)
         .onAppear {
+            if windowReaderModeRaw.isEmpty {
+                windowReaderModeRaw = preferences.readerMode.rawValue
+            }
             if !document.isEffectivelyEmpty {
                 showStartupWelcome = false
             }
@@ -138,6 +154,7 @@ struct ContentView: View {
 private struct ReaderContentView: View {
     @Binding var document: MarkdownDocument
     let parsed: ParsedMarkdown
+    @Binding var readerMode: ReaderMode
     let preferences: AppPreferences
     let colorScheme: ColorScheme
 
@@ -155,7 +172,7 @@ private struct ReaderContentView: View {
 
     @ViewBuilder
     private func contentView(geometry: GeometryProxy) -> some View {
-        switch preferences.readerMode {
+        switch readerMode {
         case .rendered:
             renderedContent(geometry: geometry)
         case .raw:
@@ -169,7 +186,7 @@ private struct ReaderContentView: View {
             markdown: parsed.renderedMarkdown,
             readerFontFamily: preferences.readerFontFamily,
             readerFontSize: preferences.readerFontSize.points,
-            codeFontSize: CGFloat(preferences.codeFontSize.rawValue),
+            codeFontSize: preferences.codeFontSize.points,
             appTheme: preferences.theme,
             syntaxPalette: preferences.syntaxPalette,
             colorScheme: preferences.effectiveColorScheme ?? colorScheme,
@@ -199,213 +216,7 @@ private struct ReaderContentView: View {
     }
 }
 
-/// Toolbar content for the content view.
-private struct ContentToolbar: ToolbarContent {
-    let preferences: AppPreferences
-    @Binding var showAppearancePopover: Bool
-    @Binding var showMetadataInspector: Bool
-    let openAction: () -> Void
-    let documentText: String
 
-    var body: some ToolbarContent {
-        // Mode picker - principal placement for centered importance
-        ToolbarItem(id: "mode", placement: .principal) {
-            ModePicker(readerMode: preferenceBinding(\.readerMode))
-        }
-
-        // Trailing action items - organized in logical order
-        ToolbarItem(id: "metadata", placement: .automatic) {
-            ToolbarButton(
-                action: { showMetadataInspector.toggle() },
-                systemImage: "sidebar.right",
-                isActive: showMetadataInspector,
-                helpText: "Toggle Metadata Panel"
-            )
-        }
-
-        ToolbarItem(id: "appearance", placement: .automatic) {
-            ToolbarButton(
-                action: { showAppearancePopover = true },
-                systemImage: "paintbrush",
-                helpText: "Appearance Settings"
-            )
-        }
-
-        ToolbarItem(id: "share", placement: .automatic) {
-            ShareLink(item: documentText) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .contentShape(Rectangle())
-                    .frame(width: 28, height: 28)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.clear)
-                    )
-            }
-            .buttonStyle(.plain)
-            .help("Share Document")
-        }
-
-        ToolbarItem(id: "open", placement: .automatic) {
-            ToolbarButton(
-                action: openAction,
-                systemImage: "folder",
-                helpText: "Open markdown file"
-            )
-        }
-    }
-
-    private func preferenceBinding<T>(_ keyPath: ReferenceWritableKeyPath<AppPreferences, T>) -> Binding<T> {
-        Binding(
-            get: { preferences[keyPath: keyPath] },
-            set: { preferences[keyPath: keyPath] = $0 }
-        )
-    }
-}
-
-/// Modern mode picker with custom styling - icons only
-private struct ModePicker: View {
-    @Binding var readerMode: ReaderMode
-    @State private var hoverMode: ReaderMode?
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ModeButton(
-                mode: .rendered,
-                icon: "doc.text.image",
-                isSelected: readerMode == .rendered,
-                isHovered: hoverMode == .rendered
-            ) {
-                readerMode = .rendered
-            }
-            .onHover { isHovered in
-                hoverMode = isHovered ? .rendered : nil
-            }
-
-            ModeButton(
-                mode: .raw,
-                icon: "doc.plaintext",
-                isSelected: readerMode == .raw,
-                isHovered: hoverMode == .raw
-            ) {
-                readerMode = .raw
-            }
-            .onHover { isHovered in
-                hoverMode = isHovered ? .raw : nil
-            }
-        }
-        .padding(3)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .shadow(
-                    color: .black.opacity(0.04),
-                    radius: 1,
-                    x: 0,
-                    y: 1
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-        )
-        .help("Switch between rendered and raw view")
-    }
-}
-
-/// Individual mode button with smooth animations - icon only
-private struct ModeButton: View {
-    let mode: ReaderMode
-    let icon: String
-    let isSelected: Bool
-    let isHovered: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(isSelected ? .primary : .secondary)
-                .frame(width: 32, height: 24)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(backgroundColor)
-                .shadow(
-                    color: isSelected ? .black.opacity(0.08) : .clear,
-                    radius: 0.5,
-                    x: 0,
-                    y: 0.5
-                )
-        )
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
-        .animation(.easeInOut(duration: 0.15), value: isHovered)
-    }
-
-    private var backgroundColor: Color {
-        if isSelected {
-            return Color(nsColor: .selectedControlColor)
-        } else if isHovered {
-            return Color.primary.opacity(0.06)
-        }
-        return Color.clear
-    }
-}
-
-/// Modern toolbar button with hover and active states
-private struct ToolbarButton: View {
-    let action: () -> Void
-    let systemImage: String
-    var isActive: Bool = false
-    let helpText: String
-    @State private var isHovered = false
-    @State private var isPressed = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(isActive ? .primary : .secondary)
-                .frame(width: 28, height: 28)
-                .contentShape(Rectangle())
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(backgroundColor)
-                )
-                .scaleEffect(isPressed ? 0.92 : 1.0)
-        }
-        .buttonStyle(.plain)
-        .help(helpText)
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isHovered = hovering
-            }
-        }
-        .pressEvents {
-            withAnimation(.easeInOut(duration: 0.1)) {
-                isPressed = true
-            }
-        } onRelease: {
-            withAnimation(.easeInOut(duration: 0.1)) {
-                isPressed = false
-            }
-        }
-    }
-
-    private var backgroundColor: Color {
-        if isActive {
-            return Color(nsColor: .selectedControlColor).opacity(0.6)
-        } else if isPressed {
-            return Color.primary.opacity(0.12)
-        } else if isHovered {
-            return Color.primary.opacity(0.08)
-        }
-        return Color.clear
-    }
-}
 
 /// Appearance popover wrapper that creates bindings from preferences.
 private struct AppearancePopover: View {
@@ -451,33 +262,6 @@ private struct MetadataEmptyView: View {
     }
 }
 
-// MARK: - View Extensions
-
-extension View {
-    /// Adds press down/up event handlers to a view
-    func pressEvents(onPress: @escaping () -> Void, onRelease: @escaping () -> Void) -> some View {
-        modifier(PressEventsModifier(onPress: onPress, onRelease: onRelease))
-    }
-}
-
-/// Modifier for handling press down/up events
-private struct PressEventsModifier: ViewModifier {
-    let onPress: () -> Void
-    let onRelease: () -> Void
-
-    func body(content: Content) -> some View {
-        content
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        onPress()
-                    }
-                    .onEnded { _ in
-                        onRelease()
-                    }
-            )
-    }
-}
 
 // MARK: - Previews
 

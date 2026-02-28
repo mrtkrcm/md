@@ -258,13 +258,16 @@
 
                 let style = paragraphStyle(at: bodyLoc, in: result)
                 XCTAssertNotNil(style)
-                XCTAssertEqual(style?.lineSpacing ?? 0, ReaderTextSpacing.relaxed.lineSpacing, accuracy: 0.1)
-                XCTAssertEqual(style?.paragraphSpacing ?? 0, ReaderTextSpacing.relaxed.paragraphSpacing, accuracy: 0.1)
+                // Use dynamic lineSpacing(for:) with standard font size (17pt)
+                let expectedLineSpacing = ReaderTextSpacing.relaxed.lineSpacing(for: 17)
+                let expectedParagraphSpacing = ReaderTextSpacing.relaxed.paragraphSpacing(for: 17)
+                XCTAssertEqual(style?.lineSpacing ?? 0, expectedLineSpacing, accuracy: 0.1)
+                XCTAssertEqual(style?.paragraphSpacing ?? 0, expectedParagraphSpacing, accuracy: 0.1)
             }
 
             func testUserLineSpacingAppliedToListItems() async {
                 // List items use lineSpacing from the user preference and a reduced
-                // paragraphSpacing (40% of body) to keep items visually compact.
+                // paragraphSpacing (50% of body) to keep items visually distinct.
                 let markdown = """
                 - First item
                 - Second item
@@ -279,10 +282,12 @@
 
                 let style = paragraphStyle(at: itemLoc, in: result)
                 XCTAssertNotNil(style, "List items must have a paragraph style")
-                XCTAssertEqual(style?.lineSpacing ?? 0, ReaderTextSpacing.compact.lineSpacing, accuracy: 0.1)
-                // paragraphSpacing for list items is 40% of the user value (tighter than body).
-                let expected = ReaderTextSpacing.compact.paragraphSpacing * 0.4
-                XCTAssertEqual(style?.paragraphSpacing ?? 0, expected, accuracy: 0.1)
+                // Use dynamic lineSpacing(for:) with standard font size (17pt)
+                let expectedLineSpacing = ReaderTextSpacing.compact.lineSpacing(for: 17)
+                XCTAssertEqual(style?.lineSpacing ?? 0, expectedLineSpacing, accuracy: 0.1)
+                // paragraphSpacing for list items is 50% of the user value.
+                let expectedParagraphSpacing = ReaderTextSpacing.compact.paragraphSpacing(for: 17) * 0.5
+                XCTAssertEqual(style?.paragraphSpacing ?? 0, expectedParagraphSpacing, accuracy: 0.1)
                 // headIndent must be positive — proves indentation was applied.
                 XCTAssertGreaterThan(style?.headIndent ?? 0, 0, "List items must be indented")
             }
@@ -371,8 +376,8 @@
 
             // MARK: - Heading scale ratios
 
-            func testH1FontSizeIsDoubleBodySize() async {
-                // Heading scale for H1 is 2.0× body. Verify the rendered point size matches.
+            func testH1FontSizeIs1Point75TimesBody() async {
+                // Heading scale for H1 is 1.75× body for clear hierarchy.
                 let markdown = "# H1 Heading\n\nBody text."
                 let result = await rendered(markdown, fontSize: .standard)
                 let ns = result.string as NSString
@@ -388,13 +393,14 @@
                 // Accept ±1 pt tolerance for font rounding.
                 XCTAssertEqual(
                     h1Size,
-                    bodySize * 2.0,
+                    bodySize * 1.75,
                     accuracy: 1.0,
-                    "H1 should be 2× body size (got h1=\(h1Size) body=\(bodySize))"
+                    "H1 should be 1.75× body size (got h1=\(h1Size) body=\(bodySize))"
                 )
             }
 
             func testH2FontSizeIs1Point5TimesBody() async {
+                // H2 is 1.5x body for clear visual hierarchy
                 let markdown = "## H2 Heading\n\nBody text."
                 let result = await rendered(markdown, fontSize: .standard)
                 let ns = result.string as NSString
@@ -415,7 +421,8 @@
                 )
             }
 
-            func testH3FontSizeIs1Point25TimesBody() async {
+            func testH3FontSizeIs1Point3TimesBody() async {
+                // H3 is 1.3x body for clear visual hierarchy
                 let markdown = "### H3 Heading\n\nBody text."
                 let result = await rendered(markdown, fontSize: .standard)
                 let ns = result.string as NSString
@@ -430,13 +437,14 @@
                 XCTAssertGreaterThan(bodySize, 0)
                 XCTAssertEqual(
                     h3Size,
-                    bodySize * 1.25,
+                    bodySize * 1.3,
                     accuracy: 1.0,
-                    "H3 should be 1.25× body size (got h3=\(h3Size) body=\(bodySize))"
+                    "H3 should be 1.3× body size (got h3=\(h3Size) body=\(bodySize))"
                 )
             }
 
-            func testH4FontSizeIs1Point1TimesBody() async {
+            func testH4FontSizeIs1Point15TimesBody() async {
+                // H4 is 1.15x body for clear visual hierarchy
                 let markdown = "#### H4 Heading\n\nBody text."
                 let result = await rendered(markdown, fontSize: .standard)
                 let ns = result.string as NSString
@@ -451,9 +459,9 @@
                 XCTAssertGreaterThan(bodySize, 0)
                 XCTAssertEqual(
                     h4Size,
-                    bodySize * 1.1,
+                    bodySize * 1.15,
                     accuracy: 1.0,
-                    "H4 should be 1.1× body size (got h4=\(h4Size) body=\(bodySize))"
+                    "H4 should be 1.15× body size (got h4=\(h4Size) body=\(bodySize))"
                 )
             }
 

@@ -24,7 +24,7 @@ struct mdviewerApp: App {
         .defaultSize(width: 900, height: 700)
         #if os(macOS)
             .windowResizability(.contentMinSize)
-            .windowToolbarStyle(.unifiedCompact)
+            .windowToolbarStyle(.unified)
             .commands {
                 // Edit Menu - Markdown editing commands using focused values
                 CommandMenu("Edit") {
@@ -64,16 +64,16 @@ struct mdviewerApp: App {
                 // View Menu
                 CommandMenu("View") {
                     Button("Rendered Mode") {
-                        AppPreferences.shared.setRenderedMode()
+                        focusedEditorActions?.setRenderedMode()
                     }
                     .keyboardShortcut("r", modifiers: [.command, .option])
-                    .disabled(AppPreferences.shared.readerMode == .rendered)
+                    .disabled(focusedEditorActions == nil)
 
                     Button("Raw Mode") {
-                        AppPreferences.shared.setRawMode()
+                        focusedEditorActions?.setRawMode()
                     }
                     .keyboardShortcut("e", modifiers: [.command, .option])
-                    .disabled(AppPreferences.shared.readerMode == .raw)
+                    .disabled(focusedEditorActions == nil)
 
                     Divider()
 

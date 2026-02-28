@@ -20,9 +20,9 @@ enum ReaderColumnWidth: String, CaseIterable, Identifiable, Sendable {
 
     var points: CGFloat {
         switch self {
-        case .narrow: return 680
-        case .balanced: return 760
-        case .wide: return 860
+        case .narrow: return 640
+        case .balanced: return 720
+        case .wide: return 840
         }
     }
 }

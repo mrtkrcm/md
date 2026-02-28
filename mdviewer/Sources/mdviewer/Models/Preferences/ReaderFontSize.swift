@@ -8,9 +8,9 @@ internal import Foundation
 // MARK: - Reader Font Size
 
 enum ReaderFontSize: Int, CaseIterable, Identifiable, Sendable {
-    case compact = 13
-    case standard = 16
-    case comfortable = 17
+    case compact = 15
+    case standard = 17
+    case comfortable = 19
 
     var id: Int { rawValue }
 

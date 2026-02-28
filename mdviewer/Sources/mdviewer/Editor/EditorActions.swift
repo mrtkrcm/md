@@ -17,6 +17,8 @@ struct EditorActions {
     let insertCodeBlock: () -> Void
     let insertLink: () -> Void
     let insertImage: () -> Void
+    let setRenderedMode: () -> Void
+    let setRawMode: () -> Void
     let showAppearanceSettings: () -> Void
 }
 

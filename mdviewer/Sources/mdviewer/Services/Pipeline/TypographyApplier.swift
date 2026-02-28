@@ -95,6 +95,19 @@ struct TypographyApplier: TypographyApplying {
                     // Apply paragraph style to lists for proper indentation and spacing
                     applyListParagraphStyle(to: text, range: range, request: request)
 
+                case .tableHeaderRow:
+                    // Bold header cells with monospaced font for column alignment
+                    let codeFont = NSFont.monospacedSystemFont(ofSize: request.readerFontSize, weight: .semibold)
+                    text.addAttribute(.font, value: codeFont, range: range)
+                    text.addAttribute(.foregroundColor, value: palette.heading, range: range)
+                    applyTableRowParagraphStyle(to: text, range: range, request: request)
+
+                case .tableRow:
+                    // Monospaced font for consistent column alignment
+                    let codeFont = NSFont.monospacedSystemFont(ofSize: request.readerFontSize, weight: .regular)
+                    text.addAttribute(.font, value: codeFont, range: range)
+                    applyTableRowParagraphStyle(to: text, range: range, request: request)
+
                 default:
                     break
                 }
@@ -124,19 +137,27 @@ struct TypographyApplier: TypographyApplying {
 
     /// Creates a base paragraph style with consistent settings across all block types.
     /// Applies proper paragraph spacing to separate blocks visually.
+    /// Uses macOS native typography best practices for optimal text rendering.
+    ///
+    /// Returns `NSMutableParagraphStyle` so callers that need additional mutations
+    /// (list indentation, code gutter) can do so without a force-cast.
     private func createBaseParagraphStyle(
         lineSpacing: CGFloat,
         paragraphSpacing: CGFloat = 0,
         paragraphSpacingBefore: CGFloat = 0,
         hyphenationFactor: Float = 0,
         alignment: NSTextAlignment = .left
-    ) -> NSParagraphStyle {
+    ) -> NSMutableParagraphStyle {
         let style = NSMutableParagraphStyle()
+        // Use lineHeightMultiple for more consistent typography across font sizes
+        style.lineHeightMultiple = 1.0
         style.lineSpacing = lineSpacing
         style.paragraphSpacing = paragraphSpacing
         style.paragraphSpacingBefore = paragraphSpacingBefore
         style.hyphenationFactor = hyphenationFactor
         style.alignment = alignment
+        // Enable optimal character spacing for body text
+        style.allowsDefaultTighteningForTruncation = false
         return style
     }
 
@@ -154,14 +175,14 @@ struct TypographyApplier: TypographyApplying {
 
     private func applyListParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
         let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
-        // List items have tighter spacing: 40% of standard paragraph spacing
+        // List items have moderate spacing
         let fullSpacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let spacing = fullSpacing * 0.4
+        let spacing = fullSpacing * 0.5
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
             paragraphSpacing: spacing,
             hyphenationFactor: 0
-        ) as! NSMutableParagraphStyle
+        )
 
         // Configure list-specific indentation for visual hierarchy
         let listIndent: CGFloat = 24
@@ -169,6 +190,25 @@ struct TypographyApplier: TypographyApplying {
         style.firstLineHeadIndent = 0
         style.tabStops = [NSTextTab(textAlignment: .left, location: listIndent, options: [:])]
 
+        text.addAttribute(.paragraphStyle, value: style, range: range)
+    }
+
+    private func applyTableRowParagraphStyle(
+        to text: NSMutableAttributedString,
+        range: NSRange,
+        request: RenderRequest
+    ) {
+        let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
+        let style = createBaseParagraphStyle(
+            lineSpacing: lineSpacing,
+            paragraphSpacing: 2,
+            hyphenationFactor: 0
+        )
+        // Tab stops for column alignment (evenly spaced at ~25% of readable width)
+        let colWidth = max(80, request.readableWidth * 0.25)
+        style.tabStops = (0 ..< 8).map { i in
+            NSTextTab(textAlignment: .left, location: colWidth * CGFloat(i + 1), options: [:])
+        }
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
@@ -182,8 +222,14 @@ struct TypographyApplier: TypographyApplying {
     ) {
         let fontSize = fontSizeForHeader(level: level, baseSize: request.readerFontSize)
 
-        // Progressive font weight for visual hierarchy
-        let weight: NSFont.Weight = level <= 2 ? .bold : .semibold
+        // Progressive font weight for clear visual hierarchy
+        let weight: NSFont.Weight
+        switch level {
+        case 1: weight = .heavy
+        case 2: weight = .bold
+        case 3: weight = .semibold
+        default: weight = .medium
+        }
         let font = NSFont.systemFont(ofSize: fontSize, weight: weight)
         text.addAttribute(.font, value: font, range: range)
         text.addAttribute(.foregroundColor, value: palette.heading, range: range)
@@ -200,8 +246,29 @@ struct TypographyApplier: TypographyApplying {
     ) {
         let headingSize = fontSizeForHeader(level: level, baseSize: request.readerFontSize)
         let lineSpacing = request.textSpacing.lineSpacing(for: headingSize)
-        let spacing = request.textSpacing.paragraphSpacing(for: headingSize)
-        let spacingBefore = request.textSpacing.paragraphSpacingBefore(for: headingSize)
+
+        // Balanced spacing for visual hierarchy without excessive gaps
+        let spacingMultiplier: CGFloat
+        let spacingBeforeMultiplier: CGFloat
+        switch level {
+        case 1:
+            spacingMultiplier = 1.0
+            spacingBeforeMultiplier = 1.2
+        case 2:
+            spacingMultiplier = 0.9
+            spacingBeforeMultiplier = 1.0
+        case 3:
+            spacingMultiplier = 0.8
+            spacingBeforeMultiplier = 0.85
+        default:
+            spacingMultiplier = 0.7
+            spacingBeforeMultiplier = 0.7
+        }
+
+        let baseSpacing = request.textSpacing.paragraphSpacing(for: headingSize)
+        let spacing = baseSpacing * spacingMultiplier
+        let spacingBefore = baseSpacing * spacingBeforeMultiplier
+
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
             paragraphSpacing: spacing,
@@ -212,13 +279,14 @@ struct TypographyApplier: TypographyApplying {
     }
 
     private func fontSizeForHeader(level: Int, baseSize: CGFloat) -> CGFloat {
+        // Clear heading hierarchy with significant size differences
         switch level {
-        case 1: return baseSize * 2.0
+        case 1: return baseSize * 1.75
         case 2: return baseSize * 1.5
-        case 3: return baseSize * 1.25
-        case 4: return baseSize * 1.1
-        case 5: return baseSize * 1.05
-        case 6: return baseSize
+        case 3: return baseSize * 1.3
+        case 4: return baseSize * 1.15
+        case 5: return baseSize * 1.1
+        case 6: return baseSize * 1.05
         default: return baseSize
         }
     }
@@ -229,13 +297,14 @@ struct TypographyApplier: TypographyApplying {
         request: RenderRequest,
         hasLineNumbers: Bool
     ) {
-        let lineSpacing = request.textSpacing.lineSpacing(for: request.codeFontSize)
+        // Code blocks use tighter line spacing for compact display
+        let lineSpacing = max(2, request.codeFontSize * 0.15)
         let spacing = request.textSpacing.paragraphSpacing(for: request.codeFontSize)
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
             paragraphSpacing: spacing,
             hyphenationFactor: 0
-        ) as! NSMutableParagraphStyle
+        )
 
         // Configure gutter indentation for line numbers
         if hasLineNumbers {

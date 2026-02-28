@@ -105,6 +105,8 @@
             }
 
             /// Test that list items don't have excessive spacing between them.
+            /// Uses PresentationIntent attributes (not fragile string prefix checks)
+            /// to identify list item runs reliably.
             func testListItemsHaveTightSpacing() async {
                 let markdown = """
                 - Item 1
@@ -128,26 +130,33 @@
                 let rendered = await MarkdownRenderService.shared.render(request)
                 let text = rendered.attributedString
 
-                // Verify list items have tighter spacing than regular paragraphs
+                // Find list items via PresentationIntent attribute (robust — not string prefix)
                 var listItemSpacing: CGFloat = 0
-                text.enumerateAttribute(.paragraphStyle, in: NSRange(
-                    location: 0,
-                    length: text.length
-                )) { value, range, _ in
-                    if let style = value as? NSParagraphStyle {
-                        // Find a list item's paragraph spacing
-                        if
-                            text.string[text.string.index(text.string.startIndex, offsetBy: range.location)...]
-                                .starts(with: "-") ||
-                                text.string[text.string.index(text.string.startIndex, offsetBy: range.location)...]
-                                .starts(with: "•")
-                        {
+                var foundListItem = false
+                text.enumerateAttribute(
+                    MarkdownRenderAttribute.presentationIntent,
+                    in: NSRange(location: 0, length: text.length)
+                ) { value, range, _ in
+                    guard let intent = value as? PresentationIntent else { return }
+                    let isListItem = intent.components.contains {
+                        if case .listItem = $0.kind { return true }
+                        return false
+                    }
+                    if isListItem, !foundListItem {
+                        foundListItem = true
+                        if let style = text.attribute(
+                            .paragraphStyle,
+                            at: range.location,
+                            effectiveRange: nil
+                        ) as? NSParagraphStyle {
                             listItemSpacing = style.paragraphSpacing
                         }
                     }
                 }
 
-                // List items should have less spacing than regular paragraphs (40% of standard)
+                XCTAssertTrue(foundListItem, "Should find list items via PresentationIntent")
+
+                // List items should have less spacing than regular paragraphs (50% of standard)
                 let spacingForSize = ReaderTextSpacing.balanced.paragraphSpacing(for: 16)
                 XCTAssertLessThan(
                     listItemSpacing,

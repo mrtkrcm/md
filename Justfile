@@ -1,7 +1,7 @@
 # Justfile for mdviewer
 # https://github.com/casey/just
 
-set shell := ["bash", "-euo", "pipefail"]
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 set positional-arguments
 
 # Default recipe - list all available commands
@@ -10,25 +10,29 @@ default:
 
 # ===== Build Commands =====
 
-# Build the project in debug mode (also installs to /Applications)
+# Fast debug build (iteration only — no packaging, no install)
 build:
-    #!/usr/bin/env bash
-    set -euo pipefail
     cd mdviewer && swift build
-    cd ..
-    scripts/build.sh --no-tests
 
-# Build the project in release mode (also installs to /Applications)
-build-release:
-    #!/usr/bin/env bash
-    set -euo pipefail
+# Release build only (no packaging, no install)
+release:
     cd mdviewer && swift build -c release
-    cd ..
+
+# Release build + create app bundle (no install)
+package:
+    scripts/build.sh --no-install --no-tests
+
+# Build + package + install to /Applications
+install:
     scripts/build.sh --no-tests
 
-# Build the full macOS app bundle
+# Build + package + install + launch
+install-open:
+    scripts/build.sh --no-tests --open
+
+# Full CI pipeline: tests + build + package (no install)
 build-app:
-    scripts/build.sh
+    scripts/build.sh --no-install
 
 # Clean build artifacts
 clean:
@@ -137,10 +141,6 @@ run:
 debug:
     cd mdviewer && swift run 2>&1 | tee debug.log
 
-# Install the built app to /Applications
-install:
-    scripts/install.sh
-
 # Uninstall from /Applications
 uninstall:
     rm -rf /Applications/md.app
@@ -162,7 +162,6 @@ docs-preview:
 ci-local:
     just format-check
     just lint
-    just build
     just test
     just build-app
 

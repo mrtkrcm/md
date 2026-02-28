@@ -53,9 +53,10 @@ enum ReaderFontFamily: String, CaseIterable, Identifiable, Sendable {
         }
 
         private func resolveBaseFont(size: CGFloat, monospaced: Bool, weight: NSFont.Weight) -> NSFont {
-            // Monospaced: prefer Maple Mono NF when available, fall back to system mono.
+            // Monospaced: use Maple Mono NF only when that family is selected,
+            // otherwise use the system monospace design variant.
             if monospaced {
-                if weight == .regular {
+                if self == .mapleMonoNF, weight == .regular {
                     if let f = NSFont(name: "MapleMono-NF-Regular", size: size) { return f }
                     if let f = NSFont(name: "Maple Mono NF", size: size) { return f }
                 }

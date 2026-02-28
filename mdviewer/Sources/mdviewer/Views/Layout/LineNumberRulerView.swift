@@ -13,6 +13,8 @@
         private var font: NSFont = .monospacedSystemFont(ofSize: 11, weight: .regular)
         private var textColor: NSColor = .secondaryLabelColor
         private var separatorColor: NSColor = .separatorColor
+        /// Cache line-number string sizes by digit count to avoid redundant text measurement
+        private var cachedSizesByDigitCount: [Int: NSSize] = [:]
 
         init(scrollView: NSScrollView?) {
             super.init(scrollView: scrollView, orientation: .verticalRuler)
@@ -69,11 +71,12 @@
             let string = textView.string as NSString
             var lineNumber = 1
 
-            // Count lines up to the visible range start
+            // Count lines up to the visible range start via single-pass newline scan
             if characterRange.location > 0 {
-                let prevRange = NSRange(location: 0, length: characterRange.location)
-                let prevString = string.substring(with: prevRange)
-                lineNumber = prevString.components(separatedBy: .newlines).count
+                let end = min(characterRange.location, string.length)
+                for i in 0 ..< end {
+                    if string.character(at: i) == 0x0A { lineNumber += 1 }
+                }
             }
 
             // Get the text view's coordinate conversion
@@ -100,14 +103,22 @@
                         if convertedRect.intersects(rect) {
                             let numberString = "\(lineNumber)" as NSString
                             let attributes: [NSAttributedString.Key: Any] = [
-                                .font: font,
-                                .foregroundColor: textColor,
+                                .font: self.font,
+                                .foregroundColor: self.textColor,
                             ]
-                            let stringSize = numberString.size(withAttributes: attributes)
+                            let digitCount = numberString.length
+                            let stringSize: NSSize
+                            if let cached = self.cachedSizesByDigitCount[digitCount] {
+                                stringSize = cached
+                            } else {
+                                let measured = numberString.size(withAttributes: attributes)
+                                self.cachedSizesByDigitCount[digitCount] = measured
+                                stringSize = measured
+                            }
 
-                            // Right-align the number with padding; clamp to avoid negative x
-                            let x = max(2, ruleThickness - stringSize.width - 8)
-                            let y = convertedRect.minY + (convertedRect.height - stringSize.height) / 2
+                            // Right-align the number with padding; pixel-snap to avoid blurry text
+                            let x = floor(max(2, self.ruleThickness - stringSize.width - 8))
+                            let y = floor(convertedRect.minY + (convertedRect.height - stringSize.height) / 2)
 
                             numberString.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
                         }
@@ -124,8 +135,8 @@
                     .foregroundColor: textColor,
                 ]
                 let stringSize = numberString.size(withAttributes: attributes)
-                let x = ruleThickness - stringSize.width - 8
-                let y = textView.textContainerInset.height + (font.pointSize - stringSize.height) / 2
+                let x = floor(ruleThickness - stringSize.width - 8)
+                let y = floor(textView.textContainerInset.height + (font.pointSize - stringSize.height) / 2)
                 numberString.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
             }
         }

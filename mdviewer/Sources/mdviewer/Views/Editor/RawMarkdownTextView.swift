@@ -24,6 +24,19 @@ internal import SwiftUI
         let syntaxPalette: SyntaxPalette
         let colorScheme: ColorScheme
         let showLineNumbers: Bool
+        let appTheme: AppTheme
+        let textSpacing: ReaderTextSpacing
+
+        private var highlightConfig: HighlightConfiguration {
+            HighlightConfiguration(
+                fontFamily: fontFamily,
+                fontSize: fontSize,
+                syntaxPalette: syntaxPalette,
+                colorScheme: colorScheme,
+                appTheme: appTheme,
+                textSpacing: textSpacing
+            )
+        }
 
         func makeNSView(context: Context) -> NSScrollView {
             let textView = makeConfiguredTextView(context: context)
@@ -33,13 +46,7 @@ internal import SwiftUI
             configureLineNumberRuler(for: scrollView, textView: textView)
 
             context.coordinator.applyTextIfNeeded(text, to: textView)
-            context.coordinator.applyHighlighting(
-                to: textView,
-                fontFamily: fontFamily,
-                fontSize: fontSize,
-                syntaxPalette: syntaxPalette,
-                colorScheme: colorScheme
-            )
+            context.coordinator.applyHighlighting(to: textView, config: highlightConfig)
 
             return scrollView
         }
@@ -51,17 +58,16 @@ internal import SwiftUI
             configureLineNumberRuler(for: scrollView, textView: textView)
 
             context.coordinator.applyTextIfNeeded(text, to: textView)
-            context.coordinator.applyHighlighting(
-                to: textView,
-                fontFamily: fontFamily,
-                fontSize: fontSize,
-                syntaxPalette: syntaxPalette,
-                colorScheme: colorScheme
-            )
+            context.coordinator.applyHighlighting(to: textView, config: highlightConfig)
         }
 
         func makeCoordinator() -> Coordinator {
             Coordinator(text: $text)
+        }
+
+        static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
+            coordinator.highlightTask?.cancel()
+            coordinator.highlightTask = nil
         }
 
         private func makeConfiguredTextView(context: Context) -> MarkdownEditorTextView {
@@ -82,8 +88,7 @@ internal import SwiftUI
             textView.isRichText = true
             textView.usesFindBar = true
             textView.allowsUndo = true
-            textView.drawsBackground = true
-            textView.backgroundColor = NSColor(named: "WindowBackgroundColor") ?? .controlBackgroundColor
+            textView.drawsBackground = false
             textView.focusRingType = .none
             textView.textContainerInset = Layout.inset
             textView.textContainer?.lineFragmentPadding = 0
@@ -100,6 +105,7 @@ internal import SwiftUI
         private func makeConfiguredScrollView(textView: NSTextView) -> NSScrollView {
             let scrollView = NSScrollView()
             scrollView.drawsBackground = false
+            scrollView.wantsLayer = true
             scrollView.borderType = .noBorder
             scrollView.focusRingType = .none
             scrollView.hasVerticalScroller = true
@@ -139,6 +145,19 @@ internal import SwiftUI
             }
         }
 
+        // MARK: - Highlight Configuration
+
+        /// Groups all parameters that influence syntax highlighting into a single value type.
+        /// Eliminates scattered `current*` instance variables and multi-parameter APIs.
+        struct HighlightConfiguration: Equatable {
+            var fontFamily: ReaderFontFamily = .newYork
+            var fontSize: CGFloat = 14
+            var syntaxPalette: SyntaxPalette = .midnight
+            var colorScheme: ColorScheme = .light
+            var appTheme: AppTheme = .basic
+            var textSpacing: ReaderTextSpacing = .balanced
+        }
+
         // MARK: - Coordinator
 
         final class Coordinator: NSObject, NSTextViewDelegate {
@@ -149,13 +168,14 @@ internal import SwiftUI
 
             @Binding private var text: String
             private var isApplyingProgrammaticChange = false
-            private var currentFontFamily: ReaderFontFamily = .newYork
-            private var currentFontSize: CGFloat = 14
-            private var currentSyntaxPalette: SyntaxPalette = .midnight
-            private var currentColorScheme: ColorScheme = .light
+            private(set) var config = HighlightConfiguration()
             weak var textView: NSTextView?
             private var pendingHighlightRange: NSRange?
-            private var highlightTask: Task<Void, Never>?
+            fileprivate var highlightTask: Task<Void, Never>?
+
+            /// Cached fenced code block parse results, invalidated on edits near fence markers
+            private var cachedFencedBlocks: [FencedBlock]?
+            private var cachedFencedBlocksTextLength: Int = -1
 
             private let headingRegex = try? NSRegularExpression(pattern: #"(?m)^(#{1,6})\s.*$"#)
             private let blockquoteRegex = try? NSRegularExpression(pattern: #"(?m)^>\s.*$"#)
@@ -163,7 +183,7 @@ internal import SwiftUI
             private let inlineCodeRegex = try? NSRegularExpression(pattern: #"`[^`\n]+`"#)
             private let linkRegex = try? NSRegularExpression(pattern: #"\[[^\]]+\]\([^)]+\)"#)
             private let frontmatterRegex = try? NSRegularExpression(pattern: #"(?s)\A---\n.*?\n---\n?"#)
-            private let fencedCodeRegex = try? NSRegularExpression(pattern: #"(?s)```(\w+)?\n(.*?)```"#)
+            private let fencedCodeRegex = try? NSRegularExpression(pattern: #"(?s)(`{3,})(\w+)?\n(.*?)\1"#)
 
             init(text: Binding<String>) {
                 _text = text
@@ -224,7 +244,32 @@ internal import SwiftUI
             func textDidChange(_ notification: Notification) {
                 guard !isApplyingProgrammaticChange else { return }
                 guard let textView = notification.object as? NSTextView else { return }
-                text = textView.string
+
+                let newText = textView.string
+                if text != newText { text = newText }
+
+                // Invalidate fenced block cache when edits touch fence markers (```)
+                if let storage = textView.textStorage,
+                   storage.editedMask.contains(.editedCharacters)
+                {
+                    let editRange = storage.editedRange
+                    if editRange.location != NSNotFound {
+                        let nsStr = storage.string as NSString
+                        // Expand to full lines around the edit to check for fence markers
+                        let lineRange = nsStr.lineRange(for: editRange)
+                        let editedLines = nsStr.substring(with: lineRange)
+                        if editedLines.contains("```") {
+                            cachedFencedBlocks = nil
+                            cachedFencedBlocksTextLength = -1
+                        } else {
+                            // Text length changed but no fence markers — invalidate by length mismatch
+                            cachedFencedBlocksTextLength = -1
+                        }
+                    } else {
+                        cachedFencedBlocks = nil
+                        cachedFencedBlocksTextLength = -1
+                    }
+                }
 
                 // Prefer incremental highlight; only use full when storage reports character edits
                 // but the range is invalid. Avoid full re-highlight on attribute-only changes.
@@ -239,14 +284,7 @@ internal import SwiftUI
                     return
                 }
 
-                scheduleHighlight(
-                    on: textView,
-                    mode: mode,
-                    fontFamily: currentFontFamily,
-                    fontSize: currentFontSize,
-                    syntaxPalette: currentSyntaxPalette,
-                    colorScheme: currentColorScheme
-                )
+                scheduleHighlight(on: textView, mode: mode)
             }
 
             @MainActor
@@ -258,37 +296,13 @@ internal import SwiftUI
             }
 
             @MainActor
-            func applyHighlighting(
-                to textView: NSTextView,
-                fontFamily: ReaderFontFamily,
-                fontSize: CGFloat,
-                syntaxPalette: SyntaxPalette,
-                colorScheme: ColorScheme
-            ) {
-                scheduleHighlight(
-                    on: textView,
-                    mode: .full,
-                    fontFamily: fontFamily,
-                    fontSize: fontSize,
-                    syntaxPalette: syntaxPalette,
-                    colorScheme: colorScheme
-                )
+            func applyHighlighting(to textView: NSTextView, config newConfig: HighlightConfiguration) {
+                config = newConfig
+                scheduleHighlight(on: textView, mode: .full)
             }
 
             @MainActor
-            private func scheduleHighlight(
-                on textView: NSTextView,
-                mode: HighlightMode,
-                fontFamily: ReaderFontFamily,
-                fontSize: CGFloat,
-                syntaxPalette: SyntaxPalette,
-                colorScheme: ColorScheme
-            ) {
-                currentFontFamily = fontFamily
-                currentFontSize = fontSize
-                currentSyntaxPalette = syntaxPalette
-                currentColorScheme = colorScheme
-
+            private func scheduleHighlight(on textView: NSTextView, mode: HighlightMode) {
                 let fullTextRange = NSRange(location: 0, length: textView.string.utf16.count)
                 switch mode {
                 case .full:
@@ -319,27 +333,19 @@ internal import SwiftUI
 
                     let target = self.pendingHighlightRange ?? fullTextRange
                     self.pendingHighlightRange = nil
-                    self.applyHighlightingNow(
-                        to: textView,
-                        targetRange: target,
-                        fontFamily: fontFamily,
-                        fontSize: fontSize,
-                        syntaxPalette: syntaxPalette,
-                        colorScheme: colorScheme
-                    )
+                    self.applyHighlightingNow(to: textView, targetRange: target)
                 }
             }
 
             @MainActor
             private func applyHighlightingNow(
                 to textView: NSTextView,
-                targetRange: NSRange,
-                fontFamily: ReaderFontFamily,
-                fontSize: CGFloat,
-                syntaxPalette: SyntaxPalette,
-                colorScheme: ColorScheme
+                targetRange: NSRange
             ) {
                 guard let storage = textView.textStorage else { return }
+
+                // Snapshot config for consistent use throughout this method
+                let cfg = config
 
                 let fullRange = NSRange(location: 0, length: storage.length)
                 guard fullRange.length > 0 else { return }
@@ -348,69 +354,85 @@ internal import SwiftUI
                 let highlightRange = expandedLineRange(in: storage.string as NSString, around: requested)
 
                 let selection = textView.selectedRanges
-                let syntax = syntaxPalette.nativeSyntax
-                let fencedRanges = fencedCodeRanges(in: storage.string, range: fullRange)
-                let fencedFullRanges = fencedRanges.map(\.full)
+                let syntax = cfg.syntaxPalette.nativeSyntax
+                let fencedBlocks: [FencedBlock]
+                if let cached = cachedFencedBlocks, cachedFencedBlocksTextLength == storage.length {
+                    fencedBlocks = cached
+                } else {
+                    fencedBlocks = parseFencedBlocks(in: storage.string, range: fullRange)
+                    cachedFencedBlocks = fencedBlocks
+                    cachedFencedBlocksTextLength = storage.length
+                }
+                let fencedFullRanges = fencedBlocks.map(\.full)
 
-                // Use theme palette for consistency with renderer
-                let palette = NativeThemePalette(theme: .basic, scheme: colorScheme)
+                // Derive themed resources
+                let palette = NativeThemePalette(theme: cfg.appTheme, scheme: cfg.colorScheme)
                 let baseForeground = palette.textPrimary
                 let secondaryForeground = palette.textSecondary
 
-                let baseFont = fontFamily.nsFont(size: fontSize)
-                let boldFont = fontFamily.nsFont(size: fontSize, traits: .bold)
-                let codeFont = fontFamily.nsFont(size: fontSize, monospaced: true)
+                let baseFont = cfg.fontFamily.nsFont(size: cfg.fontSize)
+                let boldFont = cfg.fontFamily.nsFont(size: cfg.fontSize, traits: .bold)
+                let codeFont = cfg.fontFamily.nsFont(size: cfg.fontSize, monospaced: true)
                 let codeBackground = palette.codeBackground
+
+                let paragraphStyle = cfg.textSpacing.paragraphStyle(fontSize: cfg.fontSize)
+
+                // Preserve scroll position across attribute changes
+                let scrollPoint = textView.enclosingScrollView?.documentVisibleRect.origin
 
                 isApplyingProgrammaticChange = true
                 storage.beginEditing()
+
+                let kern = cfg.textSpacing.kern(for: cfg.fontSize)
 
                 storage.setAttributes(
                     [
                         .font: baseFont,
                         .foregroundColor: baseForeground,
+                        .paragraphStyle: paragraphStyle,
+                        .kern: kern,
                     ],
                     range: highlightRange
                 )
 
-                apply(regex: frontmatterRegex, in: storage.string, range: highlightRange) { range in
-                    storage.addAttribute(.foregroundColor, value: secondaryForeground, range: range)
-                }
-                apply(regex: headingRegex, in: storage.string, range: highlightRange) { range in
-                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
-                    storage.addAttribute(.foregroundColor, value: syntax.keyword, range: range)
-                    storage.addAttribute(.font, value: boldFont, range: range)
-                }
-                apply(regex: blockquoteRegex, in: storage.string, range: highlightRange) { range in
-                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
-                    storage.addAttribute(.foregroundColor, value: secondaryForeground, range: range)
-                }
-                apply(regex: listRegex, in: storage.string, range: highlightRange) { range in
-                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
-                    storage.addAttribute(.foregroundColor, value: syntax.call, range: range)
-                }
-                apply(regex: inlineCodeRegex, in: storage.string, range: highlightRange) { range in
-                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
-                    storage.addAttribute(.foregroundColor, value: syntax.string, range: range)
-                    storage.addAttribute(.backgroundColor, value: codeBackground, range: range)
-                }
-                apply(regex: linkRegex, in: storage.string, range: highlightRange) { range in
-                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
-                    storage.addAttribute(.foregroundColor, value: syntax.call, range: range)
-                    storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-                }
+                applyMarkdownRules(
+                    to: storage,
+                    fullRange: fullRange,
+                    highlightRange: highlightRange,
+                    fencedFullRanges: fencedFullRanges,
+                    syntax: syntax,
+                    boldFont: boldFont,
+                    secondaryForeground: secondaryForeground,
+                    codeBackground: codeBackground
+                )
 
-                applyFencedSwiftHighlighting(
+                applyFencedCodeHighlighting(
                     storage: storage,
-                    regexRange: highlightRange,
+                    blocks: fencedBlocks,
+                    highlightRange: highlightRange,
                     syntax: syntax,
                     codeBackground: codeBackground,
                     codeFont: codeFont
                 )
 
                 storage.endEditing()
-                textView.selectedRanges = selection
+
+                // Validate selection ranges before restoration
+                let validSelection = selection.compactMap { rangeValue -> NSValue? in
+                    let range = rangeValue.rangeValue
+                    guard range.location + range.length <= storage.length else { return nil }
+                    return rangeValue
+                }
+                textView.selectedRanges = validSelection.isEmpty
+                    ? [NSValue(range: NSRange(location: 0, length: 0))]
+                    : validSelection
+
                 isApplyingProgrammaticChange = false
+
+                // Restore scroll position after attribute changes
+                if let scrollPoint {
+                    textView.enclosingScrollView?.documentView?.scroll(scrollPoint)
+                }
             }
 
             private func expandedLineRange(in nsString: NSString, around range: NSRange) -> NSRange {
@@ -435,70 +457,152 @@ internal import SwiftUI
                 return NSUnionRange(startLine, endLine)
             }
 
-            private func applyFencedSwiftHighlighting(
+            // MARK: - Markdown Rule Application
+
+            /// Applies markdown syntax rules (frontmatter, headings, blockquotes, lists,
+            /// inline code, links) to the highlight range. Fenced code ranges are protected
+            /// from receiving markdown styling.
+            private func applyMarkdownRules(
+                to storage: NSTextStorage,
+                fullRange: NSRange,
+                highlightRange: NSRange,
+                fencedFullRanges: [NSRange],
+                syntax: NativeSyntaxStyle,
+                boldFont: NSFont,
+                secondaryForeground: NSColor,
+                codeBackground: NSColor
+            ) {
+                let text = storage.string
+
+                // Frontmatter uses \A anchor — compute from fullRange, then intersect
+                apply(regex: frontmatterRegex, in: text, range: fullRange) { range in
+                    let intersection = NSIntersectionRange(range, highlightRange)
+                    guard intersection.length > 0 else { return }
+                    storage.addAttribute(.foregroundColor, value: secondaryForeground, range: intersection)
+                }
+
+                apply(regex: headingRegex, in: text, range: highlightRange) { range in
+                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
+                    storage.addAttribute(.foregroundColor, value: syntax.keyword, range: range)
+                    storage.addAttribute(.font, value: boldFont, range: range)
+                }
+
+                apply(regex: blockquoteRegex, in: text, range: highlightRange) { range in
+                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
+                    storage.addAttribute(.foregroundColor, value: secondaryForeground, range: range)
+                }
+
+                apply(regex: listRegex, in: text, range: highlightRange) { range in
+                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
+                    storage.addAttribute(.foregroundColor, value: syntax.call, range: range)
+                }
+
+                apply(regex: inlineCodeRegex, in: text, range: highlightRange) { range in
+                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
+                    storage.addAttribute(.foregroundColor, value: syntax.string, range: range)
+                    storage.addAttribute(.backgroundColor, value: codeBackground, range: range)
+                }
+
+                apply(regex: linkRegex, in: text, range: highlightRange) { range in
+                    guard !intersectsProtected(range: range, protected: fencedFullRanges) else { return }
+                    storage.addAttribute(.foregroundColor, value: syntax.call, range: range)
+                    storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+                }
+            }
+
+            // MARK: - Fenced Block Model
+
+            /// A parsed fenced code block with its ranges and language, computed once
+            /// from the full text to avoid redundant regex work during highlighting.
+            private struct FencedBlock {
+                let full: NSRange
+                let body: NSRange
+                let language: String
+            }
+
+            // MARK: - Fenced Code Highlighting
+
+            /// Applies fenced code block styling using pre-computed blocks from the full text.
+            /// Each block is intersected with `highlightRange` so incremental edits inside
+            /// a code block retain code background, font, and syntax colors.
+            private func applyFencedCodeHighlighting(
                 storage: NSTextStorage,
-                regexRange: NSRange,
+                blocks: [FencedBlock],
+                highlightRange: NSRange,
                 syntax: NativeSyntaxStyle,
                 codeBackground: NSColor,
                 codeFont: NSFont
             ) {
-                guard let fencedCodeRegex else { return }
+                let fullText = storage.string
 
-                fencedCodeRegex.enumerateMatches(in: storage.string, options: [], range: regexRange) { result, _, _ in
-                    guard
-                        let result,
-                        result.numberOfRanges >= 3
-                    else { return }
+                for block in blocks {
+                    guard NSIntersectionRange(block.full, highlightRange).length > 0 else { continue }
+                    guard block.body.location != NSNotFound, block.body.length > 0 else { continue }
 
-                    let languageRange = result.range(at: 1)
-                    let bodyRange = result.range(at: 2)
-                    guard bodyRange.location != NSNotFound, bodyRange.length > 0 else { return }
+                    let bodyIntersection = NSIntersectionRange(block.body, highlightRange)
+                    guard bodyIntersection.length > 0 else { continue }
 
-                    storage.addAttribute(.backgroundColor, value: codeBackground, range: bodyRange)
-                    storage.addAttribute(.font, value: codeFont, range: bodyRange)
+                    storage.addAttribute(.backgroundColor, value: codeBackground, range: bodyIntersection)
+                    storage.addAttribute(.font, value: codeFont, range: bodyIntersection)
 
-                    let language = languageRange.location == NSNotFound
-                        ? ""
-                        : (storage.string as NSString).substring(with: languageRange).lowercased()
-                    guard language == "swift" else { return }
-
-                    var protected: [NSRange] = []
-
-                    apply(regex: SwiftSyntaxRegexes.strings, in: storage.string, range: bodyRange) { range in
-                        storage.addAttribute(.foregroundColor, value: syntax.string, range: range)
-                        protected.append(range)
-                    }
-                    apply(regex: SwiftSyntaxRegexes.blockComments, in: storage.string, range: bodyRange) { range in
-                        storage.addAttribute(.foregroundColor, value: syntax.comment, range: range)
-                        protected.append(range)
-                    }
-                    apply(regex: SwiftSyntaxRegexes.lineComments, in: storage.string, range: bodyRange) { range in
-                        storage.addAttribute(.foregroundColor, value: syntax.comment, range: range)
-                        protected.append(range)
-                    }
-                    apply(regex: SwiftSyntaxRegexes.keywords, in: storage.string, range: bodyRange) { range in
-                        guard !intersectsProtected(range: range, protected: protected) else { return }
-                        storage.addAttribute(.foregroundColor, value: syntax.keyword, range: range)
-                    }
-                    apply(regex: SwiftSyntaxRegexes.numbers, in: storage.string, range: bodyRange) { range in
-                        guard !intersectsProtected(range: range, protected: protected) else { return }
-                        storage.addAttribute(.foregroundColor, value: syntax.number, range: range)
-                    }
-                    apply(regex: SwiftSyntaxRegexes.types, in: storage.string, range: bodyRange) { range in
-                        guard !intersectsProtected(range: range, protected: protected) else { return }
-                        storage.addAttribute(.foregroundColor, value: syntax.type, range: range)
-                    }
-                    apply(regex: SwiftSyntaxRegexes.calls, in: storage.string, range: bodyRange) { range in
-                        guard !intersectsProtected(range: range, protected: protected) else { return }
-                        storage.addAttribute(.foregroundColor, value: syntax.call, range: range)
+                    if block.language == "swift" {
+                        applySwiftSyntax(
+                            to: storage,
+                            in: fullText,
+                            range: bodyIntersection,
+                            syntax: syntax
+                        )
                     }
                 }
             }
 
-            private func fencedCodeRanges(in text: String, range: NSRange) -> [(full: NSRange, body: NSRange)] {
+            /// Applies Swift keyword/type/string/comment highlighting within a range.
+            /// Uses a protected-ranges pattern: strings and comments are matched first,
+            /// then keywords/types/numbers/calls skip ranges already claimed.
+            private func applySwiftSyntax(
+                to storage: NSTextStorage,
+                in text: String,
+                range: NSRange,
+                syntax: NativeSyntaxStyle
+            ) {
+                var protected: [NSRange] = []
+
+                // Literals & comments first — these take priority
+                let literalRules: [(NSRegularExpression?, NSColor)] = [
+                    (SwiftSyntaxRegexes.strings, syntax.string),
+                    (SwiftSyntaxRegexes.blockComments, syntax.comment),
+                    (SwiftSyntaxRegexes.lineComments, syntax.comment),
+                ]
+                for (regex, color) in literalRules {
+                    apply(regex: regex, in: text, range: range) { matchRange in
+                        storage.addAttribute(.foregroundColor, value: color, range: matchRange)
+                        protected.append(matchRange)
+                    }
+                }
+
+                // Semantic tokens — skip protected ranges
+                let semanticRules: [(NSRegularExpression?, NSColor)] = [
+                    (SwiftSyntaxRegexes.keywords, syntax.keyword),
+                    (SwiftSyntaxRegexes.numbers, syntax.number),
+                    (SwiftSyntaxRegexes.types, syntax.type),
+                    (SwiftSyntaxRegexes.calls, syntax.call),
+                ]
+                for (regex, color) in semanticRules {
+                    apply(regex: regex, in: text, range: range) { matchRange in
+                        guard !intersectsProtected(range: matchRange, protected: protected) else { return }
+                        storage.addAttribute(.foregroundColor, value: color, range: matchRange)
+                    }
+                }
+            }
+
+            /// Parses all fenced code blocks from the full text, capturing ranges and language
+            /// in a single pass. The results are reused for both protected-range checks and
+            /// code block styling, avoiding redundant regex work.
+            private func parseFencedBlocks(in text: String, range: NSRange) -> [FencedBlock] {
                 guard let fencedCodeRegex else { return [] }
 
-                var ranges: [(full: NSRange, body: NSRange)] = []
+                var blocks: [FencedBlock] = []
+                let nsText = text as NSString
                 fencedCodeRegex.enumerateMatches(in: text, options: [], range: range) { result, _, _ in
                     guard
                         let result,
@@ -506,14 +610,33 @@ internal import SwiftUI
                         result.range.length > 0
                     else { return }
 
-                    let bodyRange = result.numberOfRanges >= 3 ? result.range(at: 2) : NSRange(location: NSNotFound, length: 0)
-                    ranges.append((full: result.range, body: bodyRange))
+                    let bodyRange = result.numberOfRanges >= 4
+                        ? result.range(at: 3)
+                        : NSRange(location: NSNotFound, length: 0)
+
+                    let languageRange = result.numberOfRanges >= 3 ? result.range(at: 2) : NSRange(location: NSNotFound, length: 0)
+                    let language = languageRange.location != NSNotFound
+                        ? nsText.substring(with: languageRange).lowercased()
+                        : ""
+
+                    blocks.append(FencedBlock(full: result.range, body: bodyRange, language: language))
                 }
-                return ranges
+                return blocks
             }
 
+            /// Binary search intersection check — requires `protected` sorted by location.
             private func intersectsProtected(range: NSRange, protected: [NSRange]) -> Bool {
-                protected.contains { NSIntersectionRange($0, range).length > 0 }
+                let rangeEnd = range.location + range.length
+                var lo = 0, hi = protected.count
+                while lo < hi {
+                    let mid = (lo + hi) / 2
+                    if protected[mid].location + protected[mid].length <= range.location {
+                        lo = mid + 1
+                    } else {
+                        hi = mid
+                    }
+                }
+                return lo < protected.count && protected[lo].location < rangeEnd
             }
 
             private func apply(

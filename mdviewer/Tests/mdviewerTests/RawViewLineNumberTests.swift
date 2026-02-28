@@ -87,6 +87,81 @@
                 }
             }
 
+            // MARK: - Efficient Newline Counting
+
+            /// Validates that the optimized single-pass newline counting produces
+            /// the same results as the old `components(separatedBy:).count` approach.
+            /// This is the algorithm now used in LineNumberRulerView and ReaderLayoutManager.
+            func testEfficientNewlineCountMatchesComponentsSplit() {
+                let testCases: [String] = [
+                    "",
+                    "single line",
+                    "line1\nline2",
+                    "a\nb\nc\nd\ne",
+                    "a\n\nb", // blank line
+                    "\n", // just a newline
+                    "\n\n\n", // multiple newlines
+                    "no newline at end",
+                    "newline at end\n",
+                    String(repeating: "line\n", count: 500), // 500 lines
+                    "Hello 👋\nWorld 🌍\n日本語", // Unicode
+                ]
+
+                for text in testCases {
+                    let nsString = text as NSString
+                    let length = nsString.length
+
+                    // Old approach: components(separatedBy:).count
+                    let oldCount: Int
+                    if length == 0 {
+                        oldCount = 1
+                    } else {
+                        oldCount = text.components(separatedBy: .newlines).count
+                    }
+
+                    // New approach: single-pass newline scan (matches LineNumberRulerView)
+                    var newCount = 1
+                    for i in 0 ..< length {
+                        if nsString.character(at: i) == 0x0A { newCount += 1 }
+                    }
+
+                    XCTAssertEqual(
+                        newCount, oldCount,
+                        "Efficient count must match split count for: '\(text.prefix(40))...'"
+                    )
+                }
+            }
+
+            /// Validates the efficient counting approach used in ReaderLayoutManager.countLines
+            /// which adjusts for trailing newlines.
+            func testEfficientCountWithTrailingNewlineAdjustment() {
+                let testCases: [(String, Int)] = [
+                    ("line1\nline2\n", 2), // trailing \n doesn't add a visible line
+                    ("a\nb\nc\n", 3),
+                    ("single\n", 1),
+                    ("\n", 1), // just a newline = 1 visible line
+                    ("no trailing", 1),
+                    ("a\nb", 2),
+                ]
+
+                for (text, expected) in testCases {
+                    let nsString = text as NSString
+                    let length = nsString.length
+
+                    var count = 1
+                    for i in 0 ..< length {
+                        if nsString.character(at: i) == 0x0A { count += 1 }
+                    }
+                    // Adjust for trailing newline (matches ReaderLayoutManager)
+                    if length > 0, nsString.character(at: length - 1) == 0x0A {
+                        count -= 1
+                    }
+                    count = max(1, count)
+
+                    XCTAssertEqual(count, expected, "Text: '\(text)'")
+                }
+            }
+
             // MARK: - Edge Cases
 
             /// Test line numbering with very long lines.
@@ -95,10 +170,20 @@
                 let twoLineDoc = "line1\n" + longLine
                 let nsString = twoLineDoc as NSString
 
-                // Line 2 should be detected properly even with very long line 1
-                let prevString = nsString.substring(with: NSRange(location: 0, length: 5))
-                let lineCount = prevString.components(separatedBy: .newlines).count
-                XCTAssertEqual(lineCount, 1)
+                // Efficient approach: count newlines in prefix
+                var count = 1
+                let end = min(5, nsString.length)
+                for i in 0 ..< end {
+                    if nsString.character(at: i) == 0x0A { count += 1 }
+                }
+                XCTAssertEqual(count, 1, "No newline in first 5 chars")
+
+                // Full document has exactly one newline
+                var fullCount = 1
+                for i in 0 ..< nsString.length {
+                    if nsString.character(at: i) == 0x0A { fullCount += 1 }
+                }
+                XCTAssertEqual(fullCount, 2, "Two lines in document")
             }
 
             /// Test mixed line endings don't cause crashes.

@@ -17,6 +17,8 @@ struct RawMarkdownEditor: View {
     let syntaxPalette: SyntaxPalette
     let colorScheme: ColorScheme
     let showLineNumbers: Bool
+    let appTheme: AppTheme
+    let textSpacing: ReaderTextSpacing
 
     var body: some View {
         RawMarkdownTextView(
@@ -25,7 +27,9 @@ struct RawMarkdownEditor: View {
             fontSize: fontSize,
             syntaxPalette: syntaxPalette,
             colorScheme: colorScheme,
-            showLineNumbers: showLineNumbers
+            showLineNumbers: showLineNumbers,
+            appTheme: appTheme,
+            textSpacing: textSpacing
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

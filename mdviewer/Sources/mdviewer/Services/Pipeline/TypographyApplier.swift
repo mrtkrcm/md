@@ -42,7 +42,7 @@ struct TypographyApplier: TypographyApplying {
                     applyHeadingStyle(to: text, range: range, request: request, level: level, palette: palette)
 
                 case .codeBlock:
-                    let codeFont = NSFont.monospacedSystemFont(ofSize: request.codeFontSize, weight: .regular)
+                    let codeFont = request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true)
                     text.addAttribute(.font, value: codeFont, range: range)
                     text.addAttribute(.backgroundColor, value: palette.codeBackground, range: range)
                     // Only add codeBlock attribute when line numbers are enabled (used by layout manager)
@@ -96,16 +96,16 @@ struct TypographyApplier: TypographyApplying {
                     applyListParagraphStyle(to: text, range: range, request: request)
 
                 case .tableHeaderRow:
-                    // Bold header cells with monospaced font for column alignment
-                    let codeFont = NSFont.monospacedSystemFont(ofSize: request.readerFontSize, weight: .semibold)
-                    text.addAttribute(.font, value: codeFont, range: range)
+                    // Bold header cells using the reader's font family
+                    let headerFont = request.readerFontFamily.nsFont(size: request.readerFontSize, weight: .semibold)
+                    text.addAttribute(.font, value: headerFont, range: range)
                     text.addAttribute(.foregroundColor, value: palette.heading, range: range)
                     applyTableRowParagraphStyle(to: text, range: range, request: request)
 
                 case .tableRow:
-                    // Monospaced font for consistent column alignment
-                    let codeFont = NSFont.monospacedSystemFont(ofSize: request.readerFontSize, weight: .regular)
-                    text.addAttribute(.font, value: codeFont, range: range)
+                    // Body font for table rows — tab stops handle column alignment
+                    let rowFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
+                    text.addAttribute(.font, value: rowFont, range: range)
                     applyTableRowParagraphStyle(to: text, range: range, request: request)
 
                 default:
@@ -149,8 +149,9 @@ struct TypographyApplier: TypographyApplying {
         alignment: NSTextAlignment = .left
     ) -> NSMutableParagraphStyle {
         let style = NSMutableParagraphStyle()
-        // Use lineHeightMultiple for more consistent typography across font sizes
-        style.lineHeightMultiple = 1.0
+        // lineSpacing adds fixed points after each line (controlled by ReaderTextSpacing).
+        // lineHeightMultiple is left at the default (1.0) — the two models should not be
+        // combined, as lineSpacing is added *after* the multiplied line height.
         style.lineSpacing = lineSpacing
         style.paragraphSpacing = paragraphSpacing
         style.paragraphSpacingBefore = paragraphSpacingBefore
@@ -230,7 +231,7 @@ struct TypographyApplier: TypographyApplying {
         case 3: weight = .semibold
         default: weight = .medium
         }
-        let font = NSFont.systemFont(ofSize: fontSize, weight: weight)
+        let font = request.readerFontFamily.nsFont(size: fontSize, weight: weight)
         text.addAttribute(.font, value: font, range: range)
         text.addAttribute(.foregroundColor, value: palette.heading, range: range)
 
@@ -328,14 +329,15 @@ struct TypographyApplier: TypographyApplying {
     ) {
         // Apply inline code styling
         if intent.contains(.code) {
-            let codeFont = NSFont.monospacedSystemFont(
-                ofSize: request.readerFontSize * 0.92,
-                weight: .regular
+            let codeFont = request.readerFontFamily.nsFont(
+                size: request.readerFontSize * 0.92,
+                monospaced: true
             )
             text.addAttribute(.font, value: codeFont, range: range)
             text.addAttribute(.backgroundColor, value: palette.inlineCodeBackground, range: range)
-            // Add subtle padding for inline code
-            text.addAttribute(.baselineOffset, value: 1, range: range)
+            // Subtle baseline adjustment scaled to font size for optical alignment
+            let baselineOffset = round(request.readerFontSize * 0.06)
+            text.addAttribute(.baselineOffset, value: baselineOffset, range: range)
         }
 
         // Apply bold (strong emphasis)

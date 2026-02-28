@@ -12,6 +12,9 @@
 
         @MainActor
         final class RawMarkdownHighlightingTests: XCTestCase {
+
+            private static let defaultConfig = RawMarkdownTextView.HighlightConfiguration()
+
             func testFencedCodeDoesNotReceiveHeadingStyling() async throws {
                 let source = """
                 # Real Heading
@@ -21,17 +24,9 @@
                 ```
                 """
 
-                let textView = makeTextView()
-                let coordinator = RawMarkdownTextView.Coordinator(text: .constant(source))
-                coordinator.applyTextIfNeeded(source, to: textView)
-                coordinator.applyHighlighting(
-                    to: textView,
-                    fontFamily: .newYork,
-                    fontSize: 16,
-                    syntaxPalette: .midnight,
-                    colorScheme: .light
-                )
+                let (textView, coordinator) = highlightedView(source: source)
                 try await Task.sleep(nanoseconds: 180_000_000)
+                _ = coordinator // Keep coordinator alive for async highlight Task
 
                 let storage = try XCTUnwrap(textView.textStorage)
                 let nsString = storage.string as NSString
@@ -50,33 +45,32 @@
 
             func testHeadingColorChangesAcrossSyntaxPalettes() async {
                 let source = "# Palette Heading"
-                let textView = makeTextView()
-                let coordinator = RawMarkdownTextView.Coordinator(text: .constant(source))
-                coordinator.applyTextIfNeeded(source, to: textView)
-
-                coordinator.applyHighlighting(
-                    to: textView,
-                    fontFamily: .newYork,
-                    fontSize: 16,
-                    syntaxPalette: .midnight,
-                    colorScheme: .light
-                )
+                let (textView, coordinator) = highlightedView(source: source)
                 try? await Task.sleep(nanoseconds: 180_000_000)
                 let firstColor = headingColor(in: textView)
 
-                coordinator.applyHighlighting(
-                    to: textView,
-                    fontFamily: .newYork,
-                    fontSize: 16,
-                    syntaxPalette: .wwdc18,
-                    colorScheme: .light
-                )
+                var wwdc18Config = Self.defaultConfig
+                wwdc18Config.syntaxPalette = .wwdc18
+                coordinator.applyHighlighting(to: textView, config: wwdc18Config)
                 try? await Task.sleep(nanoseconds: 180_000_000)
                 let secondColor = headingColor(in: textView)
 
                 XCTAssertNotNil(firstColor)
                 XCTAssertNotNil(secondColor)
                 XCTAssertNotEqual(firstColor, secondColor, "Heading token color should respond to palette changes")
+            }
+
+            // MARK: - Helpers
+
+            private func highlightedView(
+                source: String,
+                config: RawMarkdownTextView.HighlightConfiguration = defaultConfig
+            ) -> (NSTextView, RawMarkdownTextView.Coordinator) {
+                let textView = makeTextView()
+                let coordinator = RawMarkdownTextView.Coordinator(text: .constant(source))
+                coordinator.applyTextIfNeeded(source, to: textView)
+                coordinator.applyHighlighting(to: textView, config: config)
+                return (textView, coordinator)
             }
 
             private func makeTextView() -> NSTextView {

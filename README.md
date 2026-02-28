@@ -1,104 +1,115 @@
 # mdviewer
 
-Native macOS markdown viewer built with SwiftUI and native AppKit-backed markdown rendering.
+Native macOS markdown viewer built with SwiftUI and AppKit-backed rendering.
 
 ## Requirements
 
 - macOS 14+
-- Swift 5.9+ (`swift --version`)
-- Full Xcode install is recommended for running tests in all environments
+- Swift 5.9+
+- [Just](https://github.com/casey/just) command runner (`brew install just`)
 
 ## Quick Start
 
 ```bash
 git clone git@github.com:mrtkrcm/mdviewer.git
 cd mdviewer
-bash scripts/build.sh
+just install        # build + install to /Applications
 ```
 
-Build and replace your installed app in one command:
+## Build Commands
+
+| Command | Purpose |
+|---------|---------|
+| `just build` | Fast debug build (iteration) |
+| `just release` | Release build only |
+| `just package` | Release build + app bundle (no install) |
+| `just install` | Build + package + install to `/Applications` |
+| `just install-open` | Same as install + launch app |
+| `just clean` | Remove all build artifacts |
+
+## Testing
 
 ```bash
-bash scripts/install.sh
+just test               # all tests
+just test-parallel      # faster parallel run
+just test-coverage      # with code coverage
+just test-e2e           # E2E tests (builds app first)
 ```
 
-Release app output:
+## Code Quality
 
-```text
-release/md.app
+```bash
+just quality            # full gate: format + lint + build + test
+just format-fix         # auto-fix formatting
+just lint-fix           # auto-fix lint issues
 ```
 
-Release binary (inside app bundle):
+## Development
 
-```text
-release/md.app/Contents/MacOS/md
+```bash
+just run                # run from source (debug)
+just xcode              # open in Xcode
+just install-deps       # install SwiftFormat, SwiftLint, Lefthook
+just setup-hooks        # install git hooks
+```
+
+## App Output
+
+```
+release/md.app                      # packaged app bundle
+release/md.app/Contents/MacOS/md    # release binary
 ```
 
 Open a file from terminal:
 
 ```bash
-release/md.app/Contents/MacOS/md README.md
+/Applications/md.app/Contents/MacOS/md README.md
 ```
 
-## Build and Test
+## Build Script Flags
 
-```bash
-cd mdviewer
-swift build -c release
-swift test
+`scripts/build.sh` supports fine-grained control:
+
+| Flag | Effect |
+|------|--------|
+| `--no-install` | Package only, don't install |
+| `--no-tests` | Skip test suite |
+| `--skip-build` | Package using existing binary |
+| `--quiet` | Errors only (for CI) |
+| `--open` | Launch app after install |
+| `--no-strip` | Keep debug symbols |
+
+Environment overrides: `INSTALL_DIR`, `BUNDLE_ID`, `APP_VERSION`, `APP_BUILD`.
+
+## Architecture
+
+```
+mdviewer/Sources/mdviewer/
+├── Models/          # Data models, preferences
+├── Views/           # SwiftUI views + AppKit components
+│   ├── Components/  # Reusable UI
+│   ├── Editor/      # Raw markdown editing
+│   └── Layout/      # Layout managers, ruler views
+├── Services/        # Business logic
+│   └── Pipeline/    # Markdown render pipeline
+├── Theme/           # Design tokens, 10 themes
+├── Syntax/          # Code syntax highlighting
+└── Design/          # Design system reference
 ```
 
-## Code Quality and Formatting
+## Features
 
-Run formatting checks:
-
-```bash
-bash scripts/format.sh --check
-```
-
-Apply formatting:
-
-```bash
-bash scripts/format.sh --fix
-```
-
-Run the full quality gate (format check, release build, tests):
-
-```bash
-bash scripts/quality.sh
-```
-
-If your machine only has Command Line Tools (no full Xcode), tests may be unavailable.
-You can still run release builds.
-
-`scripts/build.sh` behavior:
-
-- Always performs a release build and packages `release/md.app`.
-- `RUN_TESTS=auto` (default): run tests only when Xcode is available
-- `RUN_TESTS=true`: always run tests
-- `RUN_TESTS=false`: skip tests
-- `INSTALL_APP=true`: replace installed app bundle after build
-- `INSTALL_DIR=/Applications` (default): target install directory
-- `QUIT_RUNNING_APP=true` (default): quits/kills running installed app before replace
-- `OPEN_APP_AFTER_INSTALL=false` (default): relaunch app after install
-
-Examples:
-
-```bash
-# Build and install to /Applications
-bash scripts/install.sh
-
-# Build and install to ~/Applications (no sudo needed)
-INSTALL_DIR="$HOME/Applications" bash scripts/install.sh
-```
+- 10 themes (Basic, GitHub, DocC, Solarized, Gruvbox, Dracula, Monokai, Nord, One Dark, Tokyo Night)
+- Light/dark mode for all themes
+- 3 spacing presets (compact, balanced, relaxed)
+- Raw markdown view with syntax highlighting and line numbers
+- Rendered view with native typography
+- YAML frontmatter support
+- Document type support: `.md`, `.markdown`, `.mdown`, `.mkd`
 
 ## Production Notes
 
-- Dependencies are pinned in `mdviewer/Package.resolved`.
-- `Info.plist` is excluded from SwiftPM compilation to keep builds warning-free.
-- File save/load handles common markdown text encodings and reports write/read errors clearly.
-- Markdown document support includes `.md`, `.markdown`, `.mdown`, and `.mkd` on open.
-- New documents start empty and save as markdown by default.
-- A minimal welcome screen appears on startup only when no document content is loaded.
-- Starter content can be inserted/reset from the document toolbar menu.
-- Settings include markdown theme, Swift syntax palette, reader text size, and code font size.
+- Dependencies pinned in `mdviewer/Package.resolved`
+- Ad-hoc codesigned for local use
+- Atomic installs (zero-downtime replace via staging directory)
+- Version derived from git tags automatically

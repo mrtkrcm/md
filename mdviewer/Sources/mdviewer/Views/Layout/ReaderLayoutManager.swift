@@ -248,11 +248,14 @@
             let safeLength = max(0, min(range.length, nsString.length - safeLocation))
             guard safeLength > 0 else { return 1 }
 
-            let safeRange = NSRange(location: safeLocation, length: safeLength)
-            let substring = nsString.substring(with: safeRange)
-            var count = substring.components(separatedBy: .newlines).count
+            // Single-pass newline count — avoids allocating an array of split components
+            let safeEnd = safeLocation + safeLength
+            var count = 1
+            for i in safeLocation ..< safeEnd {
+                if nsString.character(at: i) == 0x0A { count += 1 }
+            }
             // Adjust for trailing newline (it doesn't start a visible line)
-            if substring.hasSuffix("\n") {
+            if safeLength > 0, nsString.character(at: safeEnd - 1) == 0x0A {
                 count -= 1
             }
             return max(1, count)
@@ -308,10 +311,11 @@
                     ]
 
                     let stringSize = numberString.size(withAttributes: attributes)
-                    let x = origin.x + Self
-                        .lineNumberGutterPadding / 2 +
-                        (gutterWidth - stringSize.width - Self.lineNumberGutterPadding / 2) / 2
-                    let y = usedRect.minY + origin.y + (usedRect.height - stringSize.height) / 2
+                    // Pixel-snap to avoid blurry text on non-Retina displays
+                    let gutterCenter: CGFloat = (gutterWidth - stringSize.width - Self.lineNumberGutterPadding / 2) / 2
+                    let x = floor(origin.x + Self.lineNumberGutterPadding / 2 + gutterCenter)
+                    let verticalCenter: CGFloat = (usedRect.height - stringSize.height) / 2
+                    let y = floor(usedRect.minY + origin.y + verticalCenter)
 
                     numberString.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
                     lineNumber += 1

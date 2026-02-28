@@ -185,9 +185,6 @@ private struct ReaderContentView: View {
             readableWidth: min(preferences.readerColumnWidth.points, geometry.size.width - 48),
             showLineNumbers: preferences.showLineNumbers
         )
-        .id(
-            "rendered_\(preferences.theme)_\(preferences.readerFontFamily)_\(preferences.readerFontSize)_\(preferences.showLineNumbers)"
-        )
         .smoothAnimation(preferences.readerFontSize)
         .smoothAnimation(preferences.readerColumnWidth)
     }
@@ -200,9 +197,10 @@ private struct ReaderContentView: View {
             fontSize: preferences.readerFontSize.points,
             syntaxPalette: preferences.syntaxPalette,
             colorScheme: preferences.effectiveColorScheme ?? colorScheme,
-            showLineNumbers: preferences.showLineNumbers
+            showLineNumbers: preferences.showLineNumbers,
+            appTheme: preferences.theme,
+            textSpacing: preferences.readerTextSpacing
         )
-        .id("raw_\(preferences.readerFontFamily)_\(preferences.readerFontSize)_\(preferences.showLineNumbers)")
         .smoothAnimation(preferences.readerFontSize)
     }
 }

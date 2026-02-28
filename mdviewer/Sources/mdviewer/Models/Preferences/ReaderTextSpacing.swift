@@ -106,8 +106,10 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
 
     // MARK: - Convenience Methods
 
-    /// Returns kerning value scaled for the specified font size.
-    func kern(for fontSize: CGFloat) -> CGFloat {
+    /// Returns kerning value for the specified font size.
+    /// Currently returns the fixed kern value; the parameter exists for
+    /// forward compatibility with font-size-proportional tracking.
+    func kern(for _: CGFloat) -> CGFloat {
         kern
     }
 
@@ -116,6 +118,7 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
         let style = NSMutableParagraphStyle()
         style.lineSpacing = lineSpacing(for: fontSize)
         style.paragraphSpacing = paragraphSpacing(for: fontSize)
+        style.paragraphSpacingBefore = paragraphSpacingBefore(for: fontSize)
         style.hyphenationFactor = hyphenationFactor
         return style
     }

@@ -15,9 +15,6 @@
         internal import SwiftUI
         @testable internal import mdviewer
 
-        /// Suppress deprecation warnings for testing legacy properties
-        @available(*, deprecated)
-
         final class MarkdownRenderVisualTests: XCTestCase {
             // MARK: - Private helpers
 
@@ -711,6 +708,102 @@
 
                 let accent = result.attribute(bqAccentKey, at: loc, effectiveRange: nil) as? NSColor
                 XCTAssertNotNil(accent, "Blockquote must have mdv.blockquoteAccent attribute")
+            }
+
+            // MARK: - Font family coverage
+
+            func testAllFontFamiliesRenderValidBodyFont() async {
+                let markdown = "Body text for font family testing."
+
+                for family in ReaderFontFamily.allCases {
+                    let result = await MarkdownRenderService.shared.render(
+                        RenderRequest(
+                            markdown: markdown,
+                            readerFontFamily: family,
+                            readerFontSize: ReaderFontSize.standard.points,
+                            codeFontSize: 14,
+                            appTheme: .basic,
+                            syntaxPalette: .midnight,
+                            colorScheme: .light,
+                            textSpacing: .balanced,
+                            readableWidth: ReaderColumnWidth.balanced.points,
+                            showLineNumbers: false
+                        )
+                    ).attributedString
+                    let ns = result.string as NSString
+                    let loc = ns.range(of: "Body text").location
+
+                    XCTAssertNotEqual(loc, NSNotFound, "\(family): body text must be present")
+                    guard loc != NSNotFound else { continue }
+
+                    let bodyFont = font(at: loc, in: result)
+                    XCTAssertNotNil(bodyFont, "\(family): must produce a valid font")
+                    XCTAssertGreaterThan(
+                        bodyFont?.pointSize ?? 0, 0,
+                        "\(family): font size must be positive"
+                    )
+                }
+            }
+
+            func testAllFontFamiliesPreserveBoldAndItalicTraits() async {
+                let markdown = "Normal **bold** and _italic_ text."
+
+                for family in ReaderFontFamily.allCases {
+                    let result = await MarkdownRenderService.shared.render(
+                        RenderRequest(
+                            markdown: markdown,
+                            readerFontFamily: family,
+                            readerFontSize: ReaderFontSize.standard.points,
+                            codeFontSize: 14,
+                            appTheme: .basic,
+                            syntaxPalette: .midnight,
+                            colorScheme: .light,
+                            textSpacing: .balanced,
+                            readableWidth: ReaderColumnWidth.balanced.points,
+                            showLineNumbers: false
+                        )
+                    ).attributedString
+                    let ns = result.string as NSString
+
+                    let boldLoc = ns.range(of: "bold").location
+                    let italicLoc = ns.range(of: "italic").location
+                    guard boldLoc != NSNotFound, italicLoc != NSNotFound else {
+                        XCTFail("\(family): bold and italic text must be present")
+                        continue
+                    }
+
+                    let boldTraits = font(at: boldLoc, in: result)?.fontDescriptor.symbolicTraits ?? []
+                    XCTAssertTrue(boldTraits.contains(.bold), "\(family): bold text must have .bold trait")
+
+                    let italicTraits = font(at: italicLoc, in: result)?.fontDescriptor.symbolicTraits ?? []
+                    XCTAssertTrue(italicTraits.contains(.italic), "\(family): italic text must have .italic trait")
+                }
+            }
+
+            // MARK: - Kern (letter-spacing) verification
+
+            func testKernAppliedToRenderedBodyText() async {
+                let markdown = "Body paragraph for kern verification."
+
+                for spacing in ReaderTextSpacing.allCases {
+                    let result = await rendered(markdown, textSpacing: spacing)
+                    let ns = result.string as NSString
+                    let loc = ns.range(of: "Body paragraph").location
+
+                    XCTAssertNotEqual(loc, NSNotFound, "\(spacing): body text must be present")
+                    guard loc != NSNotFound else { continue }
+
+                    let kernValue = result.attribute(.kern, at: loc, effectiveRange: nil) as? CGFloat
+                    let expectedKern = spacing.kern(for: ReaderFontSize.standard.points)
+                    XCTAssertNotNil(kernValue, "\(spacing): kern attribute must be present in rendered output")
+                    if let kernValue {
+                        XCTAssertEqual(
+                            kernValue, expectedKern,
+                            accuracy: 0.001,
+                            "\(spacing): kern value must match spacing preset"
+                        )
+                    }
+                }
             }
 
             func testNestedBlockquotesUseSeparateDepths() async {

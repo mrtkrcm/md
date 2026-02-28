@@ -103,17 +103,8 @@ struct ContentView: View {
                 documentText: document.text
             )
         }
-        .toolbarRole(.editor)
         .inspector(isPresented: $showMetadataInspector) {
-            if let metadataView = InspectorMetadataView(frontmatter: parsed.frontmatter) {
-                metadataView
-                    .inspectorColumnWidth(min: 220, ideal: 280, max: 400)
-            } else {
-                MetadataEmptyView {
-                    showMetadataInspector = false
-                }
-                .inspectorColumnWidth(min: 200, ideal: 250, max: 300)
-            }
+            InspectorSidebar(frontmatter: parsed.frontmatter, isPresented: $showMetadataInspector)
         }
         .focusedSceneValue(\.editorActions, editorActions)
         .onAppear {
@@ -244,21 +235,67 @@ private struct AppearancePopover: View {
     }
 }
 
-/// Empty state view for metadata inspector with helpful actions.
-private struct MetadataEmptyView: View {
-    let onDismiss: () -> Void
+/// Unified inspector sidebar that handles both empty and populated states.
+/// Prevents lag by using a simple view structure without complex transitions.
+private struct InspectorSidebar: View {
+    let frontmatter: Frontmatter?
+    @Binding var isPresented: Bool
 
     var body: some View {
-        ContentUnavailableView {
-            Label("No Metadata", systemImage: "tag.slash")
-        } description: {
-            Text("This document has no YAML frontmatter")
-        } actions: {
-            Button("Close Inspector") {
-                onDismiss()
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack {
+                Text("Metadata")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    isPresented = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
-            .controlSize(.small)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            // Content - simple list without complex transitions
+            if let frontmatter {
+                List {
+                    ForEach(frontmatter.entries, id: \.key) { entry in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.key)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(entry.displayValue)
+                                .font(.body)
+                                .textSelection(.enabled)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .listStyle(.plain)
+            } else {
+                // Empty state - simple and fast
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "tag.slash")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No Metadata")
+                        .font(.headline)
+                    Text("This document has no YAML frontmatter")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            }
         }
+        .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
     }
 }
 

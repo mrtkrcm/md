@@ -340,9 +340,14 @@ struct TypographyApplier: TypographyApplying {
         request: RenderRequest
     ) {
         let lineSpacing = max(2, request.textSpacing.lineSpacing(for: request.readerFontSize) * 0.9)
+        // paragraphSpacing + paragraphSpacingBefore together determine how much vertical
+        // space surrounds each row's text. tableVPadding in the layout manager then adds
+        // an additional drawn margin around the measured rect.
+        let cellSpacing = max(6, request.readerFontSize * 0.36)
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
-            paragraphSpacing: 5,
+            paragraphSpacing: cellSpacing,
+            paragraphSpacingBefore: cellSpacing * 0.5,
             hyphenationFactor: 0
         )
         // Tables use an inset track so row surfaces and borders can align visually.

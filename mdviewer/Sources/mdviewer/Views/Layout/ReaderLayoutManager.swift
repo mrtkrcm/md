@@ -23,7 +23,7 @@
         private static let bqBarWidth: CGFloat = 3
         private static let bqHPadding: CGFloat = 12
         private static let tableHPadding: CGFloat = 12
-        private static let tableVPadding: CGFloat = 4
+        private static let tableVPadding: CGFloat = 6
         private static let tableMinWidth: CGFloat = 280
         private static let tableWidthSlack: CGFloat = 36
         private static let lineNumberGutterPadding: CGFloat = 12
@@ -253,9 +253,10 @@
             }
 
             // ── Draw table surfaces and separators ───────────────────────────────
-            for span in tableSpans {
+            for (spanIndex, span) in tableSpans.enumerated() {
                 let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
                 guard !rect.isNull else { continue }
+                let isLastTableSpan = spanIndex == tableSpans.count - 1
 
                 let paragraph = ts.attribute(
                     .paragraphStyle,
@@ -306,13 +307,22 @@
                 }
 
                 if let borderColor {
+                    ctx.setLineWidth(0.5)
+
+                    // Pass 1 — outer frame lines at full border opacity.
                     borderColor.setStroke()
-                    ctx.setLineWidth(1)
                     ctx.beginPath()
-                    // Horizontal separators
+                    // Top horizontal edge (every row)
                     ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.minY))
                     ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.minY))
+                    // Bottom horizontal edge: after header row, and always on the last span
+                    let drawsBottomEdge: Bool
                     if case .tableHeader = span.kind {
+                        drawsBottomEdge = true
+                    } else {
+                        drawsBottomEdge = isLastTableSpan
+                    }
+                    if drawsBottomEdge {
                         ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.maxY))
                         ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.maxY))
                     }
@@ -321,18 +331,22 @@
                     ctx.addLine(to: CGPoint(x: rowRect.minX, y: rowRect.maxY))
                     ctx.move(to: CGPoint(x: rowRect.maxX, y: rowRect.minY))
                     ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.maxY))
+                    ctx.strokePath()
 
-                    // Draw column guides up to the actual tab count in the row text.
+                    // Pass 2 — interior column dividers at reduced opacity.
+                    // Column guides are secondary structure: dimming them lets the outer
+                    // border read as the dominant visual container.
                     if let paragraph, tabCount > 0 {
+                        borderColor.withAlphaComponent(borderColor.alphaComponent * 0.45).setStroke()
+                        ctx.beginPath()
                         for tabStop in paragraph.tabStops.prefix(tabCount) {
                             let x = origin.x + tabStop.location
                             guard x > rowRect.minX, x < rowRect.maxX else { continue }
                             ctx.move(to: CGPoint(x: x, y: rowRect.minY))
                             ctx.addLine(to: CGPoint(x: x, y: rowRect.maxY))
                         }
+                        ctx.strokePath()
                     }
-
-                    ctx.strokePath()
                 }
 
                 ctx.restoreGState()

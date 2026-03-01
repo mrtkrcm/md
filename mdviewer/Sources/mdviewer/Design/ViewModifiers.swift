@@ -247,6 +247,10 @@ struct PaddingModifier: ViewModifier {
     let style: Style
 
     func body(content: Content) -> some View {
+        // Each branch calls SwiftUI's built-in `padding(_: CGFloat)` overload, NOT
+        // the `padding(_ style: PaddingModifier.Style)` extension defined below.
+        // Adding a `PaddingModifier.Style` call here would produce infinite recursion
+        // identical to the BackgroundModifier crash fixed in commit <fix-hash>.
         switch style {
         case .compact:
             content.padding(DesignTokens.Spacing.compact)
@@ -264,7 +268,11 @@ struct PaddingModifier: ViewModifier {
 }
 
 extension View {
-    /// Applies consistent padding based on component type
+    /// Applies consistent padding based on component type.
+    ///
+    /// - Important: Do NOT call `self.padding(_: PaddingModifier.Style)` inside
+    ///   `PaddingModifier.body` — that resolves to this extension and causes
+    ///   infinite recursion. Use SwiftUI's built-in `padding(_: CGFloat)` instead.
     func padding(_ style: PaddingModifier.Style) -> some View {
         modifier(PaddingModifier(style: style))
     }
@@ -279,13 +287,21 @@ struct BackgroundModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(color)
+            // Use the view-builder overload to avoid resolving to the custom
+            // `background(_ color: Color, cornerRadius:)` extension, which
+            // would re-invoke BackgroundModifier and overflow the stack.
+            .background { color }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius ?? 0))
     }
 }
 
 extension View {
-    /// Applies themed background
+    /// Applies themed background.
+    ///
+    /// - Important: Do NOT call `self.background(_ color: Color, ...)` inside
+    ///   `BackgroundModifier.body` — that resolves to this extension and causes
+    ///   infinite recursion. Use `content.background { color }` (the `@ViewBuilder`
+    ///   overload) to bind to SwiftUI's built-in instead.
     func background(_ color: Color, cornerRadius: CGFloat? = nil) -> some View {
         modifier(BackgroundModifier(color: color, cornerRadius: cornerRadius))
     }
@@ -309,7 +325,11 @@ struct BorderModifier: ViewModifier {
 }
 
 extension View {
-    /// Applies themed border with consistent styling
+    /// Applies themed border with consistent styling.
+    ///
+    /// - Important: Do NOT call `self.border(_:width:cornerRadius:)` inside
+    ///   `BorderModifier.body` — that resolves to this extension and causes
+    ///   infinite recursion. Use `.overlay(RoundedRectangle(...).stroke(...))` directly.
     func border(
         _ color: Color,
         width: CGFloat = 1,

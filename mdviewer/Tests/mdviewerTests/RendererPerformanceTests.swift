@@ -16,7 +16,7 @@
 
                 await MarkdownRenderService.shared.resetForTesting()
 
-                let markdown = largeMarkdown(lines: 5_000)
+                let markdown = largeMarkdown(lines: 5000)
                 let base = RenderRequest(
                     markdown: markdown,
                     readerFontFamily: .newYork,

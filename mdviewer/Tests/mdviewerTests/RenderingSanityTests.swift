@@ -41,7 +41,11 @@
                 XCTAssertNotEqual(text.range(of: "Title").location, NSNotFound)
                 XCTAssertNotEqual(text.range(of: "First paragraph.").location, NSNotFound)
                 XCTAssertNotEqual(text.range(of: "Second paragraph.").location, NSNotFound)
-                XCTAssertNotEqual(text.range(of: "\n").location, NSNotFound, "Expected visible line breaks between blocks")
+                XCTAssertNotEqual(
+                    text.range(of: "\n").location,
+                    NSNotFound,
+                    "Expected visible line breaks between blocks"
+                )
             }
 
             /// Sanity check for major style channels used by the renderer.

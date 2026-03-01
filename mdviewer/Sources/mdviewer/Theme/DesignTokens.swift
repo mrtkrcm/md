@@ -145,6 +145,174 @@ enum DesignTokens {
         /// Icon large (40pt)
         static let iconLarge: CGFloat = 40
     }
+
+    // MARK: - Semantic Colors
+
+    /// Semantic color values for common UI states
+    enum SemanticColors {
+        /// Success/positive state color
+        static let success = Color(red: 0.2, green: 0.7, blue: 0.3)
+        /// Warning/caution state color
+        static let warning = Color(red: 0.9, green: 0.6, blue: 0.1)
+        /// Error/danger state color
+        static let error = Color(red: 0.9, green: 0.25, blue: 0.2)
+        /// Informational state color
+        static let info = Color(red: 0.1, green: 0.6, blue: 0.9)
+    }
+
+    // MARK: - Component Tokens
+
+    enum Component {
+        enum Button {
+            /// Minimum tap target size (44pt)
+            static let minTapTarget: CGFloat = 44
+            /// Standard button height (36pt)
+            static let height: CGFloat = 36
+            /// Large button height (48pt)
+            static let heightLarge: CGFloat = 48
+            /// Small button height (28pt)
+            static let heightSmall: CGFloat = 28
+            /// Button content padding (16pt)
+            static let paddingHorizontal: CGFloat = 16
+            /// Icon button size (36pt)
+            static let iconSize: CGFloat = 36
+        }
+
+        enum Card {
+            /// Standard card padding (16pt)
+            static let padding: CGFloat = 16
+            /// Card elevation shadow opacity (0.08)
+            static let shadowOpacity: Double = 0.08
+            /// Card elevation shadow radius (8pt)
+            static let shadowRadius: CGFloat = 8
+        }
+
+        enum Input {
+            /// Standard input field height (36pt)
+            static let height: CGFloat = 36
+            /// Input field padding (12pt)
+            static let paddingHorizontal: CGFloat = 12
+            /// Text area minimum height (100pt)
+            static let textAreaMinHeight: CGFloat = 100
+        }
+
+        enum List {
+            /// Standard list item height (44pt)
+            static let itemHeight: CGFloat = 44
+            /// Compact list item height (32pt)
+            static let itemHeightCompact: CGFloat = 32
+            /// List item indentation (20pt)
+            static let indentation: CGFloat = 20
+        }
+
+        enum Toolbar {
+            /// Toolbar item spacing (8pt)
+            static let itemSpacing: CGFloat = 8
+            /// Toolbar padding (12pt)
+            static let padding: CGFloat = 12
+        }
+
+        enum Modal {
+            /// Modal corner radius (12pt)
+            static let cornerRadius: CGFloat = 12
+            /// Modal shadow radius (16pt)
+            static let shadowRadius: CGFloat = 16
+            /// Modal backdrop opacity (0.4)
+            static let backdropOpacity: Double = 0.4
+        }
+    }
+
+    // MARK: - Animation Presets
+
+    /// Predefined animation configurations for consistent motion design
+    enum AnimationPreset {
+        /// Instant transition (no animation)
+        static let instant: SwiftUI.Animation = .linear(duration: 0)
+        /// Very fast interaction (0.1s)
+        static let veryFast: SwiftUI.Animation = .easeInOut(duration: 0.1)
+        /// Fast interaction (0.15s)
+        static let fast: SwiftUI.Animation = .easeInOut(duration: 0.15)
+        /// Standard interaction (0.2s)
+        static let standard: SwiftUI.Animation = .easeInOut(duration: 0.2)
+        /// Medium transition (0.25s)
+        static let medium: SwiftUI.Animation = .easeInOut(duration: 0.25)
+        /// Slow transition (0.35s)
+        static let slow: SwiftUI.Animation = .easeInOut(duration: 0.35)
+        /// Very slow transition (0.5s)
+        static let verySlow: SwiftUI.Animation = .easeInOut(duration: 0.5)
+
+        /// Spring animation for responsive interactions
+        static func spring(response: TimeInterval = 0.28, damping: CGFloat = 0.82) -> SwiftUI.Animation {
+            .spring(response: response, dampingFraction: damping)
+        }
+
+        /// Smooth animation with modern easing
+        @available(macOS 15.0, iOS 17.0, *)
+        static func smooth(duration: TimeInterval = 0.25) -> SwiftUI.Animation {
+            .smooth(duration: duration)
+        }
+
+        /// Bouncy spring animation for playful interactions
+        @available(macOS 15.0, iOS 17.0, *)
+        static let bouncy: SwiftUI.Animation = .bouncy
+    }
+
+    // MARK: - Transition Presets
+
+    /// Predefined transitions for consistent view changes
+    enum TransitionPreset {
+        /// Fade transition
+        static var fade: AnyTransition { .opacity }
+
+        /// Slide in from bottom
+        static var slideFromBottom: AnyTransition { .move(edge: .bottom).combined(with: .opacity) }
+
+        /// Slide in from top
+        static var slideFromTop: AnyTransition { .move(edge: .top).combined(with: .opacity) }
+
+        /// Slide in from leading (left in LTR)
+        static var slideFromLeading: AnyTransition { .move(edge: .leading).combined(with: .opacity) }
+
+        /// Slide in from trailing (right in LTR)
+        static var slideFromTrailing: AnyTransition { .move(edge: .trailing).combined(with: .opacity) }
+
+        /// Scale with fade
+        static var scaleFade: AnyTransition {
+            .asymmetric(
+                insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                removal: .opacity.combined(with: .scale(scale: 1.02))
+            )
+        }
+
+        /// Slide in from bottom with scale
+        static var slideUpScale: AnyTransition {
+            .asymmetric(
+                insertion: .move(edge: .bottom).combined(with: .scale(scale: 0.95)),
+                removal: .opacity
+            )
+        }
+    }
+
+    // MARK: - Spacing Scale
+
+    enum SpacingScale {
+        /// Extra extra small (2pt)
+        static let xxs: CGFloat = 2
+        /// Extra small (4pt)
+        static let xs: CGFloat = 4
+        /// Small (6pt)
+        static let small: CGFloat = 6
+        /// Medium (8pt)
+        static let medium: CGFloat = 8
+        /// Large (12pt)
+        static let large: CGFloat = 12
+        /// Extra large (16pt)
+        static let xl: CGFloat = 16
+        /// Extra extra large (24pt)
+        static let xxl: CGFloat = 24
+        /// Extra extra extra large (32pt)
+        static let xxxl: CGFloat = 32
+    }
 }
 
 // MARK: - View Extensions

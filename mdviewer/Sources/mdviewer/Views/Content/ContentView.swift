@@ -5,8 +5,8 @@
 //  Main content container that composes reader, editor, and toolbar views.
 //
 
-internal import SwiftUI
 internal import OSLog
+internal import SwiftUI
 #if os(macOS)
     internal import AppKit
 #endif
@@ -180,6 +180,7 @@ private struct ReaderContentView: View {
                 .onAppear {
                     renderSignposter.emitEvent("RenderedModeAppeared")
                 }
+
         case .raw:
             rawContent(geometry: geometry)
                 .onAppear {
@@ -217,8 +218,6 @@ private struct ReaderContentView: View {
         .smoothAnimation(preferences.readerFontSize)
     }
 }
-
-
 
 /// Appearance popover wrapper that creates bindings from preferences.
 private struct AppearancePopover: View {
@@ -331,7 +330,6 @@ private struct EmptyMetadataState: View {
         .frame(maxWidth: .infinity)
     }
 }
-
 
 // MARK: - Previews
 

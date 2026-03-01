@@ -9,8 +9,8 @@
 #if canImport(XCTest)
     internal import XCTest
     #if os(macOS)
-        internal import SwiftUI
         @testable internal import mdviewer
+        internal import SwiftUI
 
         /// Performance tests for SwiftUI @ViewBuilder rendering patterns.
         /// Measures actual view hierarchy construction, body evaluation, and memory allocations.
@@ -19,12 +19,11 @@
         /// To update baselines: swift test --filter ViewBuilderPerformanceTests
         /// Then accept new baselines in Xcode or via xcrun xccov.
         final class ViewBuilderPerformanceTests: XCTestCase {
-
             // MARK: - Inspector Sidebar Performance (Wall Clock Time)
 
             @MainActor
             func testInspectorSidebarBodyEvaluation() {
-                let entries = (0..<20).map { i in
+                let entries = (0 ..< 20).map { i in
                     Frontmatter.Entry(
                         key: "key\(i)",
                         rawValue: "value\(i)",
@@ -71,7 +70,7 @@
 
             @MainActor
             func testLazyVStackContainerPerformance() {
-                let entries = (0..<100).map { i in
+                let entries = (0 ..< 100).map { i in
                     Frontmatter.Entry(
                         key: "key\(i)",
                         rawValue: "value\(i)",
@@ -88,7 +87,7 @@
 
             @MainActor
             func testRegularVStackContainerPerformance() {
-                let entries = (0..<100).map { i in
+                let entries = (0 ..< 100).map { i in
                     Frontmatter.Entry(
                         key: "key\(i)",
                         rawValue: "value\(i)",
@@ -107,7 +106,7 @@
 
             @MainActor
             func testIsolatedSubviewsPerformance() {
-                let entries = (0..<50).map { i in
+                let entries = (0 ..< 50).map { i in
                     Frontmatter.Entry(
                         key: "key\(i)",
                         rawValue: "value\(i)",
@@ -128,11 +127,15 @@
             func testComplexTypedFrontmatter() {
                 let entries: [Frontmatter.Entry] = [
                     .init(key: "title", rawValue: "Doc", typedValue: .text("Doc")),
-                    .init(key: "url", rawValue: "https://example.com", typedValue: .url(URL(string: "https://example.com")!)),
+                    .init(
+                        key: "url",
+                        rawValue: "https://example.com",
+                        typedValue: .url(URL(string: "https://example.com")!)
+                    ),
                     .init(key: "date", rawValue: "2024-01-15", typedValue: .date(Date())),
                     .init(key: "tags", rawValue: "[a,b,c]", typedValue: .list(["swift", "macos", "markdown"])),
                     .init(key: "published", rawValue: "true", typedValue: .boolean(true)),
-                    .init(key: "count", rawValue: "42", typedValue: .number(42))
+                    .init(key: "count", rawValue: "42", typedValue: .number(42)),
                 ]
                 let frontmatter = Frontmatter(rawYAML: "", entries: entries, metadata: [:])
 
@@ -146,7 +149,7 @@
 
             @MainActor
             func testInspectorSidebarMemoryAllocations() {
-                let entries = (0..<20).map { i in
+                let entries = (0 ..< 20).map { i in
                     Frontmatter.Entry(
                         key: "key\(i)",
                         rawValue: "value\(i)",
@@ -181,7 +184,7 @@
 
             @MainActor
             func testLazyVStackMemoryVsVStack() {
-                let entries = (0..<50).map { i in
+                let entries = (0 ..< 50).map { i in
                     Frontmatter.Entry(
                         key: "key\(i)",
                         rawValue: "value\(i)",
@@ -198,7 +201,7 @@
 
             @MainActor
             func testRegularVStackMemoryVsLazy() {
-                let entries = (0..<50).map { i in
+                let entries = (0 ..< 50).map { i in
                     Frontmatter.Entry(
                         key: "key\(i)",
                         rawValue: "value\(i)",
@@ -217,7 +220,7 @@
 
             @MainActor
             func testInspectorSidebarCPUTime() {
-                let entries = (0..<20).map { i in
+                let entries = (0 ..< 20).map { i in
                     Frontmatter.Entry(
                         key: "key\(i)",
                         rawValue: "value\(i)",
@@ -240,7 +243,7 @@
 
             @MainActor
             func testInspectorSidebarStorageImpact() {
-                let entries = (0..<20).map { i in
+                let entries = (0 ..< 20).map { i in
                     Frontmatter.Entry(
                         key: "key\(i)",
                         rawValue: "value\(i)",

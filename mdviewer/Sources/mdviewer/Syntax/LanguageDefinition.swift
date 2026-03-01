@@ -4,8 +4,8 @@
 //
 
 #if os(macOS)
-    internal import Foundation
     internal import AppKit
+    internal import Foundation
 
     // MARK: - Language Definition
 

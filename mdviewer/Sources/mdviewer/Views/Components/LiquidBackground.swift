@@ -52,6 +52,7 @@ private struct ModernLiquidBackground: View {
                 Color.purple.opacity(0.2), Color.blue.opacity(0.1), Color.black,
                 Color.indigo.opacity(0.15), .black, Color.purple.opacity(0.1),
             ]
+
         default:
             return [
                 .white, .white, .white,
@@ -111,6 +112,7 @@ private struct LegacyLiquidBackground: View {
         case (.dark, 0): return .purple
         case (.dark, 1): return .blue
         case (.dark, _): return .indigo
+
         default:
             return [.blue, .cyan, .purple][index]
         }

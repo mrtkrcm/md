@@ -36,6 +36,9 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
         // The NSAttributedString markdown parser produces flat text.
         // We need to reconstruct paragraph structure from the PresentationIntent attributes.
         injectSeparatorsAtBlockBoundaries(into: text, length: text.length)
+
+        // Nested list items should visually nest under parents.
+        injectNestedListIndentation(into: text)
     }
 
     // MARK: - Private Methods
@@ -45,7 +48,7 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
     /// A single table cell discovered by scanning PresentationIntent attributes.
     private struct TableCell {
         let range: NSRange
-        let row: Int          // -1 for header row
+        let row: Int // -1 for header row
         let column: Int
         let isHeader: Bool
     }
@@ -71,11 +74,14 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
                 switch component.kind {
                 case .tableCell(let col):
                     column = col
+
                 case .tableRow(let r):
                     row = r
+
                 case .tableHeaderRow:
                     row = -1
                     isHeader = true
+
                 default:
                     break
                 }
@@ -132,6 +138,33 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
         ) { value, range, _ in
             guard let intent = value as? PresentationIntent else { return }
 
+            var listItemIdentity: Int?
+            var listDepth = 0
+            var listKindSignature = ""
+            for component in intent.components {
+                switch component.kind {
+                case .listItem:
+                    listItemIdentity = component.identity
+
+                case .unorderedList:
+                    listDepth += 1
+                    listKindSignature.append("u")
+
+                case .orderedList:
+                    listDepth += 1
+                    listKindSignature.append("o")
+
+                default:
+                    break
+                }
+            }
+
+            if let listItemIdentity, listDepth > 0 {
+                let signature = "listItem-\(listItemIdentity)-d\(listDepth)-\(listKindSignature)"
+                blockRuns.append(BlockRun(range: range, blockSignature: signature))
+                return
+            }
+
             // Keep only block-level components and use the most specific one
             // as a stable signature for transition detection.
             let blockComponents = intent.components.filter { component in
@@ -139,6 +172,7 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
                 case .header, .paragraph, .codeBlock, .blockQuote, .unorderedList, .orderedList,
                      .tableRow, .tableHeaderRow:
                     return true
+
                 default:
                     return false
                 }
@@ -153,7 +187,7 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
 
         var insertionPoints: [Int] = []
 
-        for index in 1..<blockRuns.count {
+        for index in 1 ..< blockRuns.count {
             let previous = blockRuns[index - 1]
             let current = blockRuns[index]
 
@@ -178,7 +212,7 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
                     range: scanRange
                 ).location != NSNotFound
 
-            if !existingNewline && boundary > 0 && boundary <= length {
+            if !existingNewline, boundary > 0, boundary <= length {
                 insertionPoints.append(boundary)
             }
         }
@@ -188,6 +222,67 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
             if location > 0, location <= text.length {
                 text.insert(NSAttributedString(string: "\n"), at: location)
             }
+        }
+    }
+
+    // MARK: - Nested List Indentation
+
+    private struct ListRun {
+        let range: NSRange
+        let depth: Int
+    }
+
+    /// Adds tab indentation before nested list items after line boundaries are restored.
+    private func injectNestedListIndentation(into text: NSMutableAttributedString) {
+        let fullRange = NSRange(location: 0, length: text.length)
+        let nsText = text.string as NSString
+        var runs: [ListRun] = []
+
+        text.enumerateAttribute(
+            MarkdownRenderAttribute.presentationIntent,
+            in: fullRange,
+            options: []
+        ) { value, range, _ in
+            guard let intent = value as? PresentationIntent else { return }
+            var depth = 0
+            var hasListItem = false
+            for component in intent.components {
+                switch component.kind {
+                case .unorderedList, .orderedList:
+                    depth += 1
+
+                case .listItem:
+                    hasListItem = true
+
+                default:
+                    break
+                }
+            }
+            guard hasListItem, depth > 1 else { return }
+            runs.append(ListRun(range: range, depth: depth))
+        }
+
+        guard !runs.isEmpty else { return }
+
+        var insertions: [(location: Int, text: String)] = []
+        for run in runs {
+            let loc = run.range.location
+            guard loc >= 0, loc < text.length else { continue }
+
+            // Only indent true line starts to avoid inserting tabs into inline text.
+            let isLineStart = loc == 0 || nsText.character(at: loc - 1) == 0x0A
+            guard isLineStart else { continue }
+
+            // Skip if indentation was already inserted.
+            let alreadyIndented = nsText.character(at: loc) == 0x09
+            guard !alreadyIndented else { continue }
+
+            let tabs = String(repeating: "\t", count: run.depth - 1)
+            insertions.append((loc, tabs))
+        }
+
+        for insertion in insertions.sorted(by: { $0.location > $1.location }) {
+            text.insert(NSAttributedString(string: insertion.text), at: insertion.location)
         }
     }
 }

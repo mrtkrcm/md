@@ -232,3 +232,281 @@ extension View {
         modifier(VisibilityModifier(isVisible: isVisible, animation: animation))
     }
 }
+
+// MARK: - Padding Modifier
+
+/// Applies consistent padding based on component type
+struct PaddingModifier: ViewModifier {
+    enum Style {
+        case compact
+        case standard
+        case relaxed
+        case modal
+    }
+
+    let style: Style
+
+    func body(content: Content) -> some View {
+        switch style {
+        case .compact:
+            content.padding(DesignTokens.Spacing.compact)
+
+        case .standard:
+            content.padding(DesignTokens.Spacing.standard)
+
+        case .relaxed:
+            content.padding(DesignTokens.Spacing.relaxed)
+
+        case .modal:
+            content.padding(DesignTokens.Component.Modal.cornerRadius)
+        }
+    }
+}
+
+extension View {
+    /// Applies consistent padding based on component type
+    func padding(_ style: PaddingModifier.Style) -> some View {
+        modifier(PaddingModifier(style: style))
+    }
+}
+
+// MARK: - Background Modifier
+
+/// Applies themed background with optional corner radius
+struct BackgroundModifier: ViewModifier {
+    let color: Color
+    let cornerRadius: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            .background(color)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius ?? 0))
+    }
+}
+
+extension View {
+    /// Applies themed background
+    func background(_ color: Color, cornerRadius: CGFloat? = nil) -> some View {
+        modifier(BackgroundModifier(color: color, cornerRadius: cornerRadius))
+    }
+}
+
+// MARK: - Border Modifier
+
+/// Applies themed border with consistent styling
+struct BorderModifier: ViewModifier {
+    let color: Color
+    let width: CGFloat
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(color, lineWidth: width)
+            )
+    }
+}
+
+extension View {
+    /// Applies themed border with consistent styling
+    func border(
+        _ color: Color,
+        width: CGFloat = 1,
+        cornerRadius: CGFloat = DesignTokens.CornerRadius.small
+    ) -> some View {
+        modifier(BorderModifier(color: color, width: width, cornerRadius: cornerRadius))
+    }
+}
+
+// MARK: - Card Style Modifier
+
+/// Applies card styling with background, shadow, and padding
+struct CardStyleModifier: ViewModifier {
+    let backgroundColor: Color
+    let shadowLevel: ElevationModifier.Level
+
+    func body(content: Content) -> some View {
+        content
+            .background(backgroundColor)
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.medium))
+            .elevation(shadowLevel)
+    }
+}
+
+extension View {
+    /// Applies card styling with background, shadow, and padding
+    func cardStyle(
+        backgroundColor: Color,
+        shadowLevel: ElevationModifier.Level = .standard
+    ) -> some View {
+        modifier(CardStyleModifier(backgroundColor: backgroundColor, shadowLevel: shadowLevel))
+    }
+}
+
+// MARK: - Button Style Modifier
+
+/// Applies consistent button styling
+struct ButtonStyleModifier: ViewModifier {
+    let backgroundColor: Color
+    let foregroundColor: Color
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, DesignTokens.Component.Button.paddingHorizontal)
+            .padding(.vertical, DesignTokens.Component.Button.heightSmall)
+            .background(isEnabled ? backgroundColor : backgroundColor.opacity(0.5))
+            .foregroundColor(foregroundColor)
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small))
+            .scaleEffect(isEnabled ? 1.0 : 0.98)
+    }
+}
+
+extension View {
+    /// Applies consistent button styling
+    func buttonStyle(
+        backgroundColor: Color,
+        foregroundColor: Color,
+        isEnabled: Bool = true
+    ) -> some View {
+        modifier(ButtonStyleModifier(
+            backgroundColor: backgroundColor,
+            foregroundColor: foregroundColor,
+            isEnabled: isEnabled
+        ))
+    }
+}
+
+// MARK: - Icon Button Style Modifier
+
+/// Applies icon-only button styling with proper tap target
+struct IconButtonStyleModifier: ViewModifier {
+    let backgroundColor: Color
+    let iconColor: Color
+    let size: CGFloat
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .frame(width: size, height: size)
+            .background(isEnabled ? backgroundColor : backgroundColor.opacity(0.5))
+            .foregroundColor(iconColor)
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small))
+            .interactive()
+    }
+}
+
+extension View {
+    /// Applies icon-only button styling with proper tap target
+    func iconButtonStyle(
+        backgroundColor: Color,
+        iconColor: Color,
+        size: CGFloat = DesignTokens.Component.Button.iconSize,
+        isEnabled: Bool = true
+    ) -> some View {
+        modifier(IconButtonStyleModifier(
+            backgroundColor: backgroundColor,
+            iconColor: iconColor,
+            size: size,
+            isEnabled: isEnabled
+        ))
+    }
+}
+
+// MARK: - Text Style Modifier
+
+/// Applies consistent text styling
+struct TextStyleModifier: ViewModifier {
+    let size: CGFloat
+    let weight: Font.Weight
+    let color: Color
+
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: size, weight: weight))
+            .foregroundColor(color)
+    }
+}
+
+extension View {
+    /// Applies consistent text styling
+    func textStyle(
+        size: CGFloat,
+        color: Color,
+        weight: Font.Weight = .regular
+    ) -> some View {
+        modifier(TextStyleModifier(size: size, weight: weight, color: color))
+    }
+}
+
+// MARK: - Shimmer Effect Modifier
+
+/// Applies shimmer loading effect
+struct ShimmerModifier: ViewModifier {
+    @State private var phase: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                GeometryReader { geometry in
+                    LinearGradient(
+                        colors: [.clear, Color.white.opacity(0.5), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: geometry.size.width * 2)
+                    .offset(x: -geometry.size.width + phase * geometry.size.width * 3)
+                }
+            )
+            .mask(content)
+            .onAppear {
+                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                    phase = 1
+                }
+            }
+    }
+}
+
+extension View {
+    /// Applies shimmer loading effect
+    func shimmer() -> some View {
+        modifier(ShimmerModifier())
+    }
+}
+
+// MARK: - Tooltip Modifier
+
+/// Shows tooltip on hover
+struct TooltipModifier: ViewModifier {
+    let text: String
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottom) {
+                if isHovered {
+                    Text(text)
+                        .font(.caption)
+                        .padding(.horizontal, DesignTokens.Spacing.compact)
+                        .padding(.vertical, DesignTokens.Spacing.tight)
+                        .background(Color.secondary.opacity(0.9))
+                        .foregroundColor(.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small))
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.15), value: isHovered)
+                        .offset(y: -DesignTokens.Spacing.relaxed)
+                }
+            }
+            .onHover { hovering in
+                isHovered = hovering
+            }
+    }
+}
+
+extension View {
+    /// Shows tooltip on hover
+    func tooltip(_ text: String) -> some View {
+        modifier(TooltipModifier(text: text))
+    }
+}

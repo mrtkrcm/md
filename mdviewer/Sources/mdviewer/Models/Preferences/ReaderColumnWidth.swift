@@ -14,8 +14,8 @@ enum ReaderColumnWidth: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    static func from(rawValue: String) -> ReaderColumnWidth {
-        ReaderColumnWidth(rawValue: rawValue) ?? .balanced
+    static func from(rawValue: String) -> Self {
+        Self(rawValue: rawValue) ?? .balanced
     }
 
     var points: CGFloat {

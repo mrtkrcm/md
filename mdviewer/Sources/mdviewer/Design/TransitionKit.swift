@@ -102,9 +102,8 @@ extension View {
     ) -> some View {
         if condition {
             return AnyView(animation(anim, value: value))
-        } else {
-            return AnyView(self)
         }
+        return AnyView(self)
     }
 
     /// Applies different animations for appear and disappear

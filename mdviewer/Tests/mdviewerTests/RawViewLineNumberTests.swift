@@ -46,7 +46,7 @@
                 XCTAssertEqual(empty.length, 0)
 
                 // Should not crash when checking for newline at invalid position
-                if 0 < empty.length {
+                if empty.length > 0 {
                     _ = empty.character(at: 0)
                 }
             }
@@ -166,7 +166,7 @@
 
             /// Test line numbering with very long lines.
             func testLineNumberingWithLongLines() {
-                let longLine = String(repeating: "x", count: 10000)
+                let longLine = String(repeating: "x", count: 10_000)
                 let twoLineDoc = "line1\n" + longLine
                 let nsString = twoLineDoc as NSString
 

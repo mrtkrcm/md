@@ -9,8 +9,8 @@
     internal import XCTest
     #if os(macOS)
         internal import AppKit
-        internal import SwiftUI
         @testable internal import mdviewer
+        internal import SwiftUI
 
         final class ThemeSpacingTests: XCTestCase {
             // MARK: - Theme + Spacing Compatibility

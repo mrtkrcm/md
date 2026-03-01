@@ -5,7 +5,7 @@ Native macOS markdown viewer built with SwiftUI and AppKit-backed rendering.
 ## Requirements
 
 - macOS 14+
-- Swift 5.9+
+- Swift 6.0+
 - [Just](https://github.com/casey/just) command runner (`brew install just`)
 
 ## Quick Start
@@ -106,6 +106,7 @@ mdviewer/Sources/mdviewer/
 - Rendered view with native typography
 - YAML frontmatter support
 - Document type support: `.md`, `.markdown`, `.mdown`, `.mkd`
+- Design system: semantic tokens, component tokens, animation/transition presets
 
 ## Production Notes
 

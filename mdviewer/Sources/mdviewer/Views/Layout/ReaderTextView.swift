@@ -57,10 +57,11 @@
             let hInset = max(minimumHorizontalInset, (availableWidth - targetWidth) / 2)
 
             // Only update if changed significantly (skip redundant layout passes)
-            if !force,
-               abs(textContainer.containerSize.width - targetWidth) < 1.0,
-               abs(textContainerInset.width - hInset) < 1.0,
-               abs(lastAvailableWidth - availableWidth) < 1.0
+            if
+                !force,
+                abs(textContainer.containerSize.width - targetWidth) < 1.0,
+                abs(textContainerInset.width - hInset) < 1.0,
+                abs(lastAvailableWidth - availableWidth) < 1.0
             {
                 return
             }

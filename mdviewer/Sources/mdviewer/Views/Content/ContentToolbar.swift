@@ -5,8 +5,8 @@
 //  Toolbar content for the main document window.
 //
 
-internal import SwiftUI
 internal import OSLog
+internal import SwiftUI
 #if os(macOS)
     internal import AppKit
 #endif

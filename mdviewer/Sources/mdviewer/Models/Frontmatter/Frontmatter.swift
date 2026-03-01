@@ -40,17 +40,22 @@ struct Frontmatter: Equatable, Sendable {
             switch typedValue {
             case .text(let text):
                 return text
+
             case .url(let url):
                 return url.absoluteString
+
             case .date(let date):
                 let formatter = DateFormatter()
                 formatter.dateStyle = .medium
                 formatter.timeStyle = .short
                 return formatter.string(from: date)
+
             case .list(let items):
                 return items.joined(separator: ", ")
+
             case .boolean(let bool):
                 return bool ? "Yes" : "No"
+
             case .number(let number):
                 if number == floor(number) {
                     return String(format: "%.0f", number)

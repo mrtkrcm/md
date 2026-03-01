@@ -144,11 +144,13 @@
                     }
                     if isListItem, !foundListItem {
                         foundListItem = true
-                        if let style = text.attribute(
-                            .paragraphStyle,
-                            at: range.location,
-                            effectiveRange: nil
-                        ) as? NSParagraphStyle {
+                        if
+                            let style = text.attribute(
+                                .paragraphStyle,
+                                at: range.location,
+                                effectiveRange: nil
+                            ) as? NSParagraphStyle
+                        {
                             listItemSpacing = style.paragraphSpacing
                         }
                     }
@@ -413,6 +415,7 @@
                         switch component.kind {
                         case .header, .paragraph, .unorderedList:
                             blockCount += 1
+
                         default:
                             break
                         }
@@ -449,7 +452,7 @@
                 let between = rendered.substring(with: NSRange(location: betweenStart, length: betweenLength))
 
                 XCTAssertTrue(
-                    between.contains(where: { $0.isNewline }),
+                    between.contains(where: \.isNewline),
                     "Expected a newline separator between adjacent paragraph blocks"
                 )
             }

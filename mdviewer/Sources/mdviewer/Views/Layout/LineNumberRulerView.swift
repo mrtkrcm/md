@@ -22,6 +22,7 @@
             needsDisplay = true
         }
 
+        @available(*, unavailable)
         required init(coder: NSCoder) {
             fatalError("init(coder:) has not been implemented")
         }
@@ -103,21 +104,21 @@
                         if convertedRect.intersects(rect) {
                             let numberString = "\(lineNumber)" as NSString
                             let attributes: [NSAttributedString.Key: Any] = [
-                                .font: self.font,
-                                .foregroundColor: self.textColor,
+                                .font: font,
+                                .foregroundColor: textColor,
                             ]
                             let digitCount = numberString.length
                             let stringSize: NSSize
-                            if let cached = self.cachedSizesByDigitCount[digitCount] {
+                            if let cached = cachedSizesByDigitCount[digitCount] {
                                 stringSize = cached
                             } else {
                                 let measured = numberString.size(withAttributes: attributes)
-                                self.cachedSizesByDigitCount[digitCount] = measured
+                                cachedSizesByDigitCount[digitCount] = measured
                                 stringSize = measured
                             }
 
                             // Right-align the number with padding; pixel-snap to avoid blurry text
-                            let x = floor(max(2, self.ruleThickness - stringSize.width - 8))
+                            let x = floor(max(2, ruleThickness - stringSize.width - 8))
                             let y = floor(convertedRect.minY + (convertedRect.height - stringSize.height) / 2)
 
                             numberString.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)

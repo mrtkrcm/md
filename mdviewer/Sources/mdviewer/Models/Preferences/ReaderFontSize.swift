@@ -47,8 +47,8 @@ enum ReaderFontSize: Int, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    static func from(rawValue: Int) -> ReaderFontSize {
-        ReaderFontSize(rawValue: rawValue) ?? .standard
+    static func from(rawValue: Int) -> Self {
+        Self(rawValue: rawValue) ?? .standard
     }
 
     // MARK: - Typography Scale
@@ -56,7 +56,7 @@ enum ReaderFontSize: Int, CaseIterable, Identifiable, Sendable {
     /// Returns a scale factor relative to the standard size (17pt).
     /// Useful for proportional sizing of related elements.
     var scaleFactor: CGFloat {
-        points / ReaderFontSize.standard.points
+        points / Self.standard.points
     }
 }
 

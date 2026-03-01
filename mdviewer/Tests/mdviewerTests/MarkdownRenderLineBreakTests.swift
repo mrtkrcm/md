@@ -223,7 +223,11 @@
                 let style = ns.attribute(.paragraphStyle, at: loc, effectiveRange: nil) as? NSParagraphStyle
                 XCTAssertNotNil(style, "Body text must have a paragraph style")
                 XCTAssertEqual(style?.lineSpacing ?? 0, ReaderTextSpacing.relaxed.lineSpacing(for: 16), accuracy: 0.1)
-                XCTAssertEqual(style?.paragraphSpacing ?? 0, ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), accuracy: 0.1)
+                XCTAssertEqual(
+                    style?.paragraphSpacing ?? 0,
+                    ReaderTextSpacing.relaxed.paragraphSpacing(for: 16),
+                    accuracy: 0.1
+                )
             }
         }
     #endif

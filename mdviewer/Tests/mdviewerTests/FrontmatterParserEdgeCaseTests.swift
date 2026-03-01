@@ -4,8 +4,8 @@
 //
 
 #if canImport(XCTest)
-    internal import XCTest
     @testable internal import mdviewer
+    internal import XCTest
 
     final class FrontmatterParserEdgeCaseTests: XCTestCase {
         // MARK: - Value parsing edge cases
@@ -138,7 +138,7 @@
             """
             let parsed = FrontmatterParser.parse(markdown)
             // The "subtitle:" key with no value (and no list items following) should exist as an entry
-            let hasSubtitle = parsed.frontmatter?.entries.contains(where: { $0.key == "subtitle" }) ?? false
+            let hasSubtitle = parsed.frontmatter?.entries.contains { $0.key == "subtitle" } ?? false
             XCTAssertTrue(hasSubtitle, "Key with empty value should still produce an entry")
         }
 

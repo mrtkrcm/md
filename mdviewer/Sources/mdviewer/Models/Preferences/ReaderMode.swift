@@ -13,8 +13,8 @@ enum ReaderMode: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    static func from(rawValue: String) -> ReaderMode {
-        ReaderMode(rawValue: rawValue) ?? .rendered
+    static func from(rawValue: String) -> Self {
+        Self(rawValue: rawValue) ?? .rendered
     }
 }
 

@@ -3,9 +3,9 @@
 //  mdviewer
 //
 
-internal import SwiftUI
 internal import Foundation
 internal import OSLog
+internal import SwiftUI
 #if os(macOS)
     internal import AppKit
 

@@ -12,8 +12,8 @@
     internal import XCTest
     #if os(macOS)
         internal import AppKit
-        internal import SwiftUI
         @testable internal import mdviewer
+        internal import SwiftUI
 
         final class MarkdownRenderVisualTests: XCTestCase {
             // MARK: - Private helpers
@@ -140,6 +140,21 @@
                 XCTAssertNotNil(italicFont)
                 let traits = italicFont?.fontDescriptor.symbolicTraits ?? []
                 XCTAssertTrue(traits.contains(.italic), "Italic text should have the .italic symbolic font trait")
+            }
+
+            func testBoldItalicCombinedTextHasBothTraits() async {
+                let markdown = "Normal ***bold italic*** text."
+                let result = await rendered(markdown)
+                let ns = result.string as NSString
+
+                let loc = ns.range(of: "bold italic").location
+                XCTAssertNotEqual(loc, NSNotFound)
+
+                let font = font(at: loc, in: result)
+                XCTAssertNotNil(font)
+                let traits = font?.fontDescriptor.symbolicTraits ?? []
+                XCTAssertTrue(traits.contains(.bold), "Combined emphasis should keep bold trait")
+                XCTAssertTrue(traits.contains(.italic), "Combined emphasis should keep italic trait")
             }
 
             func testFontSizeScalesWithReaderPreference() async {
@@ -491,6 +506,35 @@
                 }
             }
 
+            func testHeadingLevelsUseDistinctColors() async {
+                let markdown = """
+                # H1
+                ## H2
+                ### H3
+                """
+                let result = await rendered(markdown, theme: .dracula, scheme: .dark)
+                let ns = result.string as NSString
+
+                let h1Loc = ns.range(of: "H1").location
+                let h2Loc = ns.range(of: "H2").location
+                let h3Loc = ns.range(of: "H3").location
+                XCTAssertNotEqual(h1Loc, NSNotFound)
+                XCTAssertNotEqual(h2Loc, NSNotFound)
+                XCTAssertNotEqual(h3Loc, NSNotFound)
+
+                let h1 = foregroundColor(at: h1Loc, in: result)
+                let h2 = foregroundColor(at: h2Loc, in: result)
+                let h3 = foregroundColor(at: h3Loc, in: result)
+                XCTAssertNotNil(h1)
+                XCTAssertNotNil(h2)
+                XCTAssertNotNil(h3)
+
+                if let h1, let h2, let h3 {
+                    XCTAssertFalse(colorsApproxEqual(h1, h2), "H1 and H2 should use distinct heading colors")
+                    XCTAssertFalse(colorsApproxEqual(h2, h3), "H2 and H3 should use distinct heading colors")
+                }
+            }
+
             func testHeadingsDifferentAcrossThemes() async {
                 let markdown = "# Test Heading"
                 let github = await rendered(markdown, theme: .github, scheme: .light)
@@ -537,6 +581,13 @@
                     // GitHub links are blue (higher blue component than red)
                     XCTAssertGreaterThan(l.blueComponent, l.redComponent, "GitHub links should be blue-ish")
                 }
+
+                let underlineStyle = github.attribute(.underlineStyle, at: linkLoc, effectiveRange: nil) as? Int
+                XCTAssertEqual(
+                    underlineStyle,
+                    NSUnderlineStyle.single.rawValue,
+                    "Links should use single underline styling"
+                )
             }
 
             func testLinksDifferentAcrossThemes() async {
@@ -740,7 +791,11 @@
                 XCTAssertNotNil(headerBg, "Table header should carry themed header background attribute")
                 XCTAssertNotNil(headerBorder, "Table header should carry table border attribute")
 
-                let firstRowHasBorder = result.attribute(tableBorderKey, at: firstRowLoc, effectiveRange: nil) as? NSColor
+                let firstRowHasBorder = result.attribute(
+                    tableBorderKey,
+                    at: firstRowLoc,
+                    effectiveRange: nil
+                ) as? NSColor
                 let firstRowAlternating = result.attribute(
                     tableRowAlternatingKey,
                     at: firstRowLoc,
@@ -757,6 +812,30 @@
                 ) as? Bool
                 XCTAssertEqual(secondRowAlternating, true, "Second body row should be alternating")
                 XCTAssertNotNil(secondRowBg, "Alternating table row should carry row background attribute")
+            }
+
+            func testTableParagraphStyleUsesEnhancedSpacingAndInset() async {
+                let markdown = """
+                | Name | Status | Notes |
+                | --- | --- | --- |
+                | Parser | Done | Stable |
+                """
+
+                let result = await rendered(markdown, theme: .github, scheme: .light)
+                let ns = result.string as NSString
+                let rowLoc = ns.range(of: "Parser").location
+                XCTAssertNotEqual(rowLoc, NSNotFound)
+
+                let style = paragraphStyle(at: rowLoc, in: result)
+                XCTAssertNotNil(style, "Table rows should include paragraph styling")
+                XCTAssertEqual(style?.headIndent ?? 0, 16, accuracy: 0.1, "Table rows should use wider inset")
+                XCTAssertEqual(style?.firstLineHeadIndent ?? 0, 16, accuracy: 0.1)
+                XCTAssertGreaterThanOrEqual(style?.paragraphSpacing ?? 0, 5, "Table rows should have improved spacing")
+                XCTAssertGreaterThanOrEqual(
+                    style?.tabStops.first?.location ?? 0,
+                    120,
+                    "First table tab stop should be roomy"
+                )
             }
 
             func testTaskListUsesThemeAwareCheckboxStyling() async {
@@ -796,6 +875,12 @@
 
                 let doneTextStrike = result.attribute(.strikethroughStyle, at: doneTextLoc, effectiveRange: nil) as? Int
                 XCTAssertNotNil(doneTextStrike, "Checked task text should have strikethrough styling")
+                let strikeColor = result.attribute(
+                    .strikethroughColor,
+                    at: doneTextLoc,
+                    effectiveRange: nil
+                ) as? NSColor
+                XCTAssertNotNil(strikeColor, "Checked task text should carry strike color")
             }
 
             // MARK: - Font family coverage
@@ -915,6 +1000,16 @@
                 XCTAssertNotNil(outerDepth, "Outer blockquote must have depth attribute")
                 XCTAssertNotNil(innerDepth, "Inner blockquote must have depth attribute")
                 XCTAssertNotEqual(outerDepth, innerDepth, "Nested blockquotes must have different depth values")
+
+                let outerStyle = paragraphStyle(at: outerLoc, in: result)
+                let innerStyle = paragraphStyle(at: innerLoc, in: result)
+                XCTAssertNotNil(outerStyle, "Outer blockquote should have paragraph style")
+                XCTAssertNotNil(innerStyle, "Inner blockquote should have paragraph style")
+                XCTAssertGreaterThan(
+                    innerStyle?.headIndent ?? 0,
+                    outerStyle?.headIndent ?? 0,
+                    "Nested blockquote should be more indented than outer blockquote"
+                )
             }
         }
     #endif

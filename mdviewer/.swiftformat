@@ -6,75 +6,75 @@
 
 # Enabled rules
 --rules \
-    andOperator,\
-    anyObjectProtocol,\
-    assertionFailures,\
-    blankLinesAroundMark,\
-    blankLinesAtEndOfScope,\
-    blankLinesAtStartOfScope,\
-    blankLinesBetweenImports,\
-    blankLinesBetweenScopes,\
-    braces,\
-    consecutiveBlankLines,\
-    consecutiveSpaces,\
-    docComments,\
-    duplicateImports,\
-    elseOnSameLine,\
-    emptyExtensions,\
-    enumNamespaces,\
-    fileHeader,\
-    genericExtensions,\
-    headerFileName,\
-    indent,\
-    linebreaks,\
-    modifierOrder,\
-    preferForLoop,\
-    preferKeyPath,\
-    redundantBackticks,\
-    redundantBreak,\
-    redundantClosure,\
-    redundantExtensionACL,\
-    redundantFileprivate,\
-    redundantGet,\
-    redundantInit,\
-    redundantInternal,\
-    redundantLet,\
-    redundantLetError,\
-    redundantNilInit,\
-    redundantObjc,\
-    redundantOptionalBinding,\
-    redundantParens,\
-    redundantPattern,\
-    redundantRawValues,\
-    redundantReturn,\
-    redundantSelf,\
-    redundantType,\
-    redundantTypedThrows,\
-    sortedImports,\
-    spaceAroundBraces,\
-    spaceAroundBrackets,\
-    spaceAroundComments,\
-    spaceAroundGenerics,\
-    spaceAroundOperators,\
-    spaceAroundParens,\
-    spaceInsideBraces,\
-    spaceInsideBrackets,\
-    spaceInsideComments,\
-    spaceInsideGenerics,\
-    spaceInsideParens,\
-    strongOutlets,\
-    strongifiedSelf,\
-    trailingClosures,\
-    trailingCommas,\
-    trailingSpace,\
-    typeSugar,\
-    unusedArguments,\
-    void,\
-    wrap,\
-    wrapAttributes,\
-    wrapEnumCases,\
-    wrapMultilineStatementBraces,\
-    wrapSingleLineComments
+andOperator,\
+anyObjectProtocol,\
+assertionFailures,\
+blankLinesAroundMark,\
+blankLinesAtEndOfScope,\
+blankLinesAtStartOfScope,\
+blankLinesBetweenImports,\
+blankLinesBetweenScopes,\
+braces,\
+consecutiveBlankLines,\
+consecutiveSpaces,\
+docComments,\
+duplicateImports,\
+elseOnSameLine,\
+emptyExtensions,\
+enumNamespaces,\
+fileHeader,\
+genericExtensions,\
+headerFileName,\
+indent,\
+linebreaks,\
+modifierOrder,\
+preferForLoop,\
+preferKeyPath,\
+redundantBackticks,\
+redundantBreak,\
+redundantClosure,\
+redundantExtensionACL,\
+redundantFileprivate,\
+redundantGet,\
+redundantInit,\
+redundantInternal,\
+redundantLet,\
+redundantLetError,\
+redundantNilInit,\
+redundantObjc,\
+redundantOptionalBinding,\
+redundantParens,\
+redundantPattern,\
+redundantRawValues,\
+redundantReturn,\
+redundantSelf,\
+redundantType,\
+redundantTypedThrows,\
+sortedImports,\
+spaceAroundBraces,\
+spaceAroundBrackets,\
+spaceAroundComments,\
+spaceAroundGenerics,\
+spaceAroundOperators,\
+spaceAroundParens,\
+spaceInsideBraces,\
+spaceInsideBrackets,\
+spaceInsideComments,\
+spaceInsideGenerics,\
+spaceInsideParens,\
+strongOutlets,\
+strongifiedSelf,\
+trailingClosures,\
+trailingCommas,\
+trailingSpace,\
+typeSugar,\
+unusedArguments,\
+void,\
+wrap,\
+wrapAttributes,\
+wrapEnumCases,\
+wrapMultilineStatementBraces,\
+wrapSingleLineComments
 
 # Rule-specific settings
 --elseposition same-line
@@ -98,5 +98,6 @@
 --wraptypealiases before-first
 --xcodeindentation disabled
 
+
 # Excluded paths
---exclude .build,release,dist,*.generated.swift
+--exclude .build,release,dist,*.generated.swift,Package.swift

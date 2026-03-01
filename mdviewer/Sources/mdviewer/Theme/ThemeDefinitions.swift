@@ -12,6 +12,8 @@ internal import SwiftUI
 /// All themes support both light and dark appearance modes with consistent spacing.
 extension NativeThemePalette {
     init(theme: AppTheme, scheme: ColorScheme) {
+        self.theme = theme
+        self.scheme = scheme
         switch (theme, scheme) {
         // MARK: - Apple Ecosystem Themes
 
@@ -637,5 +639,284 @@ extension NativeThemePalette {
                 : Self.p3Color(r: 0.20, g: 0.50, b: 0.90, a: 0.25)
             selectionText = .labelColor
         }
+
+        // Normalize explicit raw heading level tokens for every theme.
+        // This keeps level tokens differentiated at the definition layer.
+        let rawHeadingLevels = Self.rawHeadingLevels(
+            base: heading,
+            accent: accent,
+            primary: textPrimary,
+            scheme: scheme
+        )
+        heading1 = rawHeadingLevels.h1
+        heading2 = rawHeadingLevels.h2
+        heading3 = rawHeadingLevels.h3
+
+        let rawBlockquote = Self.rawBlockquoteTokens(
+            accent: blockquoteAccent,
+            background: blockquoteBackground,
+            text: blockquoteText,
+            link: link,
+            textSecondary: textSecondary,
+            scheme: scheme
+        )
+        blockquoteAccent = rawBlockquote.accent
+        blockquoteBackground = rawBlockquote.background
+        blockquoteText = rawBlockquote.text
+
+        let rawTable = Self.rawTableTokens(
+            header: tableHeaderBackground,
+            border: tableBorder,
+            rowAlternating: tableRowAlternating,
+            accent: accent,
+            codeBackground: codeBackground,
+            inlineCodeBackground: inlineCodeBackground,
+            scheme: scheme
+        )
+        tableHeaderBackground = rawTable.header
+        tableBorder = rawTable.border
+        tableRowAlternating = rawTable.rowAlternating
+
+        // Cache derived formatting tokens so render passes avoid repeated blending.
+        formattedHeading = Self.derivedHeadingColor(
+            base: heading,
+            accent: accent,
+            link: link,
+            textPrimary: textPrimary,
+            theme: theme,
+            scheme: scheme,
+            level: 0
+        )
+        formattedHeading1 = Self.derivedHeadingColor(
+            base: heading1,
+            accent: accent,
+            link: link,
+            textPrimary: textPrimary,
+            theme: theme,
+            scheme: scheme,
+            level: 1
+        )
+        formattedHeading2 = Self.derivedHeadingColor(
+            base: heading2,
+            accent: accent,
+            link: link,
+            textPrimary: textPrimary,
+            theme: theme,
+            scheme: scheme,
+            level: 2
+        )
+        formattedHeading3 = Self.derivedHeadingColor(
+            base: heading3,
+            accent: accent,
+            link: link,
+            textPrimary: textPrimary,
+            theme: theme,
+            scheme: scheme,
+            level: 3
+        )
+        formattedTableHeaderSurface = Self.derivedTableHeaderBackground(
+            base: tableHeaderBackground,
+            codeBackground: codeBackground,
+            scheme: scheme
+        )
+        formattedTableRowSurface = Self.derivedTableRowBackground(
+            base: tableRowAlternating,
+            inlineCodeBackground: inlineCodeBackground,
+            scheme: scheme
+        )
+        formattedTableBorderStroke = Self.derivedTableBorder(
+            base: tableBorder,
+            accent: accent,
+            theme: theme,
+            scheme: scheme
+        )
+        formattedLinkUnderline = Self.derivedLinkUnderline(
+            link: link,
+            textPrimary: textPrimary,
+            scheme: scheme
+        )
+    }
+}
+
+// MARK: - Formatting Integration
+
+extension NativeThemePalette {
+    fileprivate static func rawHeadingLevels(
+        base: NSColor,
+        accent: NSColor,
+        primary: NSColor,
+        scheme: ColorScheme
+    ) -> (h1: NSColor, h2: NSColor, h3: NSColor) {
+        let h1AccentMix: CGFloat = scheme == .dark ? 0.14 : 0.02
+        let h2AccentMix: CGFloat = scheme == .dark ? 0.09 : 0.06
+        let h3AccentMix: CGFloat = scheme == .dark ? 0.05 : 0.03
+        let h2TextMix: CGFloat = scheme == .dark ? 0.06 : 0.03
+        let h3TextMix: CGFloat = scheme == .dark ? 0.10 : 0.06
+
+        let h1 = base.blended(withFraction: h1AccentMix, of: accent) ?? base
+        let h2Accent = base.blended(withFraction: h2AccentMix, of: accent) ?? base
+        let h2 = h2Accent.blended(withFraction: h2TextMix, of: primary) ?? h2Accent
+        let h3Accent = base.blended(withFraction: h3AccentMix, of: accent) ?? base
+        let h3 = h3Accent.blended(withFraction: h3TextMix, of: primary) ?? h3Accent
+
+        return (h1, h2, h3)
+    }
+
+    fileprivate static func rawBlockquoteTokens(
+        accent: NSColor,
+        background: NSColor,
+        text: NSColor,
+        link: NSColor,
+        textSecondary: NSColor,
+        scheme: ColorScheme
+    ) -> (accent: NSColor, background: NSColor, text: NSColor) {
+        let accentMix: CGFloat = scheme == .dark ? 0.10 : 0.06
+        let bgLinkMix: CGFloat = scheme == .dark ? 0.08 : 0.05
+        let textMix: CGFloat = scheme == .dark ? 0.14 : 0.08
+
+        let normalizedAccent = accent.blended(withFraction: accentMix, of: link) ?? accent
+        let normalizedBackground = background.blended(withFraction: bgLinkMix, of: normalizedAccent) ?? background
+        let normalizedText = text.blended(withFraction: textMix, of: textSecondary) ?? text
+
+        return (normalizedAccent, normalizedBackground, normalizedText)
+    }
+
+    fileprivate static func rawTableTokens(
+        header: NSColor,
+        border: NSColor,
+        rowAlternating: NSColor,
+        accent: NSColor,
+        codeBackground: NSColor,
+        inlineCodeBackground: NSColor,
+        scheme: ColorScheme
+    ) -> (header: NSColor, border: NSColor, rowAlternating: NSColor) {
+        let headerCodeMix: CGFloat = scheme == .dark ? 0.12 : 0.08
+        let borderAccentMix: CGFloat = scheme == .dark ? 0.14 : 0.08
+        let rowInlineMix: CGFloat = scheme == .dark ? 0.07 : 0.04
+
+        let normalizedHeader = header.blended(withFraction: headerCodeMix, of: codeBackground) ?? header
+        let normalizedBorder = border.blended(withFraction: borderAccentMix, of: accent) ?? border
+        let normalizedRow = rowAlternating
+            .blended(withFraction: rowInlineMix, of: inlineCodeBackground) ?? rowAlternating
+
+        return (normalizedHeader, normalizedBorder, normalizedRow)
+    }
+
+    fileprivate static func derivedHeadingColor(
+        base: NSColor,
+        accent: NSColor,
+        link: NSColor,
+        textPrimary: NSColor,
+        theme: AppTheme,
+        scheme: ColorScheme,
+        level: Int
+    ) -> NSColor {
+        let accentMix: CGFloat
+        let textMix: CGFloat
+        switch level {
+        case 1:
+            accentMix = scheme == .dark ? 0.20 : 0.14
+            textMix = 0
+
+        case 2:
+            accentMix = scheme == .dark ? 0.12 : 0.08
+            textMix = scheme == .dark ? 0.08 : 0.04
+
+        case 3:
+            accentMix = scheme == .dark ? 0.06 : 0.03
+            textMix = scheme == .dark ? 0.14 : 0.08
+
+        default:
+            accentMix = 0
+            textMix = scheme == .dark ? 0.10 : 0.06
+        }
+
+        let themeBias: CGFloat
+        switch theme {
+        case .docC:
+            themeBias = 0.14
+
+        case .github:
+            themeBias = 0.04
+
+        case .solarized, .gruvbox, .dracula, .monokai, .nord, .onedark, .tokyonight:
+            themeBias = 0.08
+
+        default:
+            themeBias = 0.05
+        }
+
+        let accented = base.blended(withFraction: accentMix, of: accent) ?? base
+        let themed = accented.blended(withFraction: themeBias, of: link) ?? accented
+        return themed.blended(withFraction: textMix, of: textPrimary) ?? themed
+    }
+
+    fileprivate static func derivedTableHeaderBackground(
+        base: NSColor,
+        codeBackground: NSColor,
+        scheme: ColorScheme
+    ) -> NSColor {
+        let blendFraction: CGFloat = scheme == .dark ? 0.28 : 0.12
+        return base.blended(withFraction: blendFraction, of: codeBackground) ?? base
+    }
+
+    fileprivate static func derivedTableRowBackground(
+        base: NSColor,
+        inlineCodeBackground: NSColor,
+        scheme: ColorScheme
+    ) -> NSColor {
+        let blendFraction: CGFloat = scheme == .dark ? 0.10 : 0.06
+        return base.blended(withFraction: blendFraction, of: inlineCodeBackground) ?? base
+    }
+
+    fileprivate static func derivedTableBorder(
+        base: NSColor,
+        accent: NSColor,
+        theme: AppTheme,
+        scheme: ColorScheme
+    ) -> NSColor {
+        let accentForwardThemes: Set<AppTheme> = [
+            .dracula, .monokai, .onedark, .tokyonight, .nord, .gruvbox, .solarized,
+        ]
+        var accentBlend: CGFloat = accentForwardThemes.contains(theme) ? 0.18 : 0.08
+        if scheme == .dark {
+            accentBlend += 0.05
+        }
+        return base.blended(withFraction: accentBlend, of: accent) ?? base
+    }
+
+    fileprivate static func derivedLinkUnderline(
+        link: NSColor,
+        textPrimary: NSColor,
+        scheme: ColorScheme
+    ) -> NSColor {
+        let underlineBlend: CGFloat = scheme == .dark ? 0.22 : 0.12
+        return link.blended(withFraction: underlineBlend, of: textPrimary) ?? link
+    }
+
+    /// Returns a hierarchy-aware heading color derived from theme tokens.
+    func formattedHeadingColor(level: Int) -> NSColor {
+        switch level {
+        case 1: return formattedHeading1
+        case 2: return formattedHeading2
+        case 3: return formattedHeading3
+        default: return formattedHeading
+        }
+    }
+
+    func formattedTableHeaderBackground() -> NSColor {
+        formattedTableHeaderSurface
+    }
+
+    func formattedTableRowBackground() -> NSColor {
+        formattedTableRowSurface
+    }
+
+    func formattedTableBorder() -> NSColor {
+        formattedTableBorderStroke
+    }
+
+    func formattedLinkUnderlineColor() -> NSColor {
+        formattedLinkUnderline
     }
 }

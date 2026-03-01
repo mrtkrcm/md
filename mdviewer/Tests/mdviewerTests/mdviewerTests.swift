@@ -4,8 +4,8 @@
 //
 
 #if canImport(XCTest)
-    internal import XCTest
     @testable internal import mdviewer
+    internal import XCTest
 
     final class mdviewerTests: XCTestCase {
         // MARK: - Stable raw-value contracts

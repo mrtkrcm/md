@@ -22,6 +22,10 @@
         private static let codeHPadding: CGFloat = 12
         private static let bqBarWidth: CGFloat = 3
         private static let bqHPadding: CGFloat = 12
+        private static let tableHPadding: CGFloat = 12
+        private static let tableVPadding: CGFloat = 4
+        private static let tableMinWidth: CGFloat = 280
+        private static let tableWidthSlack: CGFloat = 36
         private static let lineNumberGutterPadding: CGFloat = 12
         private static let lineNumberMinWidth: CGFloat = 32
 
@@ -88,7 +92,8 @@
                 let tableRowBG = ts
                     .attribute(MarkdownRenderAttribute.tableRowBackground, at: i, effectiveRange: nil) as? NSColor
                 let tableRowAlternating = ts
-                    .attribute(MarkdownRenderAttribute.tableRowAlternating, at: i, effectiveRange: nil) as? Bool ?? false
+                    .attribute(MarkdownRenderAttribute.tableRowAlternating, at: i, effectiveRange: nil) as? Bool ??
+                    false
 
                 if isCode, let bg = ts.attribute(.backgroundColor, at: i, effectiveRange: nil) as? NSColor {
                     if let last = codeSpans.last, last.charEnd >= i {
@@ -125,8 +130,9 @@
                 }
 
                 if let headerBG = tableHeaderBG {
-                    if let last = tableSpans.last, last.charEnd >= i,
-                       case .tableHeader(_) = last.kind
+                    if
+                        let last = tableSpans.last, last.charEnd >= i,
+                        case .tableHeader = last.kind
                     {
                         tableSpans[tableSpans.count - 1].charEnd = max(tableSpans[tableSpans.count - 1].charEnd, end)
                     } else {
@@ -138,11 +144,12 @@
                     }
                 } else if
                     tableRowBG != nil
-                        || ts.attribute(MarkdownRenderAttribute.tableBorder, at: i, effectiveRange: nil) != nil
+                    || ts.attribute(MarkdownRenderAttribute.tableBorder, at: i, effectiveRange: nil) != nil
                 {
                     let rowBG = tableRowBG ?? .clear
-                    if let last = tableSpans.last, last.charEnd >= i,
-                       case .tableRow(_, _) = last.kind
+                    if
+                        let last = tableSpans.last, last.charEnd >= i,
+                        case .tableRow = last.kind
                     {
                         tableSpans[tableSpans.count - 1].charEnd = max(tableSpans[tableSpans.count - 1].charEnd, end)
                     } else {
@@ -250,7 +257,11 @@
                 let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
                 guard !rect.isNull else { continue }
 
-                let paragraph = ts.attribute(.paragraphStyle, at: span.charStart, effectiveRange: nil) as? NSParagraphStyle
+                let paragraph = ts.attribute(
+                    .paragraphStyle,
+                    at: span.charStart,
+                    effectiveRange: nil
+                ) as? NSParagraphStyle
                 let lineRange = (ts.string as NSString).lineRange(for: NSRange(location: span.charStart, length: 0))
                 let lineText = (ts.string as NSString).substring(with: lineRange)
                 let tabCount = lineText.reduce(into: 0) { partialResult, char in
@@ -264,14 +275,14 @@
                     paragraph.tabStops.count >= tabCount
                 {
                     let lastTab = paragraph.tabStops[tabCount - 1].location
-                    tableWidth = min(tableWidth, max(220, lastTab + 28))
+                    tableWidth = min(tableWidth, max(Self.tableMinWidth, lastTab + Self.tableWidthSlack))
                 }
 
                 let rowRect = CGRect(
-                    x: origin.x + 8,
-                    y: rect.minY - 2,
+                    x: origin.x + Self.tableHPadding,
+                    y: rect.minY - Self.tableVPadding,
                     width: tableWidth,
-                    height: rect.height + 4
+                    height: rect.height + (Self.tableVPadding * 2)
                 )
                 guard rowRect.width > 0, rowRect.height > 0 else { continue }
 
@@ -283,11 +294,13 @@
                 case .tableHeader(let bg):
                     bg.setFill()
                     ctx.fill(rowRect)
+
                 case .tableRow(let alternating, let bg):
                     if alternating {
                         bg.setFill()
                         ctx.fill(rowRect)
                     }
+
                 default:
                     break
                 }
@@ -381,8 +394,9 @@
         }
 
         private func getCodeFontSize(in text: NSTextStorage, at location: Int) -> CGFloat? {
-            guard location >= 0, location < text.length,
-                  let font = text.attribute(.font, at: location, effectiveRange: nil) as? NSFont
+            guard
+                location >= 0, location < text.length,
+                let font = text.attribute(.font, at: location, effectiveRange: nil) as? NSFont
             else { return nil }
             return font.pointSize
         }
@@ -420,7 +434,8 @@
 
                 // Only draw line number for the first fragment of each line
                 let isFirstFragment = (lineStart == span.charStart) ||
-                    (lineStart > 0 && lineStart - 1 < text.length && (text.string as NSString).character(at: lineStart - 1) == 0x0A)
+                    (lineStart > 0 && lineStart - 1 < text.length && (text.string as NSString)
+                        .character(at: lineStart - 1) == 0x0A)
 
                 if isFirstFragment {
                     let numberString = "\(lineNumber)" as NSString

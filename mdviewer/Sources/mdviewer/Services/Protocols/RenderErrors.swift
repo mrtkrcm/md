@@ -20,8 +20,10 @@ enum MarkdownRenderError: Error, LocalizedError {
         switch self {
         case .parsingFailed(let error):
             return "Failed to parse Markdown: \(error.localizedDescription)"
+
         case .emptyResult:
             return "Rendering produced empty output"
+
         case .invalidConfiguration(let message):
             return "Invalid configuration: \(message)"
         }
@@ -38,8 +40,10 @@ enum MarkdownParsingError: Error, LocalizedError {
         switch self {
         case .invalidInput:
             return "Invalid Markdown input"
+
         case .systemParserUnavailable:
             return "System Markdown parser is unavailable"
+
         case .parsingFailed(let error):
             return "Parsing failed: \(error.localizedDescription)"
         }

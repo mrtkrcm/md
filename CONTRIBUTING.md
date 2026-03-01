@@ -41,14 +41,16 @@ just lint-fix       # auto-fix lint
 
 - SwiftFormat enforced (4-space indent, 120 char max line)
 - Swift 6 strict concurrency
-- Prefer `let` over `var`, explicit access modifiers
-- File headers:
+- Prefer `let` over `var`
+- File headers (two spaces after `//`):
   ```swift
   //
   //  FileName.swift
   //  mdviewer
   //
   ```
+- `trailing_comma` and `opening_brace` SwiftLint rules are intentionally disabled — they conflict with SwiftFormat's output
+- After `just lint-fix`, verify `just build` still passes (trailing-closure rewrites can break `?? expr` patterns)
 
 ## Commit Messages
 

@@ -27,8 +27,8 @@ enum CodeFontSize: Int, CaseIterable, Identifiable, Sendable {
         CGFloat(rawValue)
     }
 
-    static func from(rawValue: Int) -> CodeFontSize {
-        CodeFontSize(rawValue: rawValue) ?? .medium
+    static func from(rawValue: Int) -> Self {
+        Self(rawValue: rawValue) ?? .medium
     }
 }
 

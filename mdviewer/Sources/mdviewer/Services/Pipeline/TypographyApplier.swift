@@ -86,7 +86,12 @@ struct TypographyApplier: TypographyApplying {
                     )
 
                     // Apply dedicated blockquote paragraph style with enhanced spacing
-                    applyBlockquoteParagraphStyle(to: text, range: range, request: request)
+                    applyBlockquoteParagraphStyle(
+                        to: text,
+                        range: range,
+                        request: request,
+                        depth: max(1, blockquoteCount)
+                    )
 
                 case .paragraph:
                     // Apply paragraph style to paragraphs for proper spacing
@@ -101,8 +106,8 @@ struct TypographyApplier: TypographyApplying {
                     let headerFont = request.readerFontFamily.nsFont(size: request.readerFontSize, weight: .semibold)
                     text.addAttribute(.font, value: headerFont, range: range)
                     text.addAttribute(.foregroundColor, value: palette.heading, range: range)
-                    let headerBackground = themedTableHeaderBackground(palette: palette, request: request)
-                    let tableBorder = themedTableBorderColor(palette: palette, request: request)
+                    let headerBackground = palette.formattedTableHeaderBackground()
+                    let tableBorder = palette.formattedTableBorder()
                     text.addAttribute(
                         MarkdownRenderAttribute.tableHeaderBackground,
                         value: headerBackground,
@@ -119,8 +124,8 @@ struct TypographyApplier: TypographyApplying {
                     // Body font for table rows — tab stops handle column alignment
                     let rowFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
                     text.addAttribute(.font, value: rowFont, range: range)
-                    let rowBackground = themedTableRowBackground(palette: palette, request: request)
-                    let tableBorder = themedTableBorderColor(palette: palette, request: request)
+                    let rowBackground = palette.formattedTableRowBackground()
+                    let tableBorder = palette.formattedTableBorder()
                     let isAlternating = rowIndex % 2 == 0
                     if isAlternating {
                         text.addAttribute(
@@ -161,6 +166,9 @@ struct TypographyApplier: TypographyApplying {
             applyInlineStyles(to: text, range: range, intent: intent, palette: palette, request: request)
         }
 
+        // Apply consistent link styling across all themes.
+        applyLinkStyling(to: text, fullRange: fullRange, palette: palette)
+
         // Apply kerning to full text with optical sizing and element-specific adjustments
         applyKerning(to: text, request: request, fullRange: fullRange)
 
@@ -194,7 +202,7 @@ struct TypographyApplier: TypographyApplying {
                 switch component.kind {
                 case .header(let level):
                     // Headings: tighter tracking for visual impact
-                    let headingFontSize = self.fontSizeForHeader(level: level, baseSize: request.readerFontSize)
+                    let headingFontSize = fontSizeForHeader(level: level, baseSize: request.readerFontSize)
                     let headingKern = request.textSpacing.kern(for: headingFontSize)
                     let headingAdjustment = request.textSpacing.opticalSizeAdjustment(for: headingFontSize)
                     // Reduce kerning by 20% for headings (tighter look)
@@ -264,26 +272,33 @@ struct TypographyApplier: TypographyApplying {
         return style
     }
 
-    private func applyBlockquoteParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
+    private func applyBlockquoteParagraphStyle(
+        to text: NSMutableAttributedString,
+        range: NSRange,
+        request: RenderRequest,
+        depth: Int
+    ) {
         let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
         // Blockquotes get slightly more generous spacing for visual distinction
         let baseSpacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let spacing = baseSpacing * 0.8
-        let spacingBefore = baseSpacing * 0.6
+        let nestingFactor = min(1.6, 1.0 + CGFloat(max(0, depth - 1)) * 0.2)
+        let spacing = baseSpacing * 0.72 * nestingFactor
+        let spacingBefore = baseSpacing * 0.55
         let hyphenationFactor = max(0, request.textSpacing.hyphenationFactor - 0.05)
-        
+
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
             paragraphSpacing: spacing,
             paragraphSpacingBefore: spacingBefore,
             hyphenationFactor: hyphenationFactor
         )
-        
-        // Add left indentation for blockquote visual hierarchy
-        let blockquoteIndent: CGFloat = 12
+
+        // Add progressive indentation for nested blockquote hierarchy.
+        let blockquoteIndent: CGFloat = 12 + CGFloat(max(0, depth - 1)) * 10
         style.headIndent = blockquoteIndent
         style.firstLineHeadIndent = blockquoteIndent
-        
+        style.tabStops = [NSTextTab(textAlignment: .left, location: blockquoteIndent, options: [:])]
+
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
@@ -324,20 +339,20 @@ struct TypographyApplier: TypographyApplying {
         range: NSRange,
         request: RenderRequest
     ) {
-        let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
+        let lineSpacing = max(2, request.textSpacing.lineSpacing(for: request.readerFontSize) * 0.9)
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
-            paragraphSpacing: 3,
+            paragraphSpacing: 5,
             hyphenationFactor: 0
         )
         // Tables use an inset track so row surfaces and borders can align visually.
-        let tableInset: CGFloat = 12
+        let tableInset: CGFloat = 16
         style.firstLineHeadIndent = tableInset
         style.headIndent = tableInset
 
         // Tab stops for column alignment.
         // Balance by readable width so tables scale with the active reader column.
-        let colWidth = max(96, (request.readableWidth - tableInset * 2) * 0.24)
+        let colWidth = max(110, (request.readableWidth - tableInset * 2) * 0.22)
         style.tabStops = (0 ..< 8).map { i in
             NSTextTab(textAlignment: .left, location: tableInset + (colWidth * CGFloat(i + 1)), options: [:])
         }
@@ -364,7 +379,11 @@ struct TypographyApplier: TypographyApplying {
         }
         let font = request.readerFontFamily.nsFont(size: fontSize, weight: weight)
         text.addAttribute(.font, value: font, range: range)
-        text.addAttribute(.foregroundColor, value: palette.heading, range: range)
+        text.addAttribute(
+            .foregroundColor,
+            value: palette.formattedHeadingColor(level: level),
+            range: range
+        )
 
         // Apply paragraph style with appropriate spacing
         applyHeadingParagraphStyle(to: text, range: range, request: request, level: level)
@@ -386,12 +405,15 @@ struct TypographyApplier: TypographyApplying {
         case 1:
             spacingMultiplier = 1.0
             spacingBeforeMultiplier = 1.2
+
         case 2:
             spacingMultiplier = 0.9
             spacingBeforeMultiplier = 1.0
+
         case 3:
             spacingMultiplier = 0.8
             spacingBeforeMultiplier = 0.85
+
         default:
             spacingMultiplier = 0.7
             spacingBeforeMultiplier = 0.7
@@ -458,12 +480,17 @@ struct TypographyApplier: TypographyApplying {
         palette: NativeThemePalette,
         request: RenderRequest
     ) {
+        let wantsBold = intent.contains(.stronglyEmphasized)
+        let wantsItalic = intent.contains(.emphasized)
+        var workingFont = text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
+
         // Apply inline code styling
         if intent.contains(.code) {
             let codeFont = request.readerFontFamily.nsFont(
                 size: request.readerFontSize * 0.92,
                 monospaced: true
             )
+            workingFont = codeFont
             text.addAttribute(.font, value: codeFont, range: range)
             text.addAttribute(.backgroundColor, value: palette.inlineCodeBackground, range: range)
             // Subtle baseline adjustment scaled to font size for optical alignment
@@ -471,54 +498,55 @@ struct TypographyApplier: TypographyApplying {
             text.addAttribute(.baselineOffset, value: baselineOffset, range: range)
         }
 
-        // Apply bold (strong emphasis)
-        if intent.contains(.stronglyEmphasized) {
-            if let existingFont = text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont {
-                let boldFont = NSFontManager.shared.convert(existingFont, toHaveTrait: .boldFontMask)
-                text.addAttribute(.font, value: boldFont, range: range)
-            }
-        }
-
-        // Apply italic (emphasis)
-        if intent.contains(.emphasized) {
-            if let existingFont = text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont {
-                let italicFont = NSFontManager.shared.convert(existingFont, toHaveTrait: .italicFontMask)
-                text.addAttribute(.font, value: italicFont, range: range)
-            }
+        // Apply bold/italic together so mixed emphasis (`***text***`) stays stable.
+        if wantsBold || wantsItalic, let baseFont = workingFont {
+            let emphasized = fontByApplyingTraits(baseFont, bold: wantsBold, italic: wantsItalic)
+            text.addAttribute(.font, value: emphasized, range: range)
         }
 
         // Apply strikethrough (if supported)
         if intent.contains(.strikethrough) {
             text.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-            text.addAttribute(.strikethroughColor, value: palette.textSecondary, range: range)
+            text.addAttribute(.strikethroughColor, value: palette.textTertiary, range: range)
+        }
+    }
+
+    private func applyLinkStyling(
+        to text: NSMutableAttributedString,
+        fullRange: NSRange,
+        palette: NativeThemePalette
+    ) {
+        text.enumerateAttribute(.link, in: fullRange, options: []) { value, range, _ in
+            guard value != nil else { return }
+
+            // Preserve existing links and apply a consistent themed style.
+            text.addAttribute(.foregroundColor, value: palette.link, range: range)
+            text.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            text.addAttribute(.underlineColor, value: palette.formattedLinkUnderlineColor(), range: range)
         }
     }
 
     // MARK: - Task List Styling
 
-    // MARK: - Table Theme Integration
+    private func fontByApplyingTraits(_ base: NSFont, bold: Bool, italic: Bool) -> NSFont {
+        var traits = base.fontDescriptor.symbolicTraits
+        if bold { traits.insert(.bold) }
+        if italic { traits.insert(.italic) }
 
-    private func themedTableHeaderBackground(palette: NativeThemePalette, request: RenderRequest) -> NSColor {
-        let blendFraction: CGFloat = request.colorScheme == .dark ? 0.28 : 0.12
-        return palette.tableHeaderBackground.blended(withFraction: blendFraction, of: palette.codeBackground)
-            ?? palette.tableHeaderBackground
-    }
-
-    private func themedTableRowBackground(palette: NativeThemePalette, request: RenderRequest) -> NSColor {
-        let blendFraction: CGFloat = request.colorScheme == .dark ? 0.10 : 0.06
-        return palette.tableRowAlternating.blended(withFraction: blendFraction, of: palette.inlineCodeBackground)
-            ?? palette.tableRowAlternating
-    }
-
-    private func themedTableBorderColor(palette: NativeThemePalette, request: RenderRequest) -> NSColor {
-        let accentForwardThemes: Set<AppTheme> = [
-            .dracula, .monokai, .onedark, .tokyonight, .nord, .gruvbox, .solarized,
-        ]
-        var accentBlend: CGFloat = accentForwardThemes.contains(request.appTheme) ? 0.18 : 0.08
-        if request.colorScheme == .dark {
-            accentBlend += 0.05
+        let descriptor = base.fontDescriptor.withSymbolicTraits(traits)
+        if let converted = NSFont(descriptor: descriptor, size: base.pointSize) {
+            return converted
         }
-        return palette.tableBorder.blended(withFraction: accentBlend, of: palette.accent) ?? palette.tableBorder
+
+        // Fallback path for fonts that do not support descriptor trait conversion.
+        var fallback = base
+        if bold {
+            fallback = NSFontManager.shared.convert(fallback, toHaveTrait: .boldFontMask)
+        }
+        if italic {
+            fallback = NSFontManager.shared.convert(fallback, toHaveTrait: .italicFontMask)
+        }
+        return fallback
     }
 
     /// Applies special styling to task list checkbox characters.
@@ -573,8 +601,9 @@ struct TypographyApplier: TypographyApplying {
             let lineRange = nsString.lineRange(for: markerRange)
             let textStart = markerRange.location + markerRange.length
             var textEnd = lineRange.location + lineRange.length
-            if textEnd > lineRange.location,
-               nsString.character(at: textEnd - 1) == 0x0A
+            if
+                textEnd > lineRange.location,
+                nsString.character(at: textEnd - 1) == 0x0A
             {
                 textEnd -= 1
             }

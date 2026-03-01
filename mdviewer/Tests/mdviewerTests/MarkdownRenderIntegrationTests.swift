@@ -7,8 +7,8 @@
     internal import XCTest
     #if os(macOS)
         internal import AppKit
-        internal import SwiftUI
         @testable internal import mdviewer
+        internal import SwiftUI
 
         final class MarkdownRenderIntegrationTests: XCTestCase {
             // MARK: - Private helpers
@@ -148,6 +148,26 @@
                         "Ordered list item should have positive headIndent"
                     )
                 }
+            }
+
+            func testTaskListBreaksLinesAndIndentsNestedItems() async {
+                let markdown = """
+                - [ ] Top task
+                - [x] Done task
+                  - [ ] Nested task
+                    - [x] Deep nested task
+                """
+
+                let result = await render(markdown)
+                let text = result.string
+
+                XCTAssertTrue(text.contains("[ ] Top task\n"), "Top-level task items should be line-broken")
+                XCTAssertTrue(text.contains("[x] Done task\n\t"), "Nested item should begin on a new indented line")
+                XCTAssertTrue(
+                    text.contains("\n\t[ ] Nested task\n\t\t"),
+                    "Second-level nesting should use tab indentation"
+                )
+                XCTAssertTrue(text.contains("\n\t\t[x] Deep nested task"), "Deep nested task should be tab-indented")
             }
 
             // MARK: - Full document pipeline

@@ -4,8 +4,8 @@
 //
 
 internal import Foundation
-internal import OSLog
 internal import os.signpost
+internal import OSLog
 internal import SwiftUI
 
 #if os(macOS)

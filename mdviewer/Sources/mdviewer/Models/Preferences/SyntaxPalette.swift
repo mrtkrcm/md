@@ -20,8 +20,8 @@ enum SyntaxPalette: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    static func from(rawValue: String) -> SyntaxPalette {
-        if let exact = SyntaxPalette(rawValue: rawValue) {
+    static func from(rawValue: String) -> Self {
+        if let exact = Self(rawValue: rawValue) {
             return exact
         }
 
@@ -30,7 +30,7 @@ enum SyntaxPalette: String, CaseIterable, Identifiable, Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
 
-        return SyntaxPalette.allCases.first {
+        return Self.allCases.first {
             $0.rawValue
                 .replacingOccurrences(of: "\u{2019}", with: "'")
                 .lowercased() == normalized
@@ -49,6 +49,7 @@ enum SyntaxPalette: String, CaseIterable, Identifiable, Sendable {
                     comment: Self.p3(r: 0.42, g: 0.54, b: 0.58),
                     call: Self.p3(r: 0.2, g: 0.56, b: 0.9)
                 )
+
             case .midnight:
                 return .init(
                     keyword: Self.p3(r: 0.828, g: 0.095, b: 0.583),
@@ -58,6 +59,7 @@ enum SyntaxPalette: String, CaseIterable, Identifiable, Sendable {
                     comment: Self.p3(r: 0.255, g: 0.801, b: 0.27),
                     call: Self.p3(r: 0.137, g: 1.0, b: 0.512)
                 )
+
             case .sunset:
                 return .init(
                     keyword: Self.p3(r: 0.161, g: 0.259, b: 0.467),
@@ -67,6 +69,7 @@ enum SyntaxPalette: String, CaseIterable, Identifiable, Sendable {
                     comment: Self.p3(r: 0.765, g: 0.455, b: 0.11),
                     call: Self.p3(r: 0.278, g: 0.415, b: 0.593)
                 )
+
             case .presentation:
                 return .init(
                     keyword: Self.p3(r: 0.706, g: 0.0, b: 0.384),
@@ -76,6 +79,7 @@ enum SyntaxPalette: String, CaseIterable, Identifiable, Sendable {
                     comment: Self.p3(r: 0.336, g: 0.376, b: 0.42),
                     call: Self.p3(r: 0.267, g: 0.537, b: 0.576)
                 )
+
             case .wwdc17:
                 return .init(
                     keyword: Self.p3(r: 0.992, g: 0.791, b: 0.45),
@@ -85,6 +89,7 @@ enum SyntaxPalette: String, CaseIterable, Identifiable, Sendable {
                     comment: Self.p3(r: 0.484, g: 0.483, b: 0.504),
                     call: Self.p3(r: 0.431, g: 0.714, b: 0.533)
                 )
+
             case .wwdc18:
                 return .init(
                     keyword: Self.p3(r: 0.948, g: 0.140, b: 0.547),

@@ -13,15 +13,15 @@ Review code changes in the mdviewer macOS app for correctness, performance, and 
 ### Swift Conventions
 - Swift 6 strict concurrency compliance
 - `let` over `var` where possible
-- Explicit access modifiers
-- File headers present
-- No `print()` or `NSLog()` in production code
+- File headers present (`//  FileName.swift` with two spaces)
+- No `print()` or `NSLog()` in production code (enforced by custom SwiftLint rules)
 
 ### Architecture
 - New views follow MVVM with `@AppStorage` / `@State`
 - Render pipeline stages are composable and independent
-- Theme changes go through `AppTheme` enum + `ThemeDefinitions.swift`
-- Design tokens from `DesignTokens` enum — no hardcoded values
+- Theme changes go through `AppTheme` enum → `ThemeRegistry` (`ThemeData.swift`) → `NativeThemePalette`
+- Design tokens from `DesignTokens` enum — no hardcoded values; includes `SemanticColors`, `Component.*`, `AnimationPreset`, `TransitionPreset`, `SpacingScale`
+- Reuse modifiers from `Design/ViewModifiers.swift` before writing inline styling
 
 ### Testing
 - New features have corresponding tests in `mdviewer/Tests/mdviewerTests/`

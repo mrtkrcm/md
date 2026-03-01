@@ -19,8 +19,8 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    static func from(rawValue: String) -> ReaderTextSpacing {
-        ReaderTextSpacing(rawValue: rawValue) ?? .balanced
+    static func from(rawValue: String) -> Self {
+        Self(rawValue: rawValue) ?? .balanced
     }
 
     // MARK: - Line Height (Leading)
@@ -127,11 +127,11 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
     func opticalSizeAdjustment(for fontSize: CGFloat) -> CGFloat {
         if fontSize < 14 {
             return 0.008 // 0.8% extra tracking for small text
-        } else if fontSize < 18 {
-            return 0.003 // 0.3% for medium text
-        } else {
-            return 0.0 // Large text needs no adjustment
         }
+        if fontSize < 18 {
+            return 0.003 // 0.3% for medium text
+        }
+        return 0.0
     }
 
     // MARK: - Convenience Methods
@@ -158,9 +158,9 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
     /// Measured in characters per line for optimal reading.
     var idealMeasure: ClosedRange<Int> {
         switch self {
-        case .compact: return 60...80
-        case .balanced: return 65...85
-        case .relaxed: return 70...90
+        case .compact: return 60 ... 80
+        case .balanced: return 65 ... 85
+        case .relaxed: return 70 ... 90
         }
     }
 }

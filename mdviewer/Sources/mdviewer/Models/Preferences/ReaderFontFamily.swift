@@ -18,18 +18,21 @@ enum ReaderFontFamily: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    static func from(rawValue: String) -> ReaderFontFamily {
-        ReaderFontFamily(rawValue: rawValue) ?? .newYork
+    static func from(rawValue: String) -> Self {
+        Self(rawValue: rawValue) ?? .newYork
     }
 
     func font(size: CGFloat) -> SwiftUI.Font {
         switch self {
         case .mapleMonoNF:
             return .custom("Maple Mono NF", size: size)
+
         case .sfPro:
             return .system(size: size, weight: .regular, design: .default)
+
         case .newYork:
             return .custom("New York", size: size)
+
         case .georgia:
             return .custom("Georgia", size: size)
         }

@@ -270,7 +270,7 @@ enum FrontmatterParser {
 
             if let key = activeListKey {
                 if trimmed.hasPrefix("-") {
-                    let item = trimmed.drop(while: { $0 == "-" || $0 == " " })
+                    let item = trimmed.drop { $0 == "-" || $0 == " " }
                     let normalized = trimmedWrappingQuotes(from: String(item))
                     if !normalized.isEmpty {
                         activeListItems.append(normalized)

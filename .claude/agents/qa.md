@@ -30,7 +30,7 @@ just test-coverage      # with coverage report
 ## Validation Workflow
 
 1. `just clean && just install` — clean build + install works
-2. `just test` — all tests pass
+2. `just test` — all 287 tests pass
 3. Open `/Applications/md.app` — app launches
 4. Test all 10 themes in light/dark mode
 5. Test spacing presets: compact, balanced, relaxed
@@ -42,3 +42,9 @@ just test-coverage      # with coverage report
 - Double spacing in rendered view (BlockSeparatorInjector)
 - Theme color accuracy in both appearance modes
 - Build script: single compilation per recipe (no double-builds)
+
+## Lint-Fix Safety
+
+`just lint-fix` is generally safe but can corrupt `contains(where: { ... }) ?? value` patterns
+by converting to trailing-closure syntax without a space before `??`, causing a parse error.
+After running lint-fix, always verify the build passes before committing.

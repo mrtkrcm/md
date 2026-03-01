@@ -7,8 +7,8 @@
     internal import XCTest
     #if os(macOS)
         internal import AppKit
-        internal import SwiftUI
         @testable internal import mdviewer
+        internal import SwiftUI
 
         /// Visual regression tests ensuring Markdown renders correctly with proper spacing,
         /// typography, and formatting across all preference combinations.
@@ -350,8 +350,9 @@
                     let boldLoc = text.range(of: "bold").location
                     let codeLoc = text.range(of: "let code").location
 
-                    guard headingLoc != NSNotFound, bodyLoc != NSNotFound,
-                          boldLoc != NSNotFound, codeLoc != NSNotFound
+                    guard
+                        headingLoc != NSNotFound, bodyLoc != NSNotFound,
+                        boldLoc != NSNotFound, codeLoc != NSNotFound
                     else {
                         XCTFail("\(family): all content elements must be present")
                         continue
@@ -520,8 +521,10 @@
                 assertFound("Swift Evolution proposals", in: ns)
 
                 // Frontmatter stripped
-                XCTAssertFalse(text.contains("author: Engineering Team"),
-                    "Frontmatter must not appear in rendered output")
+                XCTAssertFalse(
+                    text.contains("author: Engineering Team"),
+                    "Frontmatter must not appear in rendered output"
+                )
 
                 // H1 is larger than body
                 let h1Loc = (text as NSString).range(of: "Swift Concurrency Guide").location

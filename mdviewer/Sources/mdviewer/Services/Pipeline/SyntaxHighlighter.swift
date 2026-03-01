@@ -24,6 +24,11 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         let codeBlocks = findCodeBlocks(in: text, range: range)
 
         for (codeRange, language) in codeBlocks {
+            // Mermaid blocks are handled by MermaidDiagramRenderer (post-pipeline),
+            // which replaces the text range with an image attachment. Skip them here
+            // so no syntax-colour attributes are written onto text that will be removed.
+            if language?.lowercased() == "mermaid" { continue }
+
             // Get language definition from explicit language tag or auto-detect
             let definition: LanguageDefinition?
             if let language, !language.isEmpty {

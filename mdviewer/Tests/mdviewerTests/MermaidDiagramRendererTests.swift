@@ -266,6 +266,62 @@
                 }
                 XCTAssertTrue(hasAttachment, "stateDiagram-v2 must render to an attachment")
             }
+
+            func testClassDiagramRenders() async {
+                let source = """
+                classDiagram
+                    class Animal {
+                        +String name
+                        +speak() String
+                    }
+                    class Dog {
+                        +fetch() void
+                    }
+                    Animal <|-- Dog
+                """
+                let result = await rendered(mermaidMarkdown(source))
+                var hasAttachment = false
+                result.enumerateAttribute(.attachment, in: NSRange(location: 0, length: result.length)) { value, _, _ in
+                    if value is NSTextAttachment { hasAttachment = true }
+                }
+                XCTAssertTrue(hasAttachment, "classDiagram must render to an attachment")
+            }
+
+            func testErDiagramRenders() async {
+                let source = """
+                erDiagram
+                    CUSTOMER ||--o{ ORDER : places
+                    ORDER ||--|{ LINE-ITEM : contains
+                    CUSTOMER {
+                        string name
+                        string email
+                    }
+                    ORDER {
+                        int id
+                        date created
+                    }
+                """
+                let result = await rendered(mermaidMarkdown(source))
+                var hasAttachment = false
+                result.enumerateAttribute(.attachment, in: NSRange(location: 0, length: result.length)) { value, _, _ in
+                    if value is NSTextAttachment { hasAttachment = true }
+                }
+                XCTAssertTrue(hasAttachment, "erDiagram must render to an attachment")
+            }
+
+            func testAllFiveDiagramTypesRenderWithoutCrash() async {
+                let diagrams: [(String, String)] = [
+                    ("flowchart", "flowchart LR\n    A --> B"),
+                    ("stateDiagram-v2", "stateDiagram-v2\n    [*] --> S1\n    S1 --> [*]"),
+                    ("sequenceDiagram", "sequenceDiagram\n    A->>B: ping\n    B-->>A: pong"),
+                    ("classDiagram", "classDiagram\n    class Foo { +bar() void }"),
+                    ("erDiagram", "erDiagram\n    ENTITY1 ||--o{ ENTITY2 : rel"),
+                ]
+                for (name, source) in diagrams {
+                    let result = await rendered(mermaidMarkdown(source))
+                    XCTAssertGreaterThan(result.length, 0, "\(name) must produce non-empty output")
+                }
+            }
         }
     #endif
 #endif

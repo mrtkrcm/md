@@ -40,6 +40,67 @@
                 ).attributedString
             }
 
+            // MARK: - Glyph Identity
+
+            //
+            // All CommonMark thematic break variants (`---`, `***`, `___`, spaced forms,
+            // and extended-length forms) are normalised by the Swift Markdown parser to a
+            // single U+2E3B THREE-EM DASH before the attributed string reaches the pipeline.
+            // These tests pin that behaviour so we catch any upstream parser change that
+            // would silently break HR detection.
+
+            private static let threeEmDash = "\u{2E3B}"
+
+            func testDashRuleEmitsThreeEmDash() async {
+                let text = await rendered("---")
+                XCTAssertTrue(
+                    text.string.contains(Self.threeEmDash),
+                    "'---' thematic break must produce U+2E3B THREE-EM DASH (got: \(text.string.debugDescription))"
+                )
+            }
+
+            func testAsteriskRuleEmitsThreeEmDash() async {
+                let text = await rendered("***")
+                XCTAssertTrue(
+                    text.string.contains(Self.threeEmDash),
+                    "'***' thematic break must produce U+2E3B THREE-EM DASH (got: \(text.string.debugDescription))"
+                )
+            }
+
+            func testUnderscoreRuleEmitsThreeEmDash() async {
+                let text = await rendered("___")
+                XCTAssertTrue(
+                    text.string.contains(Self.threeEmDash),
+                    "'___' thematic break must produce U+2E3B THREE-EM DASH (got: \(text.string.debugDescription))"
+                )
+            }
+
+            func testSpacedDashRuleEmitsThreeEmDash() async {
+                let text = await rendered("- - -")
+                XCTAssertTrue(
+                    text.string.contains(Self.threeEmDash),
+                    "'- - -' thematic break must produce U+2E3B THREE-EM DASH"
+                )
+            }
+
+            func testExtendedDashRuleEmitsThreeEmDash() async {
+                let text = await rendered("------")
+                XCTAssertTrue(
+                    text.string.contains(Self.threeEmDash),
+                    "'------' thematic break must produce U+2E3B THREE-EM DASH"
+                )
+            }
+
+            func testAllVariantsProduceSingleGlyph() async {
+                // Each variant must produce exactly one U+2E3B character, not multiple.
+                let variants = ["---", "***", "___", "- - -", "* * *", "_ _ _", "----", "****", "____"]
+                for md in variants {
+                    let text = await rendered(md)
+                    let count = text.string.unicodeScalars.filter { $0.value == 0x2E3B }.count
+                    XCTAssertEqual(count, 1, "'\(md)' should produce exactly one U+2E3B, found \(count)")
+                }
+            }
+
             // MARK: - Attribute Presence
 
             func testDashRuleHasHorizontalRuleAttribute() async {

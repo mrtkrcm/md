@@ -46,6 +46,7 @@ internal import SwiftUI
         private let blockSeparatorInjector: BlockSeparatorInjecting
         private let typographyApplier: TypographyApplying
         private let syntaxHighlighter: SyntaxHighlighting
+        private let mermaidRenderer: MermaidDiagramRenderer
 
         // MARK: - Internal State
 
@@ -67,12 +68,14 @@ internal import SwiftUI
             parser: MarkdownParsing = MarkdownParser(),
             blockSeparatorInjector: BlockSeparatorInjecting = BlockSeparatorInjector(),
             typographyApplier: TypographyApplying = TypographyApplier(),
-            syntaxHighlighter: SyntaxHighlighting = SyntaxHighlighter()
+            syntaxHighlighter: SyntaxHighlighting = SyntaxHighlighter(),
+            mermaidRenderer: MermaidDiagramRenderer = MermaidDiagramRenderer()
         ) {
             self.parser = parser
             self.blockSeparatorInjector = blockSeparatorInjector
             self.typographyApplier = typographyApplier
             self.syntaxHighlighter = syntaxHighlighter
+            self.mermaidRenderer = mermaidRenderer
 
             // Configure cache with 32-item limit and 20MB cost limit
             let cache = NSCache<NSString, RenderedMarkdown>()
@@ -169,6 +172,9 @@ internal import SwiftUI
             blockSeparatorInjector.injectSeparators(into: mutable)
             typographyApplier.applyTypography(to: mutable, request: request)
             applyCodeStyling(mutable, request: request)
+            // Mermaid pass runs last: it replaces code-block ranges with image
+            // attachments, so no text-based pass should follow.
+            mermaidRenderer.renderDiagrams(in: mutable, request: request)
 
             return mutable
         }

@@ -373,11 +373,26 @@ struct TypographyApplier: TypographyApplying {
         style.headIndent = tableInset
 
         // Tab stops for column alignment.
-        // Balance by readable width so tables scale with the active reader column.
-        let colWidth = max(110, (request.readableWidth - tableInset * 2) * 0.22)
+        //
+        // `colWidth` is the fixed pitch between consecutive column left edges.
+        // Smaller values push columns closer together, leaving more room for the
+        // last column (which has no tab stop and spans to the row rect's right edge).
+        //
+        // At 20% of usable width per column:
+        //   • 2-col  (720pt): col2 starts at 160pt, col3 gets 544pt  → plenty
+        //   • 3-col  (720pt): col2 starts at 160pt, col3 at 304pt   → 400pt for col3
+        //   • 3-col  (480pt): col2 starts at 107pt, col3 at 202pt   → 262pt for col3
+        //   • 4-col  (720pt): col4 starts at 448pt                  → 256pt for col4
+        //
+        // A hard floor of 90pt prevents columns collapsing to nothing on tiny windows.
+        let usableWidth = request.readableWidth - tableInset * 2
+        let colWidth = max(90, usableWidth * 0.20)
         style.tabStops = (0 ..< 8).map { i in
             NSTextTab(textAlignment: .left, location: tableInset + (colWidth * CGFloat(i + 1)), options: [:])
         }
+        // Allow character-level wrapping so long code identifiers (e.g. DesignTokens.Animation.fast)
+        // break within the column rather than clipping at the text container edge.
+        style.lineBreakMode = .byCharWrapping
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 

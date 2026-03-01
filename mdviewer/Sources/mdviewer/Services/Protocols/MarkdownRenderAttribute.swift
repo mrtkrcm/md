@@ -77,4 +77,23 @@ enum MarkdownRenderAttribute {
     ///
     /// Value is a `Bool` where `true` means checked.
     static let taskListChecked = NSAttributedString.Key("mdv.taskListChecked")
+
+    /// Key for the column divider opacity multiplier.
+    ///
+    /// Value is a `CGFloat` in 0–1 applied to `borderColor.alphaComponent`
+    /// when drawing interior column guides. Allows per-theme tuning independent
+    /// of the outer border weight.
+    static let tableColumnDividerOpacity = NSAttributedString.Key("mdv.tableColumnDividerOpacity")
+
+    /// Key for horizontal rule (thematic break) styling.
+    ///
+    /// Value is the `NSColor` to use for the rule stroke. The layout manager
+    /// renders the line and hides the underlying `---` text.
+    static let horizontalRule = NSAttributedString.Key("mdv.horizontalRule")
+
+    /// Key for list marker color.
+    ///
+    /// Stored on the leading bullet/number character of a list item so the layout
+    /// manager can verify marker presence; the foreground color is applied directly.
+    static let listMarker = NSAttributedString.Key("mdv.listMarker")
 }

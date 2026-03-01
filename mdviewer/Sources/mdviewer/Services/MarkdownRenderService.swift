@@ -146,7 +146,11 @@ internal import SwiftUI
         /// - Parameter request: The render request
         /// - Returns: A mutable attributed string with all styling applied
         private func executeRenderPipeline(request: RenderRequest) -> NSMutableAttributedString {
-            // Parse frontmatter first to strip it from rendered output
+            // Strip frontmatter so it never appears in rendered output.
+            // In production, ContentView already calls FrontmatterParser before building
+            // the RenderRequest, making this a fast no-op for documents without frontmatter.
+            // Tests may pass raw markdown that includes frontmatter directly, so the call
+            // must remain here to preserve the public contract.
             let parsedMarkdown = FrontmatterParser.parse(request.markdown)
             let markdownToRender = parsedMarkdown.renderedMarkdown
 

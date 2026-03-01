@@ -919,4 +919,29 @@ extension NativeThemePalette {
     func formattedLinkUnderlineColor() -> NSColor {
         formattedLinkUnderline
     }
+
+    /// Opacity multiplier applied to the border color when drawing interior column
+    /// dividers. Tuned per theme so minimal/light themes stay subtle and vivid dark
+    /// themes retain enough contrast to be legible.
+    func tableColumnDividerOpacityMultiplier() -> CGFloat {
+        // Base multiplier by theme character
+        let base: CGFloat
+        switch theme {
+        case .basic, .github, .docC:
+            // Minimal / system-integrated — column guides should barely register
+            base = 0.35
+
+        case .solarized, .gruvbox:
+            // Warm-toned retro palettes — moderate presence
+            base = 0.40
+
+        case .dracula, .monokai, .onedark, .tokyonight, .nord:
+            // Vivid dark-first themes — borders carry more visual weight
+            base = 0.55
+        }
+
+        // Dark mode adds a small lift so dividers remain visible against dark surfaces
+        let darkBoost: CGFloat = scheme == .dark ? 0.08 : 0.0
+        return min(1.0, base + darkBoost)
+    }
 }

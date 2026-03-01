@@ -118,6 +118,11 @@ struct TypographyApplier: TypographyApplying {
                         value: tableBorder,
                         range: range
                     )
+                    text.addAttribute(
+                        MarkdownRenderAttribute.tableColumnDividerOpacity,
+                        value: palette.tableColumnDividerOpacityMultiplier(),
+                        range: range
+                    )
                     applyTableRowParagraphStyle(to: text, range: range, request: request)
 
                 case .tableRow(let rowIndex):
@@ -142,6 +147,11 @@ struct TypographyApplier: TypographyApplying {
                     text.addAttribute(
                         MarkdownRenderAttribute.tableBorder,
                         value: tableBorder,
+                        range: range
+                    )
+                    text.addAttribute(
+                        MarkdownRenderAttribute.tableColumnDividerOpacity,
+                        value: palette.tableColumnDividerOpacityMultiplier(),
                         range: range
                     )
                     applyTableRowParagraphStyle(to: text, range: range, request: request)
@@ -171,6 +181,13 @@ struct TypographyApplier: TypographyApplying {
 
         // Apply kerning to full text with optical sizing and element-specific adjustments
         applyKerning(to: text, request: request, fullRange: fullRange)
+
+        // Detect and style horizontal rules (thematic breaks: ---, ***, ___)
+        // Must run after the presentation-intent pass so paragraph style is already set.
+        applyHorizontalRuleStyles(to: text, fullRange: fullRange, palette: palette)
+
+        // Style list marker characters (•, ◦, numbers) with the theme marker color.
+        applyListMarkerStyles(to: text, fullRange: fullRange, palette: palette)
 
         // Apply task list checkbox styling (reuses palette from above)
         applyTaskListStyling(to: text, palette: palette, request: request)
@@ -531,7 +548,92 @@ struct TypographyApplier: TypographyApplying {
         }
     }
 
+    // MARK: - Horizontal Rule Styling
+
+    /// Scans the rendered attributed string for runs carrying `PresentationIntent.thematicBreak`
+    /// and tags them with `mdv.horizontalRule`. The character foreground is set to `.clear` so
+    /// only the drawn hairline from `ReaderLayoutManager` is visible.
+    ///
+    /// The Swift Markdown parser converts `---`, `***`, and `___` into a single U+2E3B
+    /// THREE-EM DASH glyph with a `thematicBreak` presentation intent. Scanning the raw text
+    /// for the original ASCII characters would therefore never find a match.
+    private func applyHorizontalRuleStyles(
+        to text: NSMutableAttributedString,
+        fullRange: NSRange,
+        palette: NativeThemePalette
+    ) {
+        var i = fullRange.location
+        let end = NSMaxRange(fullRange)
+        while i < end {
+            var effectiveRange = NSRange(location: i, length: 1)
+            let intent = text.attribute(
+                MarkdownRenderAttribute.presentationIntent,
+                at: i,
+                effectiveRange: &effectiveRange
+            ) as? PresentationIntent
+            let rangeEnd = min(effectiveRange.location + effectiveRange.length, end)
+
+            let isThematicBreak = intent?.components.contains {
+                if case .thematicBreak = $0.kind { return true }; return false
+            } ?? false
+
+            if isThematicBreak {
+                let range = NSRange(location: effectiveRange.location, length: rangeEnd - effectiveRange.location)
+                text.addAttribute(MarkdownRenderAttribute.horizontalRule, value: palette.horizontalRule, range: range)
+                // Hide the glyph — only the drawn hairline should be visible.
+                text.addAttribute(.foregroundColor, value: NSColor.clear, range: range)
+            }
+
+            i = max(i + 1, rangeEnd)
+        }
+    }
+
+    // MARK: - List Marker Styling
+
+    /// Regex matching list markers: bullet (•, ◦, ▪, ‣) or ordered number (1., 2., …).
+    /// The system parser emits these characters at the start of each list item.
+    private static let listMarkerRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"^([\u2022\u25E6\u25AA\u2023]|[0-9]+\.)(?=[\t ])"#,
+        options: .anchorsMatchLines
+    )
+
+    /// Applies the theme's `listMarker` color to bullet and number marker characters.
+    private func applyListMarkerStyles(
+        to text: NSMutableAttributedString,
+        fullRange: NSRange,
+        palette: NativeThemePalette
+    ) {
+        guard let regex = Self.listMarkerRegex else { return }
+        let matches = regex.matches(in: text.string, options: [], range: fullRange)
+        guard !matches.isEmpty else { return }
+
+        for match in matches {
+            let range = match.range(at: 1)
+            guard range.location != NSNotFound, range.length > 0 else { continue }
+            // Verify this character is inside a list item intent, not an accidental match.
+            guard
+                let intent = text.attribute(
+                    MarkdownRenderAttribute.presentationIntent,
+                    at: range.location,
+                    effectiveRange: nil
+                ) as? PresentationIntent,
+                intent.components.contains(where: {
+                    if case .listItem = $0.kind { return true }
+                    return false
+                })
+            else { continue }
+
+            text.addAttribute(.foregroundColor, value: palette.listMarker, range: range)
+            text.addAttribute(MarkdownRenderAttribute.listMarker, value: true, range: range)
+        }
+    }
+
     // MARK: - Task List Styling
+
+    /// Regex for task-list checkbox patterns — compiled once, reused on every render.
+    private static let taskListRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"\[( |x|X)\]"#
+    )
 
     private func fontByApplyingTraits(_ base: NSFont, bold: Bool, italic: Bool) -> NSFont {
         var traits = base.fontDescriptor.symbolicTraits
@@ -563,8 +665,7 @@ struct TypographyApplier: TypographyApplying {
     ) {
         let nsString = text.string as NSString
         let fullRange = NSRange(location: 0, length: text.length)
-        let markerPattern = #"\[( |x|X)\]"#
-        guard let regex = try? NSRegularExpression(pattern: markerPattern) else { return }
+        guard let regex = Self.taskListRegex else { return }
         let markerMatches = regex.matches(in: text.string, options: [], range: fullRange)
         guard !markerMatches.isEmpty else { return }
 

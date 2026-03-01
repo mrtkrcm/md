@@ -79,7 +79,10 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         definition: LanguageDefinition,
         syntax: NativeSyntaxStyle
     ) {
-        var protectedRanges: [NSRange] = []
+        // NSMutableIndexSet gives O(log n) intersection tests vs the previous O(n)
+        // linear scan over a [NSRange] array. For a 500-line file with 200+ matches
+        // this drops highlighting from ~O(n²) to ~O(n log n).
+        let protectedIndices = NSMutableIndexSet()
 
         // Apply highlighting in priority order (strings/comments first, then keywords)
         applyHighlights(
@@ -87,7 +90,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             in: text,
             range: range,
             color: syntax.string,
-            protectedRanges: &protectedRanges
+            protectedIndices: protectedIndices
         )
 
         applyHighlights(
@@ -95,7 +98,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             in: text,
             range: range,
             color: syntax.comment,
-            protectedRanges: &protectedRanges
+            protectedIndices: protectedIndices
         )
 
         applyHighlights(
@@ -103,7 +106,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             in: text,
             range: range,
             color: syntax.comment,
-            protectedRanges: &protectedRanges
+            protectedIndices: protectedIndices
         )
 
         applyHighlights(
@@ -111,7 +114,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             in: text,
             range: range,
             color: syntax.keyword,
-            protectedRanges: &protectedRanges,
+            protectedIndices: protectedIndices,
             skipProtected: true
         )
 
@@ -120,7 +123,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             in: text,
             range: range,
             color: syntax.number,
-            protectedRanges: &protectedRanges,
+            protectedIndices: protectedIndices,
             skipProtected: true
         )
 
@@ -129,7 +132,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             in: text,
             range: range,
             color: syntax.type,
-            protectedRanges: &protectedRanges,
+            protectedIndices: protectedIndices,
             skipProtected: true
         )
 
@@ -138,7 +141,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             in: text,
             range: range,
             color: syntax.call,
-            protectedRanges: &protectedRanges,
+            protectedIndices: protectedIndices,
             skipProtected: true
         )
 
@@ -148,7 +151,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             in: text,
             range: range,
             color: syntax.call,
-            protectedRanges: &protectedRanges,
+            protectedIndices: protectedIndices,
             skipProtected: true
         )
     }
@@ -158,7 +161,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         in text: NSMutableAttributedString,
         range: NSRange,
         color: NSColor,
-        protectedRanges: inout [NSRange],
+        protectedIndices: NSMutableIndexSet,
         skipProtected: Bool = false
     ) {
         guard let pattern else { return }
@@ -170,12 +173,11 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             guard matchRange.location != NSNotFound, matchRange.length > 0 else { return }
 
             if skipProtected {
-                let intersectsProtected = protectedRanges.contains {
-                    NSIntersectionRange($0, matchRange).length > 0
-                }
-                guard !intersectsProtected else { return }
+                // O(log n): NSIndexSet stores ranges in sorted order, so intersection
+                // is a binary search rather than a linear scan over all protected ranges.
+                guard !protectedIndices.intersects(in: matchRange) else { return }
             } else {
-                protectedRanges.append(matchRange)
+                protectedIndices.add(in: matchRange)
             }
 
             text.addAttribute(.foregroundColor, value: color, range: matchRange)

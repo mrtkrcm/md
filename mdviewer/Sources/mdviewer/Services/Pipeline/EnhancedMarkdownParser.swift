@@ -85,7 +85,7 @@
                 let lineText = substring.substring(with: lineRange)
 
                 if lineText.contains("\t") {
-                    let mutableStyle = style.mutableCopy() as! NSMutableParagraphStyle
+                    guard let mutableStyle = style.mutableCopy() as? NSMutableParagraphStyle else { return }
 
                     // Set up tab stops for table columns
                     let tabStops: [NSTextTab] = (0 ..< 8).map { i in

@@ -10,10 +10,11 @@ internal import Foundation
 
 // MARK: - Typography Applier
 
-/// Applies typography styling including fonts, colors, and spacing.
+/// Applies professional typography styling including fonts, colors, and spacing.
 ///
 /// This component configures the visual appearance of rendered Markdown
 /// based on the requested theme, font family, and spacing preferences.
+/// Implements modern typesetting best practices for optimal readability.
 struct TypographyApplier: TypographyApplying {
     // MARK: - Typography Application
 
@@ -84,8 +85,8 @@ struct TypographyApplier: TypographyApplying {
                         range: range
                     )
 
-                    // Apply paragraph style to blockquotes for spacing
-                    applyParagraphStyle(to: text, range: range, request: request)
+                    // Apply dedicated blockquote paragraph style with enhanced spacing
+                    applyBlockquoteParagraphStyle(to: text, range: range, request: request)
 
                 case .paragraph:
                     // Apply paragraph style to paragraphs for proper spacing
@@ -100,12 +101,44 @@ struct TypographyApplier: TypographyApplying {
                     let headerFont = request.readerFontFamily.nsFont(size: request.readerFontSize, weight: .semibold)
                     text.addAttribute(.font, value: headerFont, range: range)
                     text.addAttribute(.foregroundColor, value: palette.heading, range: range)
+                    let headerBackground = themedTableHeaderBackground(palette: palette, request: request)
+                    let tableBorder = themedTableBorderColor(palette: palette, request: request)
+                    text.addAttribute(
+                        MarkdownRenderAttribute.tableHeaderBackground,
+                        value: headerBackground,
+                        range: range
+                    )
+                    text.addAttribute(
+                        MarkdownRenderAttribute.tableBorder,
+                        value: tableBorder,
+                        range: range
+                    )
                     applyTableRowParagraphStyle(to: text, range: range, request: request)
 
-                case .tableRow:
+                case .tableRow(let rowIndex):
                     // Body font for table rows — tab stops handle column alignment
                     let rowFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
                     text.addAttribute(.font, value: rowFont, range: range)
+                    let rowBackground = themedTableRowBackground(palette: palette, request: request)
+                    let tableBorder = themedTableBorderColor(palette: palette, request: request)
+                    let isAlternating = rowIndex % 2 == 0
+                    if isAlternating {
+                        text.addAttribute(
+                            MarkdownRenderAttribute.tableRowBackground,
+                            value: rowBackground,
+                            range: range
+                        )
+                    }
+                    text.addAttribute(
+                        MarkdownRenderAttribute.tableRowAlternating,
+                        value: isAlternating,
+                        range: range
+                    )
+                    text.addAttribute(
+                        MarkdownRenderAttribute.tableBorder,
+                        value: tableBorder,
+                        range: range
+                    )
                     applyTableRowParagraphStyle(to: text, range: range, request: request)
 
                 default:
@@ -128,9 +161,78 @@ struct TypographyApplier: TypographyApplying {
             applyInlineStyles(to: text, range: range, intent: intent, palette: palette, request: request)
         }
 
-        // Apply kerning to full text
-        let kern = request.textSpacing.kern(for: request.readerFontSize)
-        text.addAttribute(.kern, value: kern, range: fullRange)
+        // Apply kerning to full text with optical sizing and element-specific adjustments
+        applyKerning(to: text, request: request, fullRange: fullRange)
+
+        // Apply task list checkbox styling (reuses palette from above)
+        applyTaskListStyling(to: text, palette: palette, request: request)
+    }
+
+    /// Applies element-specific kerning for optimal readability.
+    /// Different text elements benefit from different tracking:
+    /// - Body text: Uses the spacing preference's kern value
+    /// - Headings: Slightly tighter tracking (headings look better compact)
+    /// - Code: Minimal tracking (monospace fonts have fixed spacing)
+    /// - Blockquotes: Slightly more open for quoted text distinction
+    private func applyKerning(to text: NSMutableAttributedString, request: RenderRequest, fullRange: NSRange) {
+        let baseKern = request.textSpacing.kern(for: request.readerFontSize)
+        let opticalAdjustment = request.textSpacing.opticalSizeAdjustment(for: request.readerFontSize)
+        let totalBaseKern = baseKern + (request.readerFontSize * opticalAdjustment)
+
+        // Apply base kerning to all text first
+        text.addAttribute(.kern, value: totalBaseKern, range: fullRange)
+
+        // Apply element-specific adjustments
+        text.enumerateAttribute(
+            MarkdownRenderAttribute.presentationIntent,
+            in: fullRange,
+            options: []
+        ) { value, range, _ in
+            guard let intent = value as? PresentationIntent else { return }
+
+            for component in intent.components {
+                switch component.kind {
+                case .header(let level):
+                    // Headings: tighter tracking for visual impact
+                    let headingFontSize = self.fontSizeForHeader(level: level, baseSize: request.readerFontSize)
+                    let headingKern = request.textSpacing.kern(for: headingFontSize)
+                    let headingAdjustment = request.textSpacing.opticalSizeAdjustment(for: headingFontSize)
+                    // Reduce kerning by 20% for headings (tighter look)
+                    let adjustedKern = (headingKern + (headingFontSize * headingAdjustment)) * 0.8
+                    text.addAttribute(.kern, value: adjustedKern, range: range)
+
+                case .codeBlock:
+                    // Code blocks: minimal tracking (monospace has fixed spacing)
+                    let codeKern = request.textSpacing.kern(for: request.codeFontSize) * 0.3
+                    text.addAttribute(.kern, value: codeKern, range: range)
+
+                case .blockQuote:
+                    // Blockquotes: slightly more open for distinction
+                    let quoteKern = totalBaseKern + (request.readerFontSize * 0.003)
+                    text.addAttribute(.kern, value: quoteKern, range: range)
+
+                default:
+                    break
+                }
+            }
+        }
+
+        // Adjust inline code kerning
+        text.enumerateAttribute(
+            MarkdownRenderAttribute.inlinePresentationIntent,
+            in: fullRange,
+            options: []
+        ) { value, range, _ in
+            let rawValue = (value as? NSNumber)?.uintValue ?? 0
+            guard rawValue != 0 else { return }
+            let intent = InlinePresentationIntent(rawValue: rawValue)
+
+            if intent.contains(.code) {
+                // Inline code: minimal tracking
+                let inlineCodeKern = request.textSpacing.kern(for: request.readerFontSize) * 0.3
+                text.addAttribute(.kern, value: inlineCodeKern, range: range)
+            }
+        }
     }
 
     // MARK: - Private Methods
@@ -160,6 +262,29 @@ struct TypographyApplier: TypographyApplying {
         // Enable optimal character spacing for body text
         style.allowsDefaultTighteningForTruncation = false
         return style
+    }
+
+    private func applyBlockquoteParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
+        let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
+        // Blockquotes get slightly more generous spacing for visual distinction
+        let baseSpacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
+        let spacing = baseSpacing * 0.8
+        let spacingBefore = baseSpacing * 0.6
+        let hyphenationFactor = max(0, request.textSpacing.hyphenationFactor - 0.05)
+        
+        let style = createBaseParagraphStyle(
+            lineSpacing: lineSpacing,
+            paragraphSpacing: spacing,
+            paragraphSpacingBefore: spacingBefore,
+            hyphenationFactor: hyphenationFactor
+        )
+        
+        // Add left indentation for blockquote visual hierarchy
+        let blockquoteIndent: CGFloat = 12
+        style.headIndent = blockquoteIndent
+        style.firstLineHeadIndent = blockquoteIndent
+        
+        text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
     private func applyParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
@@ -202,13 +327,19 @@ struct TypographyApplier: TypographyApplying {
         let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
-            paragraphSpacing: 2,
+            paragraphSpacing: 3,
             hyphenationFactor: 0
         )
-        // Tab stops for column alignment (evenly spaced at ~25% of readable width)
-        let colWidth = max(80, request.readableWidth * 0.25)
+        // Tables use an inset track so row surfaces and borders can align visually.
+        let tableInset: CGFloat = 12
+        style.firstLineHeadIndent = tableInset
+        style.headIndent = tableInset
+
+        // Tab stops for column alignment.
+        // Balance by readable width so tables scale with the active reader column.
+        let colWidth = max(96, (request.readableWidth - tableInset * 2) * 0.24)
         style.tabStops = (0 ..< 8).map { i in
-            NSTextTab(textAlignment: .left, location: colWidth * CGFloat(i + 1), options: [:])
+            NSTextTab(textAlignment: .left, location: tableInset + (colWidth * CGFloat(i + 1)), options: [:])
         }
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
@@ -360,6 +491,104 @@ struct TypographyApplier: TypographyApplying {
         if intent.contains(.strikethrough) {
             text.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
             text.addAttribute(.strikethroughColor, value: palette.textSecondary, range: range)
+        }
+    }
+
+    // MARK: - Task List Styling
+
+    // MARK: - Table Theme Integration
+
+    private func themedTableHeaderBackground(palette: NativeThemePalette, request: RenderRequest) -> NSColor {
+        let blendFraction: CGFloat = request.colorScheme == .dark ? 0.28 : 0.12
+        return palette.tableHeaderBackground.blended(withFraction: blendFraction, of: palette.codeBackground)
+            ?? palette.tableHeaderBackground
+    }
+
+    private func themedTableRowBackground(palette: NativeThemePalette, request: RenderRequest) -> NSColor {
+        let blendFraction: CGFloat = request.colorScheme == .dark ? 0.10 : 0.06
+        return palette.tableRowAlternating.blended(withFraction: blendFraction, of: palette.inlineCodeBackground)
+            ?? palette.tableRowAlternating
+    }
+
+    private func themedTableBorderColor(palette: NativeThemePalette, request: RenderRequest) -> NSColor {
+        let accentForwardThemes: Set<AppTheme> = [
+            .dracula, .monokai, .onedark, .tokyonight, .nord, .gruvbox, .solarized,
+        ]
+        var accentBlend: CGFloat = accentForwardThemes.contains(request.appTheme) ? 0.18 : 0.08
+        if request.colorScheme == .dark {
+            accentBlend += 0.05
+        }
+        return palette.tableBorder.blended(withFraction: accentBlend, of: palette.accent) ?? palette.tableBorder
+    }
+
+    /// Applies special styling to task list checkbox characters.
+    /// Call this after all other styling is applied.
+    func applyTaskListStyling(
+        to text: NSMutableAttributedString,
+        palette: NativeThemePalette,
+        request: RenderRequest
+    ) {
+        let nsString = text.string as NSString
+        let fullRange = NSRange(location: 0, length: text.length)
+        let markerPattern = #"\[( |x|X)\]"#
+        guard let regex = try? NSRegularExpression(pattern: markerPattern) else { return }
+        let markerMatches = regex.matches(in: text.string, options: [], range: fullRange)
+        guard !markerMatches.isEmpty else { return }
+
+        let markerFont = NSFont.monospacedSystemFont(
+            ofSize: max(11, request.readerFontSize * 0.9),
+            weight: .semibold
+        )
+        let markerKern = max(0, request.textSpacing.kern(for: request.readerFontSize) * 0.7)
+
+        for match in markerMatches {
+            let markerRange = match.range
+            guard markerRange.location != NSNotFound, markerRange.length > 0 else { continue }
+
+            // Restrict checkbox styling to list items so plain paragraph text like [x]
+            // is not interpreted as a task marker.
+            guard
+                let intent = text.attribute(
+                    MarkdownRenderAttribute.presentationIntent,
+                    at: markerRange.location,
+                    effectiveRange: nil
+                ) as? PresentationIntent
+            else { continue }
+            let isListItem = intent.components.contains {
+                if case .unorderedList = $0.kind { return true }
+                return false
+            }
+            guard isListItem else { continue }
+
+            let markerText = nsString.substring(with: markerRange)
+            let checked = markerText == "[x]" || markerText == "[X]"
+            let markerColor = checked ? palette.taskListChecked : palette.taskListUnchecked
+
+            text.addAttribute(.font, value: markerFont, range: markerRange)
+            text.addAttribute(.foregroundColor, value: markerColor, range: markerRange)
+            text.addAttribute(.kern, value: markerKern, range: markerRange)
+            text.addAttribute(MarkdownRenderAttribute.taskListChecked, value: checked, range: markerRange)
+
+            guard checked else { continue }
+            let lineRange = nsString.lineRange(for: markerRange)
+            let textStart = markerRange.location + markerRange.length
+            var textEnd = lineRange.location + lineRange.length
+            if textEnd > lineRange.location,
+               nsString.character(at: textEnd - 1) == 0x0A
+            {
+                textEnd -= 1
+            }
+            guard textStart < textEnd else { continue }
+
+            let contentRange = NSRange(
+                location: textStart,
+                length: textEnd - textStart
+            )
+            text.addAttribute(.foregroundColor, value: palette.textSecondary, range: contentRange)
+            text.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: contentRange)
+            text.addAttribute(.strikethroughColor, value: palette.textTertiary, range: contentRange)
+            // Keep checked item spacing slightly tighter for cleaner rhythm.
+            text.addAttribute(.kern, value: markerKern * 0.8, range: contentRange)
         }
     }
 }

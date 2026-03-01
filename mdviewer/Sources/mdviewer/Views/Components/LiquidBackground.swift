@@ -29,20 +29,18 @@ private struct ModernLiquidBackground: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: false)) { _ in
-            MeshGradient(
-                width: 3,
-                height: 3,
-                points: [
-                    .init(x: 0, y: 0), .init(x: 0.5, y: 0), .init(x: 1, y: 0),
-                    .init(x: 0, y: 0.5), .init(x: 0.5, y: 0.5), .init(x: 1, y: 0.5),
-                    .init(x: 0, y: 1), .init(x: 0.5, y: 1), .init(x: 1, y: 1),
-                ],
-                colors: colors
-            )
-            .opacity(0.15)
-            .blur(radius: 40)
-        }
+        MeshGradient(
+            width: 3,
+            height: 3,
+            points: [
+                .init(x: 0, y: 0), .init(x: 0.5, y: 0), .init(x: 1, y: 0),
+                .init(x: 0, y: 0.5), .init(x: 0.5, y: 0.5), .init(x: 1, y: 0.5),
+                .init(x: 0, y: 1), .init(x: 0.5, y: 1), .init(x: 1, y: 1),
+            ],
+            colors: colors
+        )
+        .opacity(0.15)
+        .blur(radius: 40)
         .animation(.easeInOut(duration: 2.0), value: colorScheme)
     }
 

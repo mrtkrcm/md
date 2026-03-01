@@ -5,8 +5,12 @@
 
 internal import SwiftUI
 internal import Foundation
+internal import OSLog
 #if os(macOS)
     internal import AppKit
+
+    /// Signpost logger for markdown rendering pipeline profiling.
+    private let markdownRenderSignposter = OSSignposter(subsystem: "mdviewer", category: "MarkdownRenderPipeline")
 
     struct NativeMarkdownTextView: NSViewRepresentable {
         let markdown: String
@@ -21,6 +25,11 @@ internal import Foundation
         let showLineNumbers: Bool
 
         func makeNSView(context: Context) -> NSScrollView {
+            // Signpost: TextView creation start
+            let signpostID = markdownRenderSignposter.makeSignpostID()
+            let intervalState = markdownRenderSignposter.beginInterval("TextViewCreation", id: signpostID)
+            defer { markdownRenderSignposter.endInterval("TextViewCreation", intervalState) }
+
             // Force TextKit 1 (NSLayoutManager) — TextKit 2 (the macOS 14+ default) does not
             // call NSTextBlock.drawBackground(withFrame:), so blockquote/code NSTextBlock
             // backgrounds and borders are invisible without explicit TK1 opt-in.
@@ -91,14 +100,27 @@ internal import Foundation
             let generation = coordinator.generation
             coordinator.renderTask?.cancel()
 
+            // Signpost: Track async markdown render start
+            let signpostID = markdownRenderSignposter.makeSignpostID()
+            let intervalState = markdownRenderSignposter.beginInterval("AsyncMarkdownRender", id: signpostID)
+
             coordinator.renderTask = Task { @MainActor [weak textView] in
                 let rendered = await MarkdownRenderService.shared.render(request)
+
+                // End the async render interval when complete
+                markdownRenderSignposter.endInterval("AsyncMarkdownRender", intervalState)
+
                 guard !Task.isCancelled else { return }
                 guard
                     coordinator.generation == generation,
                     coordinator.currentRequest == request,
                     let textView
                 else { return }
+
+                // Signpost: Track UI update
+                let uiSignpostID = markdownRenderSignposter.makeSignpostID()
+                let uiInterval = markdownRenderSignposter.beginInterval("TextViewUIUpdate", id: uiSignpostID)
+                defer { markdownRenderSignposter.endInterval("TextViewUIUpdate", uiInterval) }
 
                 // Preserve scroll position across re-renders
                 let scrollPoint = textView.enclosingScrollView?.documentVisibleRect.origin
@@ -107,6 +129,9 @@ internal import Foundation
                 if let scrollPoint {
                     textView.scroll(scrollPoint)
                 }
+
+                // Emit event for completed render
+                markdownRenderSignposter.emitEvent("MarkdownRenderCompleted", id: signpostID)
             }
         }
 

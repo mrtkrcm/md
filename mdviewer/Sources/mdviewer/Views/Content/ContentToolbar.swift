@@ -6,9 +6,13 @@
 //
 
 internal import SwiftUI
+internal import OSLog
 #if os(macOS)
     internal import AppKit
 #endif
+
+/// Signpost logger for toolbar interaction profiling.
+private let toolbarSignposter = OSSignposter(subsystem: "mdviewer", category: "Toolbar")
 
 /// Toolbar content providing mode switching and primary document actions.
 /// Uses native macOS toolbar components without custom styling.
@@ -18,6 +22,7 @@ struct ContentToolbar: ToolbarContent {
     @Binding var showMetadataInspector: Bool
     let openAction: () -> Void
     let documentText: String
+    let hasFrontmatter: Bool
 
     var body: some ToolbarContent {
         // Centered mode switcher - native NSSegmentedControl style
@@ -37,11 +42,14 @@ struct ContentToolbar: ToolbarContent {
         // Trailing action items - native macOS toolbar buttons
         ToolbarItem(id: "inspector", placement: .automatic) {
             Button {
+                toolbarSignposter.emitEvent("InspectorToggleTapped")
                 showMetadataInspector.toggle()
             } label: {
                 Image(systemName: "sidebar.right")
             }
-            .help("Toggle Metadata Panel")
+            .help(hasFrontmatter ? "Toggle Metadata Panel" : "No metadata available")
+            .disabled(!hasFrontmatter)
+            .opacity(hasFrontmatter ? 1.0 : 0.5)
         }
 
         ToolbarItem(id: "appearance", placement: .automatic) {

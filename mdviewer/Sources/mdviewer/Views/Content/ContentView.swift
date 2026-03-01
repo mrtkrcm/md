@@ -11,6 +11,14 @@ internal import OSLog
     internal import AppKit
 #endif
 
+// MARK: - Performance Signpost Logging
+
+/// Signpost logger for UI performance profiling with Instruments.
+/// Use the Core Animation or Time Profiler template to visualize these intervals.
+private let uiPerformanceLog = OSSignposter(subsystem: "mdviewer", category: "UIPerformance")
+
+// MARK: - Content View
+
 /// Main content view that coordinates document display, editing, and toolbar.
 @MainActor
 struct ContentView: View {
@@ -90,7 +98,6 @@ struct ContentView: View {
                     colorScheme: colorScheme
                 )
                 .transition(.opacity)
-                .smoothAnimation(showStartupWelcome)
             }
         }
         .preferredColorScheme(preferences.effectiveColorScheme)
@@ -100,7 +107,8 @@ struct ContentView: View {
                 showAppearancePopover: $showAppearancePopover,
                 showMetadataInspector: $showMetadataInspector,
                 openAction: documentOps.openFromDisk,
-                documentText: document.text
+                documentText: document.text,
+                hasFrontmatter: parsed.frontmatter != nil
             )
         }
         .inspector(isPresented: $showMetadataInspector) {
@@ -141,6 +149,9 @@ struct ContentView: View {
 
 // MARK: - Subviews
 
+/// Signpost logger for document rendering performance profiling.
+private let renderSignposter = OSSignposter(subsystem: "mdviewer", category: "DocumentRender")
+
 /// Displays the main reader/editor content based on current mode.
 private struct ReaderContentView: View {
     @Binding var document: MarkdownDocument
@@ -166,8 +177,14 @@ private struct ReaderContentView: View {
         switch readerMode {
         case .rendered:
             renderedContent(geometry: geometry)
+                .onAppear {
+                    renderSignposter.emitEvent("RenderedModeAppeared")
+                }
         case .raw:
-            rawContent
+            rawContent(geometry: geometry)
+                .onAppear {
+                    renderSignposter.emitEvent("RawModeAppeared")
+                }
         }
     }
 
@@ -190,17 +207,13 @@ private struct ReaderContentView: View {
     }
 
     @ViewBuilder
-    private var rawContent: some View {
+    private func rawContent(geometry: GeometryProxy) -> some View {
         RawMarkdownEditor(
             text: $document.text,
-            fontFamily: preferences.readerFontFamily,
             fontSize: preferences.readerFontSize.points,
-            syntaxPalette: preferences.syntaxPalette,
-            colorScheme: preferences.effectiveColorScheme ?? colorScheme,
-            showLineNumbers: preferences.showLineNumbers,
-            appTheme: preferences.theme,
-            textSpacing: preferences.readerTextSpacing
+            colorScheme: preferences.effectiveColorScheme ?? colorScheme
         )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .smoothAnimation(preferences.readerFontSize)
     }
 }
@@ -234,13 +247,18 @@ private struct AppearancePopover: View {
 }
 
 /// Unified inspector sidebar that handles both empty and populated states.
-/// Prevents lag by using a simple view structure without complex transitions.
+/// Optimized for smooth animations using LazyVStack and minimal state updates.
 private struct InspectorSidebar: View {
     let frontmatter: Frontmatter?
     @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        // Signpost interval for Instruments profiling
+        let signpostID = uiPerformanceLog.makeSignpostID()
+        let intervalState = uiPerformanceLog.beginInterval("InspectorSidebarRender", id: signpostID)
+        defer { uiPerformanceLog.endInterval("InspectorSidebarRender", intervalState) }
+
+        return VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
                 Text("Metadata")
@@ -260,40 +278,57 @@ private struct InspectorSidebar: View {
 
             Divider()
 
-            // Content - simple list without complex transitions
+            // Content - LazyVStack for efficient rendering
             if let frontmatter {
-                List {
-                    ForEach(frontmatter.entries, id: \.key) { entry in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.key)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(entry.displayValue)
-                                .font(.body)
-                                .textSelection(.enabled)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(frontmatter.entries, id: \.key) { entry in
+                            MetadataRow(entry: entry)
                         }
-                        .padding(.vertical, 4)
                     }
                 }
-                .listStyle(.plain)
             } else {
-                // Empty state - simple and fast
-                VStack(spacing: 12) {
-                    Spacer()
-                    Image(systemName: "tag.slash")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.secondary)
-                    Text("No Metadata")
-                        .font(.headline)
-                    Text("This document has no YAML frontmatter")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
+                EmptyMetadataState()
             }
         }
         .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
+    }
+}
+
+/// Single metadata row - isolated to prevent parent re-renders.
+private struct MetadataRow: View {
+    let entry: Frontmatter.Entry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(entry.key)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(entry.displayValue)
+                .font(.body)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+}
+
+/// Empty state for when no frontmatter exists.
+private struct EmptyMetadataState: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "tag.slash")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+            Text("No Metadata")
+                .font(.headline)
+            Text("This document has no YAML frontmatter")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

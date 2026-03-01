@@ -25,7 +25,6 @@
         private static let tableHPadding: CGFloat = 12
         private static let tableVPadding: CGFloat = 6
         private static let tableMinWidth: CGFloat = 280
-        private static let tableWidthSlack: CGFloat = 36
         private static let lineNumberGutterPadding: CGFloat = 12
         private static let lineNumberMinWidth: CGFloat = 32
 
@@ -168,15 +167,12 @@
                     if char == "\t" { partialResult += 1 }
                 }
 
-                var tableWidth = max(0, containerWidth - 16)
-                if
-                    tabCount > 0,
-                    let paragraph,
-                    paragraph.tabStops.count >= tabCount
-                {
-                    let lastTab = paragraph.tabStops[tabCount - 1].location
-                    tableWidth = min(tableWidth, max(Self.tableMinWidth, lastTab + Self.tableWidthSlack))
-                }
+                // Always span the full readable container. Capping by lastTab + slack
+                // left the last column only `tableWidthSlack` (36pt) wide, causing content
+                // to overflow past the right border on any table with substantial last-column
+                // text. The tab stops control where each column *starts*; the row rect must
+                // extend to the container edge so the last column has room to wrap normally.
+                let tableWidth = max(Self.tableMinWidth, containerWidth - 16)
 
                 let rowRect = CGRect(
                     x: origin.x + Self.tableHPadding,

@@ -315,7 +315,10 @@
                     guard loc != NSNotFound else { continue }
 
                     let kernValue = ns.attribute(.kern, at: loc, effectiveRange: nil) as? CGFloat
-                    let expectedKern = spacing.kern(for: 16)
+                    // Include optical sizing adjustment for 16pt (0.003 in 14-18 range)
+                    let baseKern = spacing.kern(for: 16)
+                    let opticalAdjustment = 16 * spacing.opticalSizeAdjustment(for: 16)
+                    let expectedKern = baseKern + opticalAdjustment
                     XCTAssertNotNil(kernValue, "\(spacing): kern attribute must be present")
                     XCTAssertEqual(
                         kernValue ?? -1, expectedKern,
@@ -408,24 +411,24 @@
             func testFontSizeChangeProducesDifferentSizes() async {
                 let markdown = "Body paragraph text."
 
-                let compact = await render(markdown, fontSize: ReaderFontSize.compact.points)
-                let comfortable = await render(markdown, fontSize: ReaderFontSize.comfortable.points)
+                let small = await render(markdown, fontSize: ReaderFontSize.small.points)
+                let large = await render(markdown, fontSize: ReaderFontSize.large.points)
 
-                let compactLoc = (compact.string as NSString).range(of: "Body").location
-                let comfortableLoc = (comfortable.string as NSString).range(of: "Body").location
-                guard compactLoc != NSNotFound, comfortableLoc != NSNotFound else {
+                let smallLoc = (small.string as NSString).range(of: "Body").location
+                let largeLoc = (large.string as NSString).range(of: "Body").location
+                guard smallLoc != NSNotFound, largeLoc != NSNotFound else {
                     XCTFail("Body text must be present in both renders")
                     return
                 }
 
-                let compactSize = font(at: compactLoc, in: compact)?.pointSize ?? 0
-                let comfortableSize = font(at: comfortableLoc, in: comfortable)?.pointSize ?? 0
+                let smallSize = font(at: smallLoc, in: small)?.pointSize ?? 0
+                let largeSize = font(at: largeLoc, in: large)?.pointSize ?? 0
 
-                XCTAssertGreaterThan(compactSize, 0)
-                XCTAssertGreaterThan(comfortableSize, 0)
+                XCTAssertGreaterThan(smallSize, 0)
+                XCTAssertGreaterThan(largeSize, 0)
                 XCTAssertGreaterThan(
-                    comfortableSize, compactSize,
-                    "Comfortable (19pt) must produce larger text than compact (15pt)"
+                    largeSize, smallSize,
+                    "Large (19pt) must produce larger text than small (15pt)"
                 )
             }
 

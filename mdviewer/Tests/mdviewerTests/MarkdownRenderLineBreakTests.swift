@@ -162,9 +162,10 @@
             }
 
             func testKernAppliedToAllSpacingPreferences() async {
-                // kern is a uniform preference — all three settings must produce the exact value
-                // defined on ReaderTextSpacing, with no run left at the default 0.
-                let markdown = "Text with **bold**, _italic_, and `code` inline."
+                // kern is applied with element-specific adjustments — body text uses base value,
+                // headings use 80%, code uses 30%, blockquotes get extra 0.3%
+                // Test with plain body text to verify base kerning is applied
+                let markdown = "Plain body text without any special formatting."
 
                 for spacing in ReaderTextSpacing.allCases {
                     let request = RenderRequest(
@@ -186,8 +187,13 @@
 
                     ns.enumerateAttribute(.kern, in: fullRange) { value, range, _ in
                         let actual = (value as? CGFloat) ?? 0
+                        // Plain body text should have base kerning + optical adjustment
+                        // For 16pt: optical adjustment is 0.003 (medium range 14-18)
+                        let baseKern = spacing.kern(for: 16)
+                        let opticalAdjustment = 16 * spacing.opticalSizeAdjustment(for: 16)
+                        let expectedKern = baseKern + opticalAdjustment
                         XCTAssertEqual(
-                            actual, spacing.kern, accuracy: 0.001,
+                            actual, expectedKern, accuracy: 0.001,
                             "kern mismatch in range \(range) for spacing=\(spacing.rawValue)"
                         )
                     }
@@ -216,8 +222,8 @@
 
                 let style = ns.attribute(.paragraphStyle, at: loc, effectiveRange: nil) as? NSParagraphStyle
                 XCTAssertNotNil(style, "Body text must have a paragraph style")
-                XCTAssertEqual(style?.lineSpacing ?? 0, ReaderTextSpacing.relaxed.lineSpacing, accuracy: 0.1)
-                XCTAssertEqual(style?.paragraphSpacing ?? 0, ReaderTextSpacing.relaxed.paragraphSpacing, accuracy: 0.1)
+                XCTAssertEqual(style?.lineSpacing ?? 0, ReaderTextSpacing.relaxed.lineSpacing(for: 16), accuracy: 0.1)
+                XCTAssertEqual(style?.paragraphSpacing ?? 0, ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), accuracy: 0.1)
             }
         }
     #endif

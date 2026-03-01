@@ -22,7 +22,7 @@ just test-coverage      # with coverage report
 | Frontmatter | `FrontmatterParser*.swift` | YAML frontmatter |
 | Markdown Render | `MarkdownRender*.swift` | Pipeline output |
 | Rendering Stability | `RenderingStabilityTests.swift` | Spacing, no double-gaps |
-| Raw View Lines | `RawViewLineNumberTests.swift` | Line numbers, bounds |
+| Raw View | `RawViewLineNumberTests.swift` | Editor functionality |
 | Theme Spacing | `ThemeSpacingTests.swift` | 10 themes x 3 spacing |
 | Visual Regression | `VisualRegressionTests.swift` | Snapshot comparison |
 | Syntax Highlighter | `SyntaxHighlighterTests.swift` | Code coloring |
@@ -34,12 +34,11 @@ just test-coverage      # with coverage report
 3. Open `/Applications/md.app` — app launches
 4. Test all 10 themes in light/dark mode
 5. Test spacing presets: compact, balanced, relaxed
-6. Test raw view with line numbers on various documents
+6. Test raw view editing on various documents
 7. `just quality` — full quality gate passes
 
 ## Key Regressions to Watch
 
 - Double spacing in rendered view (BlockSeparatorInjector)
-- Line number crash in raw view (bounds checking)
 - Theme color accuracy in both appearance modes
 - Build script: single compilation per recipe (no double-builds)

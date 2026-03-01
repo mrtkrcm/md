@@ -3,34 +3,43 @@
 //  mdviewer
 //
 
+internal import AppKit
+internal import HighlightedTextEditor
 internal import SwiftUI
 
 // MARK: - Raw Markdown Editor
 
-/// SwiftUI wrapper that hosts the raw markdown editing text view
-/// with syntax highlighting inside a glass-panel container.
-/// Styled with liquid design tokens for consistency.
+/// SwiftUI wrapper using HighlightedTextEditor for markdown syntax highlighting.
+/// Provides a native text editing experience with live markdown highlighting.
 struct RawMarkdownEditor: View {
     @Binding var text: String
-    let fontFamily: ReaderFontFamily
     let fontSize: CGFloat
-    let syntaxPalette: SyntaxPalette
     let colorScheme: ColorScheme
-    let showLineNumbers: Bool
-    let appTheme: AppTheme
-    let textSpacing: ReaderTextSpacing
 
     var body: some View {
-        RawMarkdownTextView(
-            text: $text,
-            fontFamily: fontFamily,
-            fontSize: fontSize,
-            syntaxPalette: syntaxPalette,
-            colorScheme: colorScheme,
-            showLineNumbers: showLineNumbers,
-            appTheme: appTheme,
-            textSpacing: textSpacing
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        HighlightedTextEditor(text: $text, highlightRules: .markdown)
+            .introspect { editor in
+                configureTextView(editor.textView)
+            }
+            .background(colorScheme == .dark ? Color.black : Color.white)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func configureTextView(_ textView: NSTextView) {
+        // Configure for plain text editing
+        textView.isRichText = false
+        textView.usesFindBar = true
+        textView.allowsUndo = true
+        textView.drawsBackground = true
+        textView.focusRingType = .none
+
+        // Set font size
+        let newFont = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        textView.font = newFont
+        textView.typingAttributes = [.font: newFont]
+
+        // Set background and text colors
+        textView.backgroundColor = colorScheme == .dark ? .black : .white
+        textView.textColor = colorScheme == .dark ? .white : .black
     }
 }

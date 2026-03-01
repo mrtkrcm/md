@@ -3,3 +3,7 @@
 # SwiftPM build artifacts
 mdviewer/.build/
 mdviewer/.swiftpm/
+
+# User-specific settings
+.claude/settings.local.json
+.pi/

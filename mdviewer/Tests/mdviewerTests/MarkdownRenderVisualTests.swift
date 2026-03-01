@@ -145,23 +145,23 @@
             func testFontSizeScalesWithReaderPreference() async {
                 let markdown = "Body paragraph text for size comparison."
 
-                let comfortableResult = await rendered(markdown, fontSize: .comfortable)
-                let compactResult = await rendered(markdown, fontSize: .compact)
+                let largeResult = await rendered(markdown, fontSize: .large)
+                let smallResult = await rendered(markdown, fontSize: .small)
 
-                let ns = comfortableResult.string as NSString
+                let ns = largeResult.string as NSString
                 let bodyLoc = ns.range(of: "Body").location
                 XCTAssertNotEqual(bodyLoc, NSNotFound)
 
-                let comfortableSize = pointSize(at: bodyLoc, in: comfortableResult)
-                let compactSize = pointSize(at: bodyLoc, in: compactResult)
+                let largeSize = pointSize(at: bodyLoc, in: largeResult)
+                let smallSize = pointSize(at: bodyLoc, in: smallResult)
 
                 XCTAssertGreaterThan(
-                    comfortableSize,
-                    compactSize,
-                    "Comfortable font preference should produce larger body text than compact"
+                    largeSize,
+                    smallSize,
+                    "Large font preference should produce larger body text than small"
                 )
-                XCTAssertGreaterThan(comfortableSize, 0)
-                XCTAssertGreaterThan(compactSize, 0)
+                XCTAssertGreaterThan(largeSize, 0)
+                XCTAssertGreaterThan(smallSize, 0)
             }
 
             // MARK: - Code styling
@@ -672,6 +672,11 @@
             private let bqDepthKey = NSAttributedString.Key("mdv.blockquoteDepth")
             private let bqAccentKey = NSAttributedString.Key("mdv.blockquoteAccent")
             private let bqBgKey = NSAttributedString.Key("mdv.blockquoteBackground")
+            private let tableHeaderBgKey = NSAttributedString.Key("mdv.tableHeaderBackground")
+            private let tableRowBgKey = NSAttributedString.Key("mdv.tableRowBackground")
+            private let tableBorderKey = NSAttributedString.Key("mdv.tableBorder")
+            private let tableRowAlternatingKey = NSAttributedString.Key("mdv.tableRowAlternating")
+            private let taskListCheckedKey = NSAttributedString.Key("mdv.taskListChecked")
 
             func testBlockquoteHasDepthAttribute() async {
                 let markdown = "> This is a quoted line."
@@ -708,6 +713,89 @@
 
                 let accent = result.attribute(bqAccentKey, at: loc, effectiveRange: nil) as? NSColor
                 XCTAssertNotNil(accent, "Blockquote must have mdv.blockquoteAccent attribute")
+            }
+
+            // MARK: - Table + task list rendering
+
+            func testTableRowsCarryThemeAttributes() async {
+                let markdown = """
+                | Name | Status |
+                | --- | --- |
+                | Parser | Done |
+                | Viewer | WIP |
+                """
+
+                let result = await rendered(markdown, theme: .github, scheme: .light)
+                let ns = result.string as NSString
+
+                let headerLoc = ns.range(of: "Name").location
+                let firstRowLoc = ns.range(of: "Parser").location
+                let secondRowLoc = ns.range(of: "Viewer").location
+                XCTAssertNotEqual(headerLoc, NSNotFound)
+                XCTAssertNotEqual(firstRowLoc, NSNotFound)
+                XCTAssertNotEqual(secondRowLoc, NSNotFound)
+
+                let headerBg = result.attribute(tableHeaderBgKey, at: headerLoc, effectiveRange: nil) as? NSColor
+                let headerBorder = result.attribute(tableBorderKey, at: headerLoc, effectiveRange: nil) as? NSColor
+                XCTAssertNotNil(headerBg, "Table header should carry themed header background attribute")
+                XCTAssertNotNil(headerBorder, "Table header should carry table border attribute")
+
+                let firstRowHasBorder = result.attribute(tableBorderKey, at: firstRowLoc, effectiveRange: nil) as? NSColor
+                let firstRowAlternating = result.attribute(
+                    tableRowAlternatingKey,
+                    at: firstRowLoc,
+                    effectiveRange: nil
+                ) as? Bool
+                XCTAssertNotNil(firstRowHasBorder, "Table row should carry border attribute")
+                XCTAssertEqual(firstRowAlternating, false, "First body row should not be alternating")
+
+                let secondRowBg = result.attribute(tableRowBgKey, at: secondRowLoc, effectiveRange: nil) as? NSColor
+                let secondRowAlternating = result.attribute(
+                    tableRowAlternatingKey,
+                    at: secondRowLoc,
+                    effectiveRange: nil
+                ) as? Bool
+                XCTAssertEqual(secondRowAlternating, true, "Second body row should be alternating")
+                XCTAssertNotNil(secondRowBg, "Alternating table row should carry row background attribute")
+            }
+
+            func testTaskListUsesThemeAwareCheckboxStyling() async {
+                let markdown = """
+                - [ ] Ship docs
+                - [x] Add release notes
+                """
+
+                let result = await rendered(markdown, theme: .github, scheme: .light)
+                let ns = result.string as NSString
+
+                let uncheckedLoc = ns.range(of: "[ ]").location
+                let checkedLoc = ns.range(of: "[x]").location
+                let doneTextLoc = ns.range(of: "Add release notes").location
+                XCTAssertNotEqual(uncheckedLoc, NSNotFound)
+                XCTAssertNotEqual(checkedLoc, NSNotFound)
+                XCTAssertNotEqual(doneTextLoc, NSNotFound)
+
+                let palette = NativeThemePalette(theme: .github, scheme: .light)
+                let uncheckedColor = foregroundColor(at: uncheckedLoc, in: result)
+                let checkedColor = foregroundColor(at: checkedLoc, in: result)
+                XCTAssertNotNil(uncheckedColor)
+                XCTAssertNotNil(checkedColor)
+                if let uncheckedColor, let checkedColor {
+                    XCTAssertTrue(
+                        colorsApproxEqual(uncheckedColor, palette.taskListUnchecked),
+                        "Unchecked marker should use theme unchecked color"
+                    )
+                    XCTAssertTrue(
+                        colorsApproxEqual(checkedColor, palette.taskListChecked),
+                        "Checked marker should use theme checked color"
+                    )
+                }
+
+                let checkedState = result.attribute(taskListCheckedKey, at: checkedLoc, effectiveRange: nil) as? Bool
+                XCTAssertEqual(checkedState, true, "Checked marker should carry mdv.taskListChecked=true")
+
+                let doneTextStrike = result.attribute(.strikethroughStyle, at: doneTextLoc, effectiveRange: nil) as? Int
+                XCTAssertNotNil(doneTextStrike, "Checked task text should have strikethrough styling")
             }
 
             // MARK: - Font family coverage
@@ -794,7 +882,12 @@
                     guard loc != NSNotFound else { continue }
 
                     let kernValue = result.attribute(.kern, at: loc, effectiveRange: nil) as? CGFloat
-                    let expectedKern = spacing.kern(for: ReaderFontSize.standard.points)
+                    // Test uses ReaderFontSize.standard (17pt) via rendered() helper
+                    // Include optical sizing adjustment for 17pt (0.003 in 14-18 range)
+                    let fontSize = ReaderFontSize.standard.points
+                    let baseKern = spacing.kern(for: fontSize)
+                    let opticalAdjustment = fontSize * spacing.opticalSizeAdjustment(for: fontSize)
+                    let expectedKern = baseKern + opticalAdjustment
                     XCTAssertNotNil(kernValue, "\(spacing): kern attribute must be present in rendered output")
                     if let kernValue {
                         XCTAssertEqual(

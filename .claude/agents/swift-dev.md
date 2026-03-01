@@ -19,8 +19,8 @@ Implement features, fix bugs, and refactor code in the mdviewer codebase. Follow
 |------|---------|
 | `Models/` | Data models, preferences (`@AppStorage`) |
 | `Views/Components/` | Reusable SwiftUI components |
-| `Views/Editor/` | Raw markdown editor (AppKit `NSTextView`) |
-| `Views/Layout/` | Layout managers, line number ruler |
+| `Views/Editor/` | Raw markdown editor (HighlightedTextEditor library) |
+| `Views/Layout/` | Layout managers |
 | `Services/Pipeline/` | Render pipeline: parse → separate → style → highlight |
 | `Theme/` | 10 themes, design tokens, `NativeThemePalette` |
 | `Syntax/` | Code block syntax highlighting |

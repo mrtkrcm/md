@@ -102,7 +102,7 @@ mdviewer/Sources/mdviewer/
 - 10 themes (Basic, GitHub, DocC, Solarized, Gruvbox, Dracula, Monokai, Nord, One Dark, Tokyo Night)
 - Light/dark mode for all themes
 - 3 spacing presets (compact, balanced, relaxed)
-- Raw markdown view with syntax highlighting and line numbers
+- Raw markdown view with syntax highlighting
 - Rendered view with native typography
 - YAML frontmatter support
 - Document type support: `.md`, `.markdown`, `.mdown`, `.mkd`

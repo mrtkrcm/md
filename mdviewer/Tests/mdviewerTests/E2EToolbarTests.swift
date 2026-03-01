@@ -13,17 +13,26 @@
         @testable internal import mdviewer
 
         /// E2E tests for toolbar behavior and native macOS component integration.
+        @MainActor
         final class E2EToolbarTests: XCTestCase {
+            /// Mutable binding state container used to avoid capturing local vars
+            /// in potentially concurrent closure contexts.
+            private final class StateBox<T>: @unchecked Sendable {
+                var value: T
+                init(_ value: T) { self.value = value }
+            }
             
             // MARK: - Mode Switching Tests
             
+            @MainActor
             func testModeSwitchingChangesReaderMode() {
                 let view = ContentToolbar(
                     readerMode: .constant(.rendered),
                     showAppearancePopover: .constant(false),
                     showMetadataInspector: .constant(false),
                     openAction: {},
-                    documentText: "test"
+                    documentText: "test",
+                    hasFrontmatter: true
                 )
                 
                 // Verify toolbar content can be created without crashing
@@ -31,6 +40,7 @@
                 XCTAssertNotNil(toolbarContent)
             }
             
+            @MainActor
             func testToolbarItemsHaveCorrectIdentifiers() {
                 // Verify toolbar item IDs are stable for state restoration
                 let ids = ["mode", "inspector", "appearance", "share", "open"]
@@ -40,6 +50,7 @@
             
             // MARK: - Native Component Tests
             
+            @MainActor
             func testModePickerUsesSegmentedStyle() {
                 // The mode picker should use native NSSegmentedControl via Picker(.segmented)
                 // This test verifies the picker configuration is valid
@@ -52,6 +63,7 @@
                 XCTAssertNotNil(picker)
             }
             
+            @MainActor
             func testToolbarButtonsUseSFSymbols() {
                 // Verify all toolbar icons use valid SF Symbol names
                 let symbols = ["sidebar.right", "paintbrush", "square.and.arrow.up", "folder"]
@@ -63,22 +75,23 @@
             
             // MARK: - State Management Tests
             
+            @MainActor
             func testToolbarBindingPropagation() {
-                var readerMode = ReaderMode.rendered
-                var showPopover = false
-                var showInspector = false
+                let readerMode = StateBox(ReaderMode.rendered)
+                let showPopover = StateBox(false)
+                let showInspector = StateBox(false)
                 
                 let bindingMode = Binding(
-                    get: { readerMode },
-                    set: { readerMode = $0 }
+                    get: { readerMode.value },
+                    set: { readerMode.value = $0 }
                 )
                 let bindingPopover = Binding(
-                    get: { showPopover },
-                    set: { showPopover = $0 }
+                    get: { showPopover.value },
+                    set: { showPopover.value = $0 }
                 )
                 let bindingInspector = Binding(
-                    get: { showInspector },
-                    set: { showInspector = $0 }
+                    get: { showInspector.value },
+                    set: { showInspector.value = $0 }
                 )
                 
                 let view = ContentToolbar(
@@ -86,18 +99,19 @@
                     showAppearancePopover: bindingPopover,
                     showMetadataInspector: bindingInspector,
                     openAction: {},
-                    documentText: "test"
+                    documentText: "test",
+                    hasFrontmatter: true
                 )
                 
                 XCTAssertNotNil(view)
                 
                 // Simulate mode change
                 bindingMode.wrappedValue = .raw
-                XCTAssertEqual(readerMode, .raw)
+                XCTAssertEqual(readerMode.value, .raw)
                 
                 // Simulate inspector toggle
                 bindingInspector.wrappedValue = true
-                XCTAssertTrue(showInspector)
+                XCTAssertTrue(showInspector.value)
             }
         }
     #endif

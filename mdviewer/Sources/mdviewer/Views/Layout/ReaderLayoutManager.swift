@@ -30,6 +30,8 @@
         private enum SpanKind {
             case code(bg: NSColor)
             case blockquote(bg: NSColor, accent: NSColor, depth: Int)
+            case tableHeader(bg: NSColor)
+            case tableRow(alternating: Bool, bg: NSColor)
         }
 
         private struct DecorationSpan {
@@ -59,6 +61,7 @@
 
             var codeSpans: [DecorationSpan] = []
             var bqSpans: [DecorationSpan] = []
+            var tableSpans: [DecorationSpan] = []
 
             let scanStart = max(0, charRange.location)
             let scanEnd = min(charRange.location + charRange.length, totalLen)
@@ -80,6 +83,12 @@
 
                 let bqDepth = ts
                     .attribute(MarkdownRenderAttribute.blockquoteDepth, at: i, effectiveRange: nil) as? Int ?? 0
+                let tableHeaderBG = ts
+                    .attribute(MarkdownRenderAttribute.tableHeaderBackground, at: i, effectiveRange: nil) as? NSColor
+                let tableRowBG = ts
+                    .attribute(MarkdownRenderAttribute.tableRowBackground, at: i, effectiveRange: nil) as? NSColor
+                let tableRowAlternating = ts
+                    .attribute(MarkdownRenderAttribute.tableRowAlternating, at: i, effectiveRange: nil) as? Bool ?? false
 
                 if isCode, let bg = ts.attribute(.backgroundColor, at: i, effectiveRange: nil) as? NSColor {
                     if let last = codeSpans.last, last.charEnd >= i {
@@ -111,6 +120,36 @@
                             charStart: effectiveRange.location,
                             charEnd: end,
                             kind: .blockquote(bg: bg, accent: accent, depth: bqDepth)
+                        ))
+                    }
+                }
+
+                if let headerBG = tableHeaderBG {
+                    if let last = tableSpans.last, last.charEnd >= i,
+                       case .tableHeader(_) = last.kind
+                    {
+                        tableSpans[tableSpans.count - 1].charEnd = max(tableSpans[tableSpans.count - 1].charEnd, end)
+                    } else {
+                        tableSpans.append(DecorationSpan(
+                            charStart: effectiveRange.location,
+                            charEnd: end,
+                            kind: .tableHeader(bg: headerBG)
+                        ))
+                    }
+                } else if
+                    tableRowBG != nil
+                        || ts.attribute(MarkdownRenderAttribute.tableBorder, at: i, effectiveRange: nil) != nil
+                {
+                    let rowBG = tableRowBG ?? .clear
+                    if let last = tableSpans.last, last.charEnd >= i,
+                       case .tableRow(_, _) = last.kind
+                    {
+                        tableSpans[tableSpans.count - 1].charEnd = max(tableSpans[tableSpans.count - 1].charEnd, end)
+                    } else {
+                        tableSpans.append(DecorationSpan(
+                            charStart: effectiveRange.location,
+                            charEnd: end,
+                            kind: .tableRow(alternating: tableRowAlternating, bg: rowBG)
                         ))
                     }
                 }
@@ -202,6 +241,86 @@
                 )
                 accent.setFill()
                 ctx.fill(barRect)
+
+                ctx.restoreGState()
+            }
+
+            // ── Draw table surfaces and separators ───────────────────────────────
+            for span in tableSpans {
+                let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+                guard !rect.isNull else { continue }
+
+                let paragraph = ts.attribute(.paragraphStyle, at: span.charStart, effectiveRange: nil) as? NSParagraphStyle
+                let lineRange = (ts.string as NSString).lineRange(for: NSRange(location: span.charStart, length: 0))
+                let lineText = (ts.string as NSString).substring(with: lineRange)
+                let tabCount = lineText.reduce(into: 0) { partialResult, char in
+                    if char == "\t" { partialResult += 1 }
+                }
+
+                var tableWidth = max(0, containerWidth - 16)
+                if
+                    tabCount > 0,
+                    let paragraph,
+                    paragraph.tabStops.count >= tabCount
+                {
+                    let lastTab = paragraph.tabStops[tabCount - 1].location
+                    tableWidth = min(tableWidth, max(220, lastTab + 28))
+                }
+
+                let rowRect = CGRect(
+                    x: origin.x + 8,
+                    y: rect.minY - 2,
+                    width: tableWidth,
+                    height: rect.height + 4
+                )
+                guard rowRect.width > 0, rowRect.height > 0 else { continue }
+
+                let borderColor = ts
+                    .attribute(MarkdownRenderAttribute.tableBorder, at: span.charStart, effectiveRange: nil) as? NSColor
+
+                ctx.saveGState()
+                switch span.kind {
+                case .tableHeader(let bg):
+                    bg.setFill()
+                    ctx.fill(rowRect)
+                case .tableRow(let alternating, let bg):
+                    if alternating {
+                        bg.setFill()
+                        ctx.fill(rowRect)
+                    }
+                default:
+                    break
+                }
+
+                if let borderColor {
+                    borderColor.setStroke()
+                    ctx.setLineWidth(1)
+                    ctx.beginPath()
+                    // Horizontal separators
+                    ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.minY))
+                    ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.minY))
+                    if case .tableHeader = span.kind {
+                        ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.maxY))
+                        ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.maxY))
+                    }
+                    // Outer vertical edges
+                    ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.minY))
+                    ctx.addLine(to: CGPoint(x: rowRect.minX, y: rowRect.maxY))
+                    ctx.move(to: CGPoint(x: rowRect.maxX, y: rowRect.minY))
+                    ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.maxY))
+
+                    // Draw column guides up to the actual tab count in the row text.
+                    if let paragraph, tabCount > 0 {
+                        for tabStop in paragraph.tabStops.prefix(tabCount) {
+                            let x = origin.x + tabStop.location
+                            guard x > rowRect.minX, x < rowRect.maxX else { continue }
+                            ctx.move(to: CGPoint(x: x, y: rowRect.minY))
+                            ctx.addLine(to: CGPoint(x: x, y: rowRect.maxY))
+                        }
+                    }
+
+                    ctx.strokePath()
+                }
 
                 ctx.restoreGState()
             }

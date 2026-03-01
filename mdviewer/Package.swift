@@ -11,12 +11,15 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/nicklockwood/SwiftFormat", from: "0.58.7"),
+        .package(url: "https://github.com/kyle-n/HighlightedTextEditor", from: "2.1.0"),
     ],
     targets: [
         .executableTarget(
             name: "mdviewer",
-            dependencies: [],
-            exclude: ["Info.plist", "Resources"],
+            dependencies: [
+                .product(name: "HighlightedTextEditor", package: "HighlightedTextEditor"),
+            ],
+            exclude: ["Info.plist", "Resources", "Design/DESIGN_SYSTEM.md", "Services/Pipeline/PARSER_ARCHITECTURE.md"],
             swiftSettings: swift6Settings
         ),
         .testTarget(

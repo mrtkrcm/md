@@ -49,4 +49,32 @@ enum MarkdownRenderAttribute {
     ///
     /// The value is a `Bool` indicating this range is part of a code block.
     static let codeBlock = NSAttributedString.Key("mdv.codeBlock")
+
+    /// Key for themed table header row background color.
+    ///
+    /// Stored on table header ranges; consumed by `ReaderLayoutManager`
+    /// to draw header surface decoration.
+    static let tableHeaderBackground = NSAttributedString.Key("mdv.tableHeaderBackground")
+
+    /// Key for themed table row background color.
+    ///
+    /// Stored on alternating table row ranges; consumed by
+    /// `ReaderLayoutManager` for zebra-striping.
+    static let tableRowBackground = NSAttributedString.Key("mdv.tableRowBackground")
+
+    /// Key indicating whether a table row is alternating.
+    ///
+    /// Value is a `Bool` used by layout drawing logic to gate zebra fills.
+    static let tableRowAlternating = NSAttributedString.Key("mdv.tableRowAlternating")
+
+    /// Key for table border color.
+    ///
+    /// Stored on table rows and headers; consumed by layout drawing to render
+    /// separators and outer edges.
+    static let tableBorder = NSAttributedString.Key("mdv.tableBorder")
+
+    /// Key for task-list checkbox state.
+    ///
+    /// Value is a `Bool` where `true` means checked.
+    static let taskListChecked = NSAttributedString.Key("mdv.taskListChecked")
 }

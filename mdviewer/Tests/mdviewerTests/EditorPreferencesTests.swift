@@ -15,18 +15,18 @@
         // MARK: - ReaderTextSpacing.lineSpacing(for:)
 
         func testLineSpacingCompactAt16pt() {
-            // compact: 16 * 1.6 - 16 = 9.6
-            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 9.6, accuracy: 0.001)
+            // compact: 16 * 1.52 - 16 = 8.32
+            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 8.32, accuracy: 0.001)
         }
 
         func testLineSpacingBalancedAt16pt() {
-            // balanced: 16 * 1.75 - 16 = 12.0
-            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 12.0, accuracy: 0.001)
+            // balanced: 16 * 1.62 - 16 = 9.92
+            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 9.92, accuracy: 0.001)
         }
 
         func testLineSpacingRelaxedAt16pt() {
-            // relaxed: 16 * 1.9 - 16 = 14.4
-            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 14.4, accuracy: 0.001)
+            // relaxed: 16 * 1.75 - 16 = 12.0
+            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 12.0, accuracy: 0.001)
         }
 
         func testLineSpacingNeverNegative() {
@@ -61,18 +61,18 @@
         // MARK: - ReaderTextSpacing.paragraphSpacing(for:)
 
         func testParagraphSpacingCompactAt16pt() {
-            // 16*1.6=25.6; 25.6*0.6=15.36 (improved for readability)
-            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 15.36, accuracy: 0.001)
+            // 16*1.52=24.32; 24.32*0.5=12.16
+            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 12.16, accuracy: 0.001)
         }
 
         func testParagraphSpacingBalancedAt16pt() {
-            // 16*1.75=28.0; 28.0*0.9=25.2 (improved for readability)
-            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 25.2, accuracy: 0.001)
+            // 16*1.62=25.92; 25.92*0.75=19.44
+            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 19.44, accuracy: 0.001)
         }
 
         func testParagraphSpacingRelaxedAt16pt() {
-            // 16*1.9=30.4; 30.4*1.2=36.48 (improved for readability)
-            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 36.48, accuracy: 0.001)
+            // 16*1.75=28.0; 28.0*1.0=28.0
+            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 28.0, accuracy: 0.001)
         }
 
         func testParagraphSpacingOrderPreserved() {
@@ -96,10 +96,10 @@
         // MARK: - ReaderTextSpacing kern/hyphenation
 
         func testKernValues() {
-            // Improved for readability: neutral for compact, slight positive for balanced and relaxed
-            XCTAssertEqual(ReaderTextSpacing.compact.kern, 0.0, accuracy: 0.001)
-            XCTAssertEqual(ReaderTextSpacing.balanced.kern, 0.01, accuracy: 0.001)
-            XCTAssertEqual(ReaderTextSpacing.relaxed.kern, 0.025, accuracy: 0.001)
+            // Improved typography: minimal negative for compact, slight positive for balanced, generous for relaxed
+            XCTAssertEqual(ReaderTextSpacing.compact.kern, -0.005, accuracy: 0.001)
+            XCTAssertEqual(ReaderTextSpacing.balanced.kern, 0.008, accuracy: 0.001)
+            XCTAssertEqual(ReaderTextSpacing.relaxed.kern, 0.022, accuracy: 0.001)
         }
 
         func testKernMonotonicallyIncreases() {
@@ -108,9 +108,10 @@
         }
 
         func testHyphenationFactorValues() {
-            XCTAssertEqual(ReaderTextSpacing.compact.hyphenationFactor, 0.15, accuracy: 0.001)
-            XCTAssertEqual(ReaderTextSpacing.balanced.hyphenationFactor, 0.20, accuracy: 0.001)
-            XCTAssertEqual(ReaderTextSpacing.relaxed.hyphenationFactor, 0.25, accuracy: 0.001)
+            // Professional typography: more hyphenation for compact (narrow columns), less for relaxed
+            XCTAssertEqual(ReaderTextSpacing.compact.hyphenationFactor, 0.20, accuracy: 0.001)
+            XCTAssertEqual(ReaderTextSpacing.balanced.hyphenationFactor, 0.15, accuracy: 0.001)
+            XCTAssertEqual(ReaderTextSpacing.relaxed.hyphenationFactor, 0.10, accuracy: 0.001)
         }
 
         // MARK: - ReaderColumnWidth
@@ -129,9 +130,12 @@
         // MARK: - ReaderFontSize
 
         func testFontSizePointValues() {
-            XCTAssertEqual(ReaderFontSize.compact.points, 15, accuracy: 0.001)
+            XCTAssertEqual(ReaderFontSize.extraSmall.points, 13, accuracy: 0.001)
+            XCTAssertEqual(ReaderFontSize.small.points, 15, accuracy: 0.001)
             XCTAssertEqual(ReaderFontSize.standard.points, 17, accuracy: 0.001)
-            XCTAssertEqual(ReaderFontSize.comfortable.points, 19, accuracy: 0.001)
+            XCTAssertEqual(ReaderFontSize.large.points, 19, accuracy: 0.001)
+            XCTAssertEqual(ReaderFontSize.extraLarge.points, 21, accuracy: 0.001)
+            XCTAssertEqual(ReaderFontSize.xxl.points, 23, accuracy: 0.001)
         }
 
         // MARK: - CodeFontSize

@@ -601,6 +601,20 @@ struct TypographyApplier: TypographyApplying {
 
         let hrFont = NSFont.systemFont(ofSize: 6, weight: .regular)
 
+        // Two-pass approach:
+        // Pass 1 – tag all HR glyph ranges and collect positions that need a paragraph
+        //           boundary injected immediately after the glyph.
+        // Pass 2 – insert the missing newlines in reverse order (preserves earlier indices).
+        //
+        // The Swift Markdown parser sometimes places the U+2E3B THREE-EM DASH glyph in
+        // the same NSTextView paragraph as the element that follows it (e.g. a heading),
+        // because no '\n' separates them in the attributed string.  When that happens the
+        // HR glyph and the heading share a single line fragment, causing the hairline to
+        // overdraw the heading text.  Inserting '\n' after the glyph forces each into its
+        // own paragraph so ReaderLayoutManager can draw the hairline in isolation.
+
+        var insertAfter: [Int] = [] // character positions where a '\n' must be injected
+
         var i = fullRange.location
         let end = NSMaxRange(fullRange)
         while i < end {
@@ -626,9 +640,30 @@ struct TypographyApplier: TypographyApplying {
                 // Small font keeps the line-fragment compact while still providing a
                 // centred midY for the hairline to draw against.
                 text.addAttribute(.font, value: hrFont, range: range)
+
+                // Check whether the character immediately after the HR glyph is a newline.
+                // If not, we need to inject one so the HR lives in its own paragraph.
+                if rangeEnd < end {
+                    let nextChar = (text.string as NSString).character(at: rangeEnd)
+                    if nextChar != unichar(0x000A) {
+                        insertAfter.append(rangeEnd)
+                    }
+                }
             }
 
             i = max(i + 1, rangeEnd)
+        }
+
+        // Pass 2: insert '\n' separators in reverse order so earlier positions stay valid.
+        // The injected newline carries the hrStyle so it belongs to the HR paragraph and
+        // the following element starts a fresh paragraph with its own block-level style.
+        let hrNewline = NSMutableAttributedString(string: "\n")
+        hrNewline.addAttribute(.paragraphStyle, value: hrStyle, range: NSRange(location: 0, length: 1))
+        hrNewline.addAttribute(.font, value: hrFont, range: NSRange(location: 0, length: 1))
+        hrNewline.addAttribute(.foregroundColor, value: NSColor.clear, range: NSRange(location: 0, length: 1))
+
+        for pos in insertAfter.sorted(by: >) {
+            text.insert(hrNewline, at: pos)
         }
     }
 

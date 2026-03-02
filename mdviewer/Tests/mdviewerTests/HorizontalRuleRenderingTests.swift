@@ -230,6 +230,157 @@
                 // If the palette returns the same value for both themes that is also acceptable —
                 // the test documents the behaviour rather than enforcing a strict contrast.
             }
+
+            // MARK: - Paragraph Isolation (regression: HR glyph shared paragraph with heading)
+
+            /// The U+2E3B glyph and the following element must be in separate NSTextView paragraphs.
+            /// When they share a paragraph, NSTextView uses the first character's paragraph style for
+            /// the whole paragraph — which was causing the heading to render as centre-aligned.
+            func testHRGlyphAndFollowingHeadingAreInSeparateParagraphs() async {
+                let text = await rendered("Before\n\n---\n\n## Heading After Rule")
+                let ns = text.string as NSString
+                let threeEmDash = "\u{2E3B}"
+
+                guard let glyphRange = text.string.range(of: threeEmDash) else {
+                    XCTFail("Expected U+2E3B THREE-EM DASH in rendered string")
+                    return
+                }
+
+                let glyphEnd = text.string.distance(from: text.string.startIndex, to: glyphRange.upperBound)
+
+                // There must be a newline immediately after the HR glyph.
+                // If the glyph is at the end of the string that is also acceptable (no following element).
+                if glyphEnd < text.length {
+                    let charAfter = ns.character(at: glyphEnd)
+                    XCTAssertEqual(
+                        charAfter, unichar(0x000A),
+                        "Character immediately after U+2E3B must be '\\n' (0x0A) so the HR glyph " +
+                            "lives in its own paragraph and cannot force the heading into centre-alignment. " +
+                            "Got Unicode scalar: \\u{\(String(charAfter, radix: 16, uppercase: true))}"
+                    )
+                }
+            }
+
+            func testHRGlyphAndFollowingParagraphAreInSeparateParagraphs() async {
+                let text = await rendered("Before\n\n---\n\nParagraph after rule.")
+                let ns = text.string as NSString
+                let threeEmDash = "\u{2E3B}"
+
+                guard let glyphRange = text.string.range(of: threeEmDash) else {
+                    XCTFail("Expected U+2E3B THREE-EM DASH in rendered string")
+                    return
+                }
+
+                let glyphEnd = text.string.distance(from: text.string.startIndex, to: glyphRange.upperBound)
+                if glyphEnd < text.length {
+                    let charAfter = ns.character(at: glyphEnd)
+                    XCTAssertEqual(
+                        charAfter, unichar(0x000A),
+                        "Character after HR glyph must be '\\n' regardless of whether a heading or paragraph follows"
+                    )
+                }
+            }
+
+            func testMultipleHRsAreEachInOwnParagraph() async {
+                let text = await rendered("A\n\n---\n\n## H2\n\n---\n\nB")
+                let ns = text.string as NSString
+                let threeEmDash = "\u{2E3B}"
+                var searchStart = text.string.startIndex
+
+                var hrCount = 0
+                while let r = text.string.range(of: threeEmDash, range: searchStart ..< text.string.endIndex) {
+                    hrCount += 1
+                    let glyphEnd = text.string.distance(from: text.string.startIndex, to: r.upperBound)
+                    if glyphEnd < text.length {
+                        let charAfter = ns.character(at: glyphEnd)
+                        XCTAssertEqual(
+                            charAfter, unichar(0x000A),
+                            "HR #\(hrCount): character after glyph must be '\\n'"
+                        )
+                    }
+                    searchStart = r.upperBound
+                }
+
+                XCTAssertEqual(hrCount, 2, "Expected 2 HR glyphs for 2 thematic breaks")
+            }
+
+            // MARK: - Paragraph Spacing
+
+            func testHRHasParagraphSpacingBefore() async {
+                let text = await rendered("Before\n\n---\n\nAfter")
+                let threeEmDash = "\u{2E3B}"
+
+                guard let r = text.string.range(of: threeEmDash) else {
+                    XCTFail("No HR glyph found")
+                    return
+                }
+
+                let loc = text.string.distance(from: text.string.startIndex, to: r.lowerBound)
+                let style = text.attribute(.paragraphStyle, at: loc, effectiveRange: nil) as? NSParagraphStyle
+                XCTAssertNotNil(style, "HR glyph must have a paragraphStyle attribute")
+                XCTAssertGreaterThan(
+                    style?.paragraphSpacingBefore ?? 0, 0,
+                    "HR must have paragraphSpacingBefore > 0 to visually separate it from preceding content"
+                )
+            }
+
+            func testHRHasParagraphSpacingAfter() async {
+                let text = await rendered("Before\n\n---\n\nAfter")
+                let threeEmDash = "\u{2E3B}"
+
+                guard let r = text.string.range(of: threeEmDash) else {
+                    XCTFail("No HR glyph found")
+                    return
+                }
+
+                let loc = text.string.distance(from: text.string.startIndex, to: r.lowerBound)
+                let style = text.attribute(.paragraphStyle, at: loc, effectiveRange: nil) as? NSParagraphStyle
+                XCTAssertGreaterThan(
+                    style?.paragraphSpacing ?? 0, 0,
+                    "HR must have paragraphSpacing > 0 to visually separate it from following content"
+                )
+            }
+
+            func testHRFontIsSmall() async {
+                // The HR glyph is hidden; a small font keeps the line-fragment height compact
+                // while still giving ReaderLayoutManager a stable rect.midY to draw against.
+                let text = await rendered("---")
+                let threeEmDash = "\u{2E3B}"
+
+                guard let r = text.string.range(of: threeEmDash) else {
+                    XCTFail("No HR glyph found")
+                    return
+                }
+
+                let loc = text.string.distance(from: text.string.startIndex, to: r.lowerBound)
+                let font = text.attribute(.font, at: loc, effectiveRange: nil) as? NSFont
+                XCTAssertNotNil(font, "HR glyph must have an explicit font")
+                XCTAssertLessThanOrEqual(
+                    font?.pointSize ?? 999, 10,
+                    "HR glyph font size must be ≤10pt to keep the line fragment compact (got \(font?.pointSize ?? -1)pt)"
+                )
+            }
+
+            func testHeadingAfterHRIsNotCentreAligned() async {
+                // Regression: hrStyle.alignment = .center bled into the heading paragraph
+                // because the HR glyph and heading shared one NSTextView paragraph.
+                let text = await rendered("Before\n\n---\n\n## Security Considerations")
+                let headingText = "Security Considerations"
+
+                guard let r = text.string.range(of: headingText) else {
+                    XCTFail("Heading text not found in rendered output")
+                    return
+                }
+
+                let loc = text.string.distance(from: text.string.startIndex, to: r.lowerBound)
+                let style = text.attribute(.paragraphStyle, at: loc, effectiveRange: nil) as? NSParagraphStyle
+
+                let alignment = style?.alignment ?? .natural
+                XCTAssertNotEqual(
+                    alignment, .center,
+                    "Heading following an HR must not be centre-aligned (was .center — HR paragraph style bleed)"
+                )
+            }
         }
     #endif
 #endif

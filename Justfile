@@ -198,3 +198,14 @@ audit:
     grep -r "NSLog\|print(" --include="*.swift" mdviewer/Sources && echo "⚠️  Found logging statements" || echo "✓ No print/NSLog found"
     grep -r "\.unsafe" --include="*.swift" mdviewer/Sources && echo "⚠️  Found unsafe code" || echo "✓ No unsafe code found"
     grep -r "disable.*security" --include="*.swift" mdviewer/Sources && echo "⚠️  Found security disabled" || echo "✓ No security disabled"
+
+# ===== Visual Regression Tests =====
+
+# Run visual regression tests using Gemini 3 Flash vision analysis.
+# Requires: md.app installed (just install) and GEMINI_API_KEY set.
+# Usage:  just visual-test            # default fixture (hr_heading)
+#         just visual-test --all      # all fixtures
+#         just visual-test path/to/fixture.md
+visual-test *ARGS:
+    @chmod +x scripts/visual-test.sh
+    @scripts/visual-test.sh {{ARGS}}

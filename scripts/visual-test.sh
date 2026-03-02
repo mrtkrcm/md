@@ -1,25 +1,29 @@
 #!/usr/bin/env bash
-# visual-test.sh — open md.app with a fixture, screenshot the window, analyse with Gemini.
+# visual-test.sh — screenshot md.app in the background and analyse with Gemini CLI.
 #
 # Usage:
-#   ./scripts/visual-test.sh [fixture.md]   # run single fixture (default: hr_heading.md)
-#   ./scripts/visual-test.sh --all          # run all fixtures
+#   ./scripts/visual-test.sh           # default fixture: hr_heading
+#   ./scripts/visual-test.sh --all     # all fixtures
+#   ./scripts/visual-test.sh path/to/fixture.md
 #
-# Requires:
+# Requirements:
 #   - md.app installed at /Applications/md.app  (run: just install)
-#   - GEMINI_API_KEY set in environment
-#   - python3, curl, screencapture on PATH
+#   - gemini CLI on PATH, signed in
 #
-# Exit codes: 0 = all checks passed, 1 = one or more Gemini concerns found
+# Screenshots are saved to Tests/VisualFixtures/screenshots/ inside the project
+# so gemini CLI can read them (it restricts file access to the workspace).
+#
+# Exit codes: 0 = all PASS, 1 = one or more FAIL
 
 set -euo pipefail
 
 GEMINI_MODEL="${GEMINI_MODEL:-gemini-3-flash-preview}"
-GEMINI_API_KEY="${GEMINI_API_KEY:?GEMINI_API_KEY must be set}"
-API_URL="https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}"
+GEMINI_TIMEOUT="${GEMINI_TIMEOUT:-45}"   # seconds before giving up on gemini
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+FIXTURES_DIR="$PROJECT_ROOT/Tests/VisualFixtures"
+SCREENSHOTS_DIR="$FIXTURES_DIR/screenshots"
 
-FIXTURES_DIR="$(cd "$(dirname "$0")/../Tests/VisualFixtures" && pwd)"
-SCREENSHOTS_DIR="/tmp/mdviewer-visual-tests"
 PASS=0
 FAIL=0
 RESULTS=()
@@ -35,45 +39,39 @@ ok()   { printf '\033[0;32m✓ %s\033[0m\n' "$*"; }
 fail() { printf '\033[0;31m✗ %s\033[0m\n' "$*"; }
 warn() { printf '\033[0;33m⚠ %s\033[0m\n' "$*"; }
 
-# The running process name for md.app as seen by the window server.
-MD_PROCESS_NAME="Markdown Viewer"
-
-# Open a file in md.app and wait for it to render.
-# Kills any existing instance first so the fixture is guaranteed to be the active document.
+# Open a file in md.app in the background (-g = no focus steal).
+# Quits any existing instance first for a deterministic document state.
 open_fixture() {
     local fixture="$1"
-
-    # Quit cleanly if already running so we control exactly which file is shown.
     osascript -e 'tell application "md" to quit' 2>/dev/null || true
-    sleep 0.5
-
-    open -a /Applications/md.app "$fixture"
-    sleep 3.0  # allow layout + render pass to complete
+    sleep 0.6
+    open -g -a /Applications/md.app "$fixture"
+    sleep 3.0   # allow full layout + render pass
 }
 
-# Capture the frontmost md.app window to a PNG via CGWindowListCopyWindowInfo.
-# Uses a small Swift one-liner — no Python/Quartz dependency.
-capture_window() {
-    local out="$1"
-
-    local wid
-    wid=$(/usr/bin/swift - 2>/dev/null << SWIFT
+# Get the CGWindowID of the frontmost Markdown Viewer window via Swift snippet.
+get_window_id() {
+    /usr/bin/swift - 2>/dev/null << 'SWIFT'
 import Cocoa
 let opts: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
 if let wl = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] {
     for w in wl {
-        let name = w[kCGWindowOwnerName as String] as? String ?? ""
-        if name == "Markdown Viewer" {
-            if let num = w[kCGWindowNumber as String] as? Int {
-                Swift.print(num)
-                exit(0)
-            }
+        if (w[kCGWindowOwnerName as String] as? String) == "Markdown Viewer",
+           let num = w[kCGWindowNumber as String] as? Int {
+            Swift.print(num)
+            exit(0)
         }
     }
 }
 exit(1)
 SWIFT
-    ) || true
+}
+
+# Capture the md.app window by ID into $out without stealing focus.
+capture_window() {
+    local out="$1"
+    local wid
+    wid=$(get_window_id) || true
 
     if [[ -n "$wid" && "$wid" =~ ^[0-9]+$ ]]; then
         screencapture -l "$wid" -x "$out"
@@ -83,78 +81,57 @@ SWIFT
     fi
 }
 
-# Send screenshot + prompt to Gemini REST API; print and return the response text.
+# Ask Gemini CLI to analyse the screenshot at a workspace-relative path.
+# Gemini's file access is sandboxed to the project root, so we pass a
+# relative @path which the CLI resolves via its read_file tool.
 analyse_screenshot() {
-    local img="$1"
+    local rel_path="$1"   # relative to project root, e.g. Tests/VisualFixtures/screenshots/foo.png
     local prompt="$2"
-    local payload_file="$SCREENSHOTS_DIR/payload_$$.json"
 
-    # Build JSON payload via Python reading image file directly (avoids shell arg-length limits)
-    python3 - "$img" "$prompt" "$payload_file" <<'PY'
-import base64, json, sys
+    # Run from project root so relative @paths resolve correctly.
+    cd "$PROJECT_ROOT"
 
-img_path   = sys.argv[1]
-prompt     = sys.argv[2]
-out_path   = sys.argv[3]
+    timeout "$GEMINI_TIMEOUT" gemini \
+        -m "$GEMINI_MODEL" \
+        --approval-mode yolo \
+        -e "" \
+        -p "Look at @${rel_path}
 
-with open(img_path, "rb") as f:
-    b64 = base64.b64encode(f.read()).decode("ascii")
-
-body = {
-    "contents": [{
-        "parts": [
-            {"inline_data": {"mime_type": "image/png", "data": b64}},
-            {"text": prompt}
-        ]
-    }]
+${prompt}" 2>&1 \
+    | grep -v "^Loaded\|^Loading\|YOLO mode\|Error during discovery\|MCP error\|supports tool\|supports resource\|supports prompt\|Hook registry\|Received\|updated for\|changed, updating\|Prompts updated\|Tools updated\|Tools changed\|Attempt [0-9]* failed\|Retrying\|GaxiosError\|rateLimitExceeded\|RESOURCE_EXHAUSTED\|capacity available\|quota will reset\|git-ignored\|Git-ignored\|Ignored [0-9]" \
+    || true
 }
 
-with open(out_path, "w") as f:
-    json.dump(body, f)
-PY
-
-    curl -s "$API_URL" \
-        -H "Content-Type: application/json" \
-        -d "@$payload_file" \
-    | python3 -c "
-import json, sys
-r = json.load(sys.stdin)
-if 'error' in r:
-    print('API ERROR:', r['error'].get('message','unknown'), file=sys.stderr)
-    sys.exit(1)
-print(r['candidates'][0]['content']['parts'][0]['text'])
-"
-
-    rm -f "$payload_file"
-}
-
-# Run one visual test case.
+# Run one visual test.
 run_test() {
     local fixture="$1"
     local prompt="$2"
     local name
     name="$(basename "$fixture" .md)"
-    local out="$SCREENSHOTS_DIR/${name}.png"
+    local out_abs="$SCREENSHOTS_DIR/${name}.png"
+    local out_rel="Tests/VisualFixtures/screenshots/${name}.png"
 
-    log "Opening fixture: $(basename "$fixture")"
+    log "Fixture: $(basename "$fixture")"
+
+    log "Opening in background..."
     open_fixture "$fixture"
 
-    log "Capturing window..."
-    capture_window "$out"
+    log "Capturing window (no focus steal)..."
+    capture_window "$out_abs"
 
-    if [[ ! -s "$out" ]]; then
-        fail "$name — screenshot not captured or empty"
+    if [[ ! -s "$out_abs" ]]; then
+        fail "$name — screenshot empty or missing"
         FAIL=$((FAIL + 1))
-        RESULTS+=("FAIL:$name:screenshot not captured")
+        RESULTS+=("FAIL:$name:no screenshot")
         return
     fi
 
-    log "Analysing with Gemini ($GEMINI_MODEL)..."
+    log "Analysing with Gemini ($GEMINI_MODEL, timeout ${GEMINI_TIMEOUT}s)..."
     local analysis
-    if ! analysis=$(analyse_screenshot "$out" "$prompt"); then
-        fail "$name — Gemini API error"
+    if ! analysis=$(analyse_screenshot "$out_rel" "$prompt"); then
+        fail "$name — Gemini timed out or errored"
         FAIL=$((FAIL + 1))
-        RESULTS+=("FAIL:$name:API error")
+        RESULTS+=("FAIL:$name:gemini error")
         return
     fi
 
@@ -162,21 +139,19 @@ run_test() {
     echo "$analysis"
     echo ""
 
-    # Heuristic: flag if Gemini's structured response contains a FAIL rating.
-    # The prompts request "PASS or FAIL" per numbered criterion; we match those lines.
-    # We also catch unambiguous single-word failure descriptors as a safety net.
-    if echo "$analysis" | grep -qiE \
-        "^\s*[0-9]+[.)]\s+(\*\*)?FAIL|^\s*[0-9]+\.\s+FAIL[^A-Z]"; then
-        fail "$name — Gemini flagged visual concerns (see above)"
+    # Detect structured FAIL ratings from the numbered-criterion prompt format.
+    # Matches:  "1. FAIL ...", "1. **FAIL ...", "1) FAIL ..."
+    if echo "$analysis" | grep -qE "^[[:space:]]*[0-9]+[.)][[:space:]]+(\*\*)?FAIL"; then
+        fail "$name — Gemini found issues (see above)"
         FAIL=$((FAIL + 1))
-        RESULTS+=("FAIL:$name:visual concern detected")
+        RESULTS+=("FAIL:$name:visual issues detected")
     else
-        ok "$name — no visual concerns"
+        ok "$name"
         PASS=$((PASS + 1))
         RESULTS+=("PASS:$name")
     fi
 
-    echo "  Screenshot saved: $out"
+    log "Screenshot: $out_abs"
     echo ""
 }
 
@@ -186,28 +161,28 @@ run_test() {
 
 read -r -d '' HR_HEADING_PROMPT <<'PROMPT' || true
 You are a visual QA reviewer for a macOS Markdown reader app.
-Examine this screenshot carefully and answer each question with PASS or FAIL followed by a brief reason.
+Answer each criterion with exactly "PASS" or "FAIL" followed by a brief reason.
 
-1. Heading alignment: Is the heading "Security Considerations" (and any other heading that follows a horizontal rule) LEFT-aligned? It must NOT be centered or offset.
-2. HR spacing above: Is there visible whitespace/padding ABOVE the thin horizontal hairline, separating it from the content above?
-3. HR spacing below: Is there visible whitespace/padding BELOW the thin horizontal hairline, separating it from the heading below?
-4. No overlap: Does the horizontal hairline avoid overwriting or overlapping any heading or paragraph text?
-5. Heading visible: Is the full heading text legible and not obscured by the hairline?
+1. Heading alignment: Is "Security Considerations" (and every other heading that follows a horizontal rule) LEFT-aligned — not centered?
+2. HR spacing above: Is there clear whitespace above each thin horizontal hairline, separating it from preceding content?
+3. HR spacing below: Is there clear whitespace below each thin horizontal hairline, separating it from the following heading or paragraph?
+4. No overlap: Does every hairline avoid overwriting or visually overlapping heading or paragraph text?
+5. Heading legibility: Is every heading after a horizontal rule fully legible and unobscured?
 
-End with a one-sentence overall verdict.
+End with one sentence overall verdict.
 PROMPT
 
 read -r -d '' TYPOGRAPHY_PROMPT <<'PROMPT' || true
 You are a visual QA reviewer for a macOS Markdown reader app.
-Examine this screenshot carefully and answer each question with PASS or FAIL followed by a brief reason.
+Answer each criterion with exactly "PASS" or "FAIL" followed by a brief reason.
 
 1. Heading alignment: Are all headings (H1, H2, H3) LEFT-aligned?
-2. HR rendering: Do horizontal rules appear as thin hairlines with clear whitespace above and below — no overlap with adjacent text?
-3. List indentation: Do list items have proper indentation? When a list item wraps to the next line, does the continuation text align under the item text (not under the bullet)?
-4. Inline code: Are inline code spans visually distinct from body text (different background or font)?
-5. Overall layout: Does the document have consistent, readable spacing throughout?
+2. HR rendering: Do horizontal rules appear as thin hairlines with clear whitespace above and below, with no overlap onto adjacent text?
+3. List indentation: Do list items indent properly? When a list item wraps, does the continuation align under the text (not under the bullet)?
+4. Inline code: Are inline code spans visually distinct from body text?
+5. Spacing consistency: Is paragraph and block spacing consistent and readable throughout the document?
 
-End with a one-sentence overall verdict.
+End with one sentence overall verdict.
 PROMPT
 
 # ---------------------------------------------------------------------------
@@ -223,7 +198,7 @@ case "${1:-}" in
         run_test "$FIXTURES_DIR/hr_heading.md" "$HR_HEADING_PROMPT"
         ;;
     *.md)
-        CUSTOM_PROMPT="Describe any visual rendering issues in this macOS Markdown reader screenshot. Check: alignment of headings, spacing around horizontal rules, list indentation, and overall typography. Be specific."
+        CUSTOM_PROMPT="Describe any visual rendering issues in this macOS Markdown reader screenshot. Check heading alignment, spacing around horizontal rules, list indentation, and overall typography. Answer PASS or FAIL per issue found."
         run_test "$1" "$CUSTOM_PROMPT"
         ;;
     *)

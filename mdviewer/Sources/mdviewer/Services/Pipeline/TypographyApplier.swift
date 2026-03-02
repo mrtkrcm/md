@@ -25,9 +25,18 @@ struct TypographyApplier: TypographyApplying {
         let palette = NativeThemePalette(theme: request.appTheme, scheme: request.colorScheme)
         let bodyFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
 
-        // Apply base font and color
+        // Apply base font, color, and paragraph style to the full range.
+        // The base paragraph style ensures that inter-block newlines (which carry no
+        // PresentationIntent and therefore receive no block-specific paragraph style)
+        // get sensible defaults instead of a nil/system default style.
         text.addAttribute(.font, value: bodyFont, range: fullRange)
         text.addAttribute(.foregroundColor, value: palette.textPrimary, range: fullRange)
+        let baseStyle = createBaseParagraphStyle(
+            lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
+            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize),
+            hyphenationFactor: 0
+        )
+        text.addAttribute(.paragraphStyle, value: baseStyle, range: fullRange)
 
         // Apply presentation-intent–aware styling
         text.enumerateAttribute(
@@ -585,7 +594,10 @@ struct TypographyApplier: TypographyApplying {
         let hrStyle = NSMutableParagraphStyle()
         hrStyle.paragraphSpacingBefore = 20
         hrStyle.paragraphSpacing = 20
-        hrStyle.alignment = .center
+        // Do NOT set alignment — the HR glyph shares a paragraph with whatever
+        // element follows it (e.g. the heading), so any alignment override here
+        // would also affect that element. The hairline is drawn by ReaderLayoutManager
+        // using rect.midY and does not depend on text alignment.
 
         let hrFont = NSFont.systemFont(ofSize: 6, weight: .regular)
 

@@ -577,6 +577,18 @@ struct TypographyApplier: TypographyApplying {
         fullRange: NSRange,
         palette: NativeThemePalette
     ) {
+        // Build the paragraph style once — all HR runs share the same metrics.
+        // paragraphSpacingBefore / paragraphSpacing give the rule generous vertical
+        // breathing room so it reads as a section divider rather than a stray line.
+        // The large font size inflates the line-fragment height, which determines
+        // where rect.midY falls in the layout manager; the glyph itself is hidden.
+        let hrStyle = NSMutableParagraphStyle()
+        hrStyle.paragraphSpacingBefore = 20
+        hrStyle.paragraphSpacing = 20
+        hrStyle.alignment = .center
+
+        let hrFont = NSFont.systemFont(ofSize: 6, weight: .regular)
+
         var i = fullRange.location
         let end = NSMaxRange(fullRange)
         while i < end {
@@ -597,6 +609,11 @@ struct TypographyApplier: TypographyApplying {
                 text.addAttribute(MarkdownRenderAttribute.horizontalRule, value: palette.horizontalRule, range: range)
                 // Hide the glyph — only the drawn hairline should be visible.
                 text.addAttribute(.foregroundColor, value: NSColor.clear, range: range)
+                // Apply paragraph metrics so the rule has vertical breathing room.
+                text.addAttribute(.paragraphStyle, value: hrStyle, range: range)
+                // Small font keeps the line-fragment compact while still providing a
+                // centred midY for the hairline to draw against.
+                text.addAttribute(.font, value: hrFont, range: range)
             }
 
             i = max(i + 1, rangeEnd)

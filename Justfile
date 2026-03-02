@@ -203,9 +203,8 @@ audit:
 
 # Run visual regression tests using Gemini 3 Flash vision analysis.
 # Requires: md.app installed (just install) and GEMINI_API_KEY set.
-# Usage:  just visual-test            # default fixture (hr_heading)
-#         just visual-test --all      # all fixtures
-#         just visual-test path/to/fixture.md
+# Usage:  just visual-test            # all registered fixtures (single Gemini call)
+#         just visual-test hr_heading # single fixture by name
 visual-test *ARGS:
     @chmod +x scripts/visual-test.sh
     @scripts/visual-test.sh {{ARGS}}

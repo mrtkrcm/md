@@ -657,18 +657,35 @@ struct TypographyApplier: TypographyApplying {
 
             var listItemOrdinal: Int?
             var isOrdered = false
+            var isCodeBlock = false
             for component in intent.components {
                 switch component.kind {
                 case .listItem(let ordinal): listItemOrdinal = ordinal
                 case .orderedList: isOrdered = true
+                case .codeBlock: isCodeBlock = true
                 default: break
                 }
             }
-            guard let ordinal = listItemOrdinal else { return }
+            // Code blocks nested inside list items inherit the listItem intent but must
+            // not receive a bullet or ordinal marker — the marker belongs on the list item
+            // paragraph, not on every line of the fenced code block.
+            guard let ordinal = listItemOrdinal, !isCodeBlock else { return }
             insertions.append((location: range.location, marker: isOrdered ? "\(ordinal).\t" : "•\t"))
         }
 
+        let nsText = text.string as NSString
         for insertion in insertions.sorted(by: { $0.location > $1.location }) {
+            // Validate: only insert markers at valid positions:
+            // - position 0 (start of document)
+            // - after newline (0x0A) - normal line start
+            // - after tab (0x09) - for nested list items where BlockSeparatorInjector inserted indentation
+            // This prevents markers from being inserted mid-line if the presentation intent
+            // range doesn't align with visual line boundaries.
+            let prevChar: unichar = insertion.location > 0 ? nsText.character(at: insertion.location - 1) : 0
+            let isValidPosition = insertion.location == 0 || prevChar == 0x0A || prevChar == 0x09
+            guard isValidPosition else { continue }
+
+            // Create the marker with font and color attributes.
             let markerAttr = NSMutableAttributedString(
                 string: insertion.marker,
                 attributes: [
@@ -676,16 +693,23 @@ struct TypographyApplier: TypographyApplying {
                     .foregroundColor: palette.listMarker,
                 ]
             )
+
+            // Apply paragraph style from the list item, but ensure firstLineHeadIndent is 0
+            // so the marker stays at the left margin while content respects headIndent.
             if
                 insertion.location < text.length,
-                let paragraphStyle = text.attribute(.paragraphStyle, at: insertion.location, effectiveRange: nil)
+                let existingStyle = text.attribute(.paragraphStyle, at: insertion.location, effectiveRange: nil)
+                as? NSParagraphStyle,
+                let mutableStyle = existingStyle.mutableCopy() as? NSMutableParagraphStyle
             {
+                mutableStyle.firstLineHeadIndent = 0
                 markerAttr.addAttribute(
                     .paragraphStyle,
-                    value: paragraphStyle,
+                    value: mutableStyle,
                     range: NSRange(location: 0, length: markerAttr.length)
                 )
             }
+
             text.insert(markerAttr, at: insertion.location)
         }
     }

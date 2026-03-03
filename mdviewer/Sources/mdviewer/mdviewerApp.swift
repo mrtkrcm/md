@@ -169,11 +169,8 @@ struct mdviewerApp: App {
 
         func application(_ application: NSApplication, open urls: [URL]) {
             for url in urls {
-                NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
-                    if let error {
-                        NSApplication.shared.presentError(error)
-                    }
-                }
+                // Check file size before opening
+                checkFileSizeAndOpen(url: url)
             }
         }
 
@@ -182,6 +179,62 @@ struct mdviewerApp: App {
                 return
             }
 
+            // Check file size before opening from CLI
+            checkFileSizeAndOpen(url: url)
+        }
+
+        /// Checks file size and shows warning for large files before opening.
+        /// Uses the user's configured threshold from AppPreferences.
+        /// - Parameter url: The file URL to check
+        private func checkFileSizeAndOpen(url: URL) {
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let fileSize = attributes[.size] as? Int64 ?? 0
+
+                // Use user's configured threshold
+                let threshold = AppPreferences.shared.largeFileThreshold
+
+                if threshold.shouldWarn(for: fileSize) {
+                    showLargeFileWarningAndOpen(url: url, fileSize: fileSize)
+                } else {
+                    openDocument(url: url)
+                }
+            } catch {
+                // If we can't get file size, proceed anyway
+                openDocument(url: url)
+            }
+        }
+
+        /// Shows a warning alert for large files.
+        /// - Parameters:
+        ///   - url: The file URL
+        ///   - fileSize: The file size in bytes
+        private func showLargeFileWarningAndOpen(url: URL, fileSize: Int64) {
+            let sizeInMB = Double(fileSize) / 1_048_576.0
+            let formattedSize = String(format: "%.1f MB", sizeInMB)
+
+            let alert = NSAlert()
+            alert.messageText = "Large File"
+            alert.informativeText = "This file is \(formattedSize). Opening may take a moment and could affect performance. Do you want to continue?"
+            alert.alertStyle = .warning
+
+            let continueButton = alert.addButton(withTitle: "Continue")
+            let cancelButton = alert.addButton(withTitle: "Cancel")
+
+            // Set accessibility labels
+            continueButton.setAccessibilityLabel("Continue opening large file")
+            cancelButton.setAccessibilityLabel("Cancel opening file")
+
+            let response = alert.runModal()
+
+            if response == .alertFirstButtonReturn {
+                openDocument(url: url)
+            }
+        }
+
+        /// Opens the document.
+        /// - Parameter url: The file URL to open
+        private func openDocument(url: URL) {
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
                 if let error {
                     NSApplication.shared.presentError(error)

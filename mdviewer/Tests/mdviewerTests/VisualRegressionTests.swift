@@ -10,6 +10,7 @@
         @testable internal import mdviewer
         internal import SwiftUI
 
+        // swiftlint:disable type_body_length
         /// Visual regression tests ensuring Markdown renders correctly with proper spacing,
         /// typography, and formatting across all preference combinations.
         ///
@@ -81,6 +82,49 @@
                 return ns.attribute(.font, at: loc, effectiveRange: nil) as? NSFont
             }
 
+            private func fixtureMarkdown(named fileName: String) -> String {
+                let baseURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                let fixtureURL = baseURL
+                    .deletingLastPathComponent()
+                    .appendingPathComponent("Fixtures")
+                    .appendingPathComponent(fileName)
+
+                if
+                    let data = try? Data(contentsOf: fixtureURL),
+                    let markdown = String(data: data, encoding: .utf8)
+                {
+                    return markdown
+                }
+
+                XCTFail("Unable to load fixture: \(fileName)")
+                return ""
+            }
+
+            private func expectedSpacingForHeading(
+                level: Int,
+                fontSize: CGFloat,
+                spacing: ReaderTextSpacing
+            ) -> (spacing: CGFloat, spacingBefore: CGFloat) {
+                let headingSize: CGFloat
+                switch level {
+                case 1: headingSize = fontSize * 1.75
+                case 2: headingSize = fontSize * 1.5
+                case 3: headingSize = fontSize * 1.3
+                case 4: headingSize = fontSize * 1.15
+                case 5: headingSize = fontSize * 1.1
+                case 6: headingSize = fontSize * 1.05
+                default: headingSize = fontSize
+                }
+
+                let baseSpacing = spacing.paragraphSpacing(for: headingSize)
+                switch level {
+                case 1: return (baseSpacing * 0.72, baseSpacing * 0.7)
+                case 2: return (baseSpacing * 0.62, baseSpacing * 0.62)
+                case 3: return (baseSpacing * 0.54, baseSpacing * 0.54)
+                default: return (baseSpacing * 0.46, baseSpacing * 0.46)
+                }
+            }
+
             // MARK: - Paragraph Spacing
 
             func testParagraphsHaveProperSpacingBetweenThem() async {
@@ -138,6 +182,332 @@
                     style?.paragraphSpacing ?? 0, 0,
                     "Heading must have paragraphSpacing > 0"
                 )
+            }
+
+            // MARK: - Vertical Rhythm Fixture
+
+            func testVerticalRhythmFixture() async {
+                let markdown = fixtureMarkdown(named: "VerticalRhythmFixture.md")
+                XCTAssertFalse(markdown.isEmpty)
+                let text = await render(markdown)
+
+                let heading1Loc = (text.string as NSString).range(of: "Vertical Rhythm Fixture").location
+                let heading2Loc = (text.string as NSString).range(of: "List and Quote Rhythm").location
+                let heading3Loc = (text.string as NSString).range(of: "Table and Divider Rhythm").location
+                let bodyAfterHeadingLoc = (text.string as NSString).range(
+                    of: "Spacing before this paragraph confirms heading-to-paragraph transitions stay readable."
+                ).location
+                let unorderedLoc = (text.string as NSString).range(of: "A first bullet item").location
+                let orderedLoc = (text.string as NSString).range(of: "A numbered item").location
+                let quoteLoc = (text.string as NSString).range(of: "A compact quote keeps transitions soft.").location
+                let codeLoc = (text.string as NSString).range(of: "let rhythm = true").location
+                let tableLoc = (text.string as NSString).range(of: "compact").location
+                let afterTableLoc = (text.string as NSString).range(
+                    of: "Spacing before this paragraph validates table-to-paragraph separation after row groups."
+                ).location
+                let paragraphLoc = (text.string as NSString).range(
+                    of: "Spacing after table should remain intentional."
+                ).location
+                let orderedStyle = paragraphStyle(at: orderedLoc, in: text)
+
+                XCTAssertNotEqual(heading1Loc, NSNotFound)
+                XCTAssertNotEqual(heading2Loc, NSNotFound)
+                XCTAssertNotEqual(heading3Loc, NSNotFound)
+                XCTAssertNotEqual(bodyAfterHeadingLoc, NSNotFound)
+                XCTAssertNotEqual(unorderedLoc, NSNotFound)
+                XCTAssertNotEqual(orderedLoc, NSNotFound)
+                XCTAssertNotEqual(quoteLoc, NSNotFound)
+                XCTAssertNotEqual(codeLoc, NSNotFound)
+                XCTAssertNotEqual(tableLoc, NSNotFound)
+                XCTAssertNotEqual(afterTableLoc, NSNotFound)
+                XCTAssertNotEqual(paragraphLoc, NSNotFound)
+                let bodyFontSize = CGFloat(16)
+                let codeFontSize = CGFloat(14)
+                let spacing = ReaderTextSpacing.balanced
+
+                let h1Style = paragraphStyle(at: heading1Loc, in: text)
+                let h2Style = paragraphStyle(at: heading2Loc, in: text)
+                let bulletStyle = paragraphStyle(at: unorderedLoc, in: text)
+                let orderedListStyle = paragraphStyle(at: orderedLoc, in: text)
+                let quoteStyle = paragraphStyle(at: quoteLoc, in: text)
+                let codeStyle = paragraphStyle(at: codeLoc, in: text)
+                let tableRowStyle = paragraphStyle(at: tableLoc, in: text)
+                let afterTableStyle = paragraphStyle(at: afterTableLoc, in: text)
+                XCTAssertNotNil(h1Style)
+                XCTAssertNotNil(h2Style)
+                XCTAssertNotNil(bulletStyle)
+                XCTAssertNotNil(orderedListStyle)
+                XCTAssertNotNil(quoteStyle)
+                XCTAssertNotNil(codeStyle)
+                XCTAssertNotNil(tableRowStyle)
+                XCTAssertNotNil(afterTableStyle)
+
+                let expectedHeading1 = expectedSpacingForHeading(
+                    level: 1,
+                    fontSize: bodyFontSize,
+                    spacing: spacing
+                )
+                let expectedHeading2 = expectedSpacingForHeading(
+                    level: 2,
+                    fontSize: bodyFontSize,
+                    spacing: spacing
+                )
+                let expectedBodySpacing = spacing.paragraphSpacing(for: bodyFontSize)
+                let expectedListSpacing = expectedBodySpacing * 0.5
+                let expectedListBefore = 0.0
+                let expectedQuoteSpacing = spacing.paragraphSpacing(for: bodyFontSize) * 0.62
+                let expectedQuoteBefore = spacing.paragraphSpacing(for: bodyFontSize) * 0.42
+                let expectedCodeSpacing = spacing.paragraphSpacing(for: codeFontSize) * 0.75
+                let expectedTableSpacing = max(5, expectedBodySpacing * 0.28)
+                let expectedTableSpacingBefore = expectedTableSpacing * 0.5
+                let expectedHRSpacing = max(12, expectedBodySpacing * 0.6)
+
+                XCTAssertEqual(
+                    h1Style?.paragraphSpacing ?? 0,
+                    expectedHeading1.spacing,
+                    accuracy: 0.01,
+                    "H1 paragraphSpacing should use current tuned multiplier"
+                )
+                XCTAssertEqual(
+                    h1Style?.paragraphSpacingBefore ?? 0,
+                    expectedHeading1.spacingBefore,
+                    accuracy: 0.01,
+                    "H1 paragraphSpacingBefore should use current tuned multiplier"
+                )
+                XCTAssertEqual(
+                    h2Style?.paragraphSpacing ?? 0,
+                    expectedHeading2.spacing,
+                    accuracy: 0.01,
+                    "H2 paragraphSpacing should use current tuned multiplier"
+                )
+                XCTAssertEqual(
+                    h2Style?.paragraphSpacingBefore ?? 0,
+                    expectedHeading2.spacingBefore,
+                    accuracy: 0.01,
+                    "H2 paragraphSpacingBefore should use current tuned multiplier"
+                )
+                XCTAssertEqual(
+                    bulletStyle?.paragraphSpacing ?? 0,
+                    expectedListSpacing,
+                    accuracy: 0.01,
+                    "List items should keep tuned list spacing"
+                )
+                XCTAssertEqual(
+                    bulletStyle?.paragraphSpacingBefore ?? 0,
+                    expectedListBefore,
+                    accuracy: 0.01,
+                    "List items should keep tuned paragraphSpacingBefore"
+                )
+                XCTAssertEqual(
+                    quoteStyle?.paragraphSpacing ?? 0,
+                    expectedQuoteSpacing,
+                    accuracy: 0.01,
+                    "Blockquote paragraphSpacing should keep tuned ratio"
+                )
+                XCTAssertEqual(
+                    quoteStyle?.paragraphSpacingBefore ?? 0,
+                    expectedQuoteBefore,
+                    accuracy: 0.01,
+                    "Blockquote paragraphSpacingBefore should keep tuned ratio"
+                )
+                XCTAssertEqual(
+                    codeStyle?.paragraphSpacing ?? 0,
+                    expectedCodeSpacing,
+                    accuracy: 0.01,
+                    "Code block paragraphSpacing should keep tuned ratio"
+                )
+                XCTAssertGreaterThanOrEqual(
+                    tableRowStyle?.paragraphSpacing ?? 0,
+                    expectedTableSpacing,
+                    "Table rows should keep tuned spacing"
+                )
+                XCTAssertGreaterThanOrEqual(
+                    tableRowStyle?.paragraphSpacingBefore ?? 0,
+                    expectedTableSpacingBefore,
+                    "Table rows should keep tuned pre-spacing"
+                )
+                XCTAssertEqual(
+                    afterTableStyle?.paragraphSpacing ?? 0,
+                    expectedBodySpacing,
+                    accuracy: 0.01,
+                    "Paragraph after table should keep base body spacing"
+                )
+                XCTAssertEqual(
+                    paragraphStyle(at: paragraphLoc, in: text)?.paragraphSpacing ?? 0,
+                    expectedBodySpacing,
+                    accuracy: 0.01,
+                    "Final paragraph after fixture should keep base body spacing"
+                )
+
+                let hrLoc = (text.string as NSString).range(of: "\u{2E3B}").location
+                XCTAssertNotEqual(hrLoc, NSNotFound)
+                let hrStyle = paragraphStyle(at: hrLoc, in: text)
+                XCTAssertNotNil(hrStyle)
+                XCTAssertEqual(
+                    hrStyle?.paragraphSpacing ?? 0,
+                    expectedHRSpacing,
+                    accuracy: 0.01,
+                    "HR should use dynamic spacing tied to spacing preset"
+                )
+                XCTAssertEqual(
+                    hrStyle?.paragraphSpacingBefore ?? 0,
+                    expectedHRSpacing,
+                    accuracy: 0.01,
+                    "HR should use dynamic spacing before tied to spacing preset"
+                )
+
+                // Guard list-specific structure in fixture.
+                XCTAssertEqual(bulletStyle?.headIndent ?? 0, 24, accuracy: 0.01)
+                XCTAssertEqual(bulletStyle?.firstLineHeadIndent ?? 0, 0, accuracy: 0.01)
+                XCTAssertNotNil(orderedListStyle)
+                XCTAssertEqual(
+                    orderedStyle?.firstLineHeadIndent ?? -1,
+                    bulletStyle?.firstLineHeadIndent ?? -1,
+                    accuracy: 0.01
+                )
+
+                // MARK: Nested heading hierarchy validation
+
+                let heading4Loc = (text.string as NSString).range(of: "Nested Heading Hierarchy").location
+                let heading5Loc = (text.string as NSString).range(of: "Fifth Level Heading").location
+                let heading6Loc = (text.string as NSString).range(of: "Sixth Level Heading").location
+
+                XCTAssertNotEqual(heading4Loc, NSNotFound)
+                XCTAssertNotEqual(heading5Loc, NSNotFound)
+                XCTAssertNotEqual(heading6Loc, NSNotFound)
+
+                let h4Style = paragraphStyle(at: heading4Loc, in: text)
+                let h5Style = paragraphStyle(at: heading5Loc, in: text)
+                let h6Style = paragraphStyle(at: heading6Loc, in: text)
+
+                let expectedHeading4 = expectedSpacingForHeading(
+                    level: 4,
+                    fontSize: bodyFontSize,
+                    spacing: spacing
+                )
+                let expectedHeading5 = expectedSpacingForHeading(
+                    level: 5,
+                    fontSize: bodyFontSize,
+                    spacing: spacing
+                )
+                let expectedHeading6 = expectedSpacingForHeading(
+                    level: 6,
+                    fontSize: bodyFontSize,
+                    spacing: spacing
+                )
+
+                XCTAssertEqual(
+                    h4Style?.paragraphSpacing ?? 0,
+                    expectedHeading4.spacing,
+                    accuracy: 0.01,
+                    "H4 paragraphSpacing should use current tuned multiplier"
+                )
+                XCTAssertEqual(
+                    h4Style?.paragraphSpacingBefore ?? 0,
+                    expectedHeading4.spacingBefore,
+                    accuracy: 0.01,
+                    "H4 paragraphSpacingBefore should use current tuned multiplier"
+                )
+                XCTAssertEqual(
+                    h5Style?.paragraphSpacing ?? 0,
+                    expectedHeading5.spacing,
+                    accuracy: 0.01,
+                    "H5 paragraphSpacing should use current tuned multiplier"
+                )
+                XCTAssertEqual(
+                    h5Style?.paragraphSpacingBefore ?? 0,
+                    expectedHeading5.spacingBefore,
+                    accuracy: 0.01,
+                    "H5 paragraphSpacingBefore should use current tuned multiplier"
+                )
+                XCTAssertEqual(
+                    h6Style?.paragraphSpacing ?? 0,
+                    expectedHeading6.spacing,
+                    accuracy: 0.01,
+                    "H6 paragraphSpacing should use current tuned multiplier"
+                )
+                XCTAssertEqual(
+                    h6Style?.paragraphSpacingBefore ?? 0,
+                    expectedHeading6.spacingBefore,
+                    accuracy: 0.01,
+                    "H6 paragraphSpacingBefore should use current tuned multiplier"
+                )
+
+                // MARK: Nested blockquote validation
+
+                let nestedQuote2Loc = (text.string as NSString).range(
+                    of: "Second level quote adds indentation depth."
+                ).location
+                let nestedQuote3Loc = (text.string as NSString).range(
+                    of: "Third level quote tests maximum nesting rhythm."
+                ).location
+
+                XCTAssertNotEqual(nestedQuote2Loc, NSNotFound)
+                XCTAssertNotEqual(nestedQuote3Loc, NSNotFound)
+
+                let nestedQuote2Depth = text.attribute(
+                    MarkdownRenderAttribute.blockquoteDepth,
+                    at: nestedQuote2Loc,
+                    effectiveRange: nil
+                ) as? Int
+                let nestedQuote3Depth = text.attribute(
+                    MarkdownRenderAttribute.blockquoteDepth,
+                    at: nestedQuote3Loc,
+                    effectiveRange: nil
+                ) as? Int
+
+                XCTAssertEqual(nestedQuote2Depth, 2, "Second level quote should have depth 2")
+                XCTAssertEqual(nestedQuote3Depth, 3, "Third level quote should have depth 3")
+
+                // Verify nested quotes have paragraph styles
+                let nestedQuote2Style = paragraphStyle(at: nestedQuote2Loc, in: text)
+                let nestedQuote3Style = paragraphStyle(at: nestedQuote3Loc, in: text)
+                XCTAssertNotNil(nestedQuote2Style, "Nested quote level 2 should have paragraph style")
+                XCTAssertNotNil(nestedQuote3Style, "Nested quote level 3 should have paragraph style")
+
+                // MARK: Nested list validation
+
+                let nestedListL2Loc = (text.string as NSString).range(
+                    of: "Nested list item at level two"
+                ).location
+                let nestedListL3Loc = (text.string as NSString).range(
+                    of: "Deep nested item at level three"
+                ).location
+
+                XCTAssertNotEqual(nestedListL2Loc, NSNotFound)
+                XCTAssertNotEqual(nestedListL3Loc, NSNotFound)
+
+                let nestedListL2Style = paragraphStyle(at: nestedListL2Loc, in: text)
+                let nestedListL3Style = paragraphStyle(at: nestedListL3Loc, in: text)
+                XCTAssertNotNil(nestedListL2Style, "Nested list level 2 should have paragraph style")
+                XCTAssertNotNil(nestedListL3Style, "Nested list level 3 should have paragraph style")
+
+                // Nested list items should maintain consistent spacing
+                XCTAssertEqual(
+                    nestedListL2Style?.paragraphSpacing ?? 0,
+                    expectedListSpacing,
+                    accuracy: 0.01,
+                    "Nested list items should keep tuned list spacing"
+                )
+                XCTAssertEqual(
+                    nestedListL3Style?.paragraphSpacing ?? 0,
+                    expectedListSpacing,
+                    accuracy: 0.01,
+                    "Deep nested list items should keep tuned list spacing"
+                )
+
+                // MARK: Mixed nesting validation (quote with list and code)
+
+                let quoteWithListLoc = (text.string as NSString).range(of: "Item inside quote").location
+                let quoteWithCodeLoc = (text.string as NSString).range(of: "nested code block").location
+
+                XCTAssertNotEqual(quoteWithListLoc, NSNotFound)
+                XCTAssertNotEqual(quoteWithCodeLoc, NSNotFound)
+
+                let quoteWithListStyle = paragraphStyle(at: quoteWithListLoc, in: text)
+                let quoteWithCodeStyle = paragraphStyle(at: quoteWithCodeLoc, in: text)
+                XCTAssertNotNil(quoteWithListStyle, "List item inside quote should have paragraph style")
+                XCTAssertNotNil(quoteWithCodeStyle, "Code block inside nested quote should have paragraph style")
             }
 
             // MARK: - List Spacing

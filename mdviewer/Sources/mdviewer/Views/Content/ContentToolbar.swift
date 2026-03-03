@@ -31,12 +31,18 @@ struct ContentToolbar: ToolbarContent {
                 Image(systemName: "doc.text.image")
                     .help("Rendered")
                     .tag(ReaderMode.rendered)
+                    .accessibilityLabel("Rendered Mode")
+                    .accessibilityHint("Show formatted markdown preview")
                 Image(systemName: "doc.plaintext")
                     .help("Raw")
                     .tag(ReaderMode.raw)
+                    .accessibilityLabel("Raw Mode")
+                    .accessibilityHint("Show raw markdown source")
             }
             .pickerStyle(.segmented)
             .frame(width: 80)
+            .accessibilityLabel("View Mode")
+            .accessibilityValue(readerMode == .rendered ? "Rendered" : "Raw")
         }
 
         // Trailing action items - native macOS toolbar buttons
@@ -50,6 +56,10 @@ struct ContentToolbar: ToolbarContent {
             .help(hasFrontmatter ? "Toggle Metadata Panel" : "No metadata available")
             .disabled(!hasFrontmatter)
             .opacity(hasFrontmatter ? 1.0 : 0.5)
+            .accessibilityLabel("Metadata Inspector")
+            .accessibilityHint(hasFrontmatter ? "Show or hide document metadata panel" :
+                "No metadata available in this document")
+            .accessibilityValue(showMetadataInspector ? "Visible" : "Hidden")
         }
 
         ToolbarItem(id: "appearance", placement: .automatic) {
@@ -59,6 +69,8 @@ struct ContentToolbar: ToolbarContent {
                 Image(systemName: "paintbrush")
             }
             .help("Appearance Settings")
+            .accessibilityLabel("Appearance Settings")
+            .accessibilityHint("Open appearance and theme settings")
         }
 
         ToolbarItem(id: "share", placement: .automatic) {
@@ -66,6 +78,8 @@ struct ContentToolbar: ToolbarContent {
                 Image(systemName: "square.and.arrow.up")
             }
             .help("Share Document")
+            .accessibilityLabel("Share Document")
+            .accessibilityHint("Share the document text")
         }
 
         ToolbarItem(id: "open", placement: .automatic) {
@@ -75,6 +89,8 @@ struct ContentToolbar: ToolbarContent {
                 Image(systemName: "folder")
             }
             .help("Open markdown file")
+            .accessibilityLabel("Open File")
+            .accessibilityHint("Open a markdown file from disk")
         }
     }
 }

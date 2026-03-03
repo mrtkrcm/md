@@ -545,10 +545,10 @@
             guard let font = getCodeFont(in: text, at: span.charStart) else { return }
             let fontSize = font.pointSize
 
-            // Get text color (muted version for line numbers)
-            let textColor = (text.attribute(.foregroundColor, at: span.charStart, effectiveRange: nil) as? NSColor) ??
-                .secondaryLabelColor
-            let lineNumberColor = textColor.withAlphaComponent(0.5)
+            // Use a fixed semantic colour for line numbers — never derive from the text
+            // foreground at charStart, which may carry a syntax-highlight keyword colour
+            // (e.g. pink for `final`, `class`) and would bleed into the gutter.
+            let lineNumberColor = NSColor.tertiaryLabelColor
 
             // Draw line numbers for each line fragment
             var lineNumber = 1

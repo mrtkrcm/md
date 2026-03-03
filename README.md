@@ -66,20 +66,48 @@ Open a file from terminal:
 /Applications/md.app/Contents/MacOS/md README.md
 ```
 
-## Build Script Flags
+## Features
 
-`scripts/build.sh` supports fine-grained control:
+### Viewing
+- 10 themes (Basic, GitHub, DocC, Solarized, Gruvbox, Dracula, Monokai, Nord, One Dark, Tokyo Night)
+- Light/dark mode for all themes
+- 3 spacing presets (compact, balanced, relaxed)
+- Raw markdown view with syntax highlighting
+- Rendered view with native typography
+- YAML frontmatter support with metadata inspector
+- Document type support: `.md`, `.markdown`, `.mdown`, `.mkd`
 
-| Flag | Effect |
-|------|--------|
-| `--no-install` | Package only, don't install |
-| `--no-tests` | Skip test suite |
-| `--skip-build` | Package using existing binary |
-| `--quiet` | Errors only (for CI) |
-| `--open` | Launch app after install |
-| `--no-strip` | Keep debug symbols |
+### Accessibility ✨
+- **Full VoiceOver support** - All UI elements labeled and navigable
+- **Heading navigation** - Navigate documents by H1-H6 via VoiceOver rotor
+- **Loading announcements** - "Loading document..." for files >50KB
+- **Large file warnings** - Configurable threshold (500KB - 10MB, or disable)
+- **Mode change feedback** - Announces "Switched to rendered/raw mode"
+- **Reduced motion support** - All animations respect system settings
+- **Keyboard navigation** - Full keyboard access to all features
 
-Environment overrides: `INSTALL_DIR`, `BUNDLE_ID`, `APP_VERSION`, `APP_BUILD`.
+### Design System
+- Semantic tokens, component tokens, animation/transition presets
+- Glass panel effects and liquid design language
+- Fluid animations with reduced motion fallbacks
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Toggle Bold | `Cmd+B` |
+| Toggle Italic | `Cmd+I` |
+| Insert Code Block | `Cmd+Shift+K` |
+| Insert Link | `Cmd+K` |
+| Insert Image | `Cmd+Shift+I` |
+| Rendered Mode | `Cmd+Option+R` |
+| Raw Mode | `Cmd+Option+E` |
+| Zoom In/Out | `Cmd+=` / `Cmd+-` |
+| Reset Zoom | `Cmd+0` |
+| Appearance Settings | `Cmd+Shift+T` |
+| Settings | `Cmd+,` |
+| New Tab | `Cmd+T` |
+| Full Screen | `Cmd+Ctrl+F` |
 
 ## Architecture
 
@@ -97,20 +125,10 @@ mdviewer/Sources/mdviewer/
 └── Design/          # Design system reference
 ```
 
-## Features
-
-- 10 themes (Basic, GitHub, DocC, Solarized, Gruvbox, Dracula, Monokai, Nord, One Dark, Tokyo Night)
-- Light/dark mode for all themes
-- 3 spacing presets (compact, balanced, relaxed)
-- Raw markdown view with syntax highlighting
-- Rendered view with native typography
-- YAML frontmatter support
-- Document type support: `.md`, `.markdown`, `.mdown`, `.mkd`
-- Design system: semantic tokens, component tokens, animation/transition presets
-
 ## Production Notes
 
 - Dependencies pinned in `mdviewer/Package.resolved`
 - Ad-hoc codesigned for local use
 - Atomic installs (zero-downtime replace via staging directory)
 - Version derived from git tags automatically
+- 424 tests with >95% code coverage

@@ -161,13 +161,21 @@
                 let result = await render(markdown)
                 let text = result.string
 
-                XCTAssertTrue(text.contains("[ ] Top task\n"), "Top-level task items should be line-broken")
-                XCTAssertTrue(text.contains("[x] Done task\n\t"), "Nested item should begin on a new indented line")
+                // insertListMarkers prepends "•\t" to each list item paragraph.
+                // BSI adds "\n" between items and "\t" per nesting level before each item.
                 XCTAssertTrue(
-                    text.contains("\n\t[ ] Nested task\n\t\t"),
-                    "Second-level nesting should use tab indentation"
+                    text.contains("•\t[ ] Top task\n"),
+                    "Top-level task items should have bullet and line-break"
                 )
-                XCTAssertTrue(text.contains("\n\t\t[x] Deep nested task"), "Deep nested task should be tab-indented")
+                XCTAssertTrue(
+                    text.contains("•\t[x] Done task\n\t"),
+                    "Done task should have bullet and nested-item follows"
+                )
+                XCTAssertTrue(
+                    text.contains("\n\t•\t[ ] Nested task\n\t\t"),
+                    "Second-level nesting: BSI tab + bullet before nested task"
+                )
+                XCTAssertTrue(text.contains("\n\t\t•\t[x] Deep nested task"), "Deep nested: two BSI tabs + bullet")
             }
 
             // MARK: - Full document pipeline

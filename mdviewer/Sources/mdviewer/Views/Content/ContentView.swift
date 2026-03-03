@@ -28,11 +28,13 @@ struct ContentView: View {
     @Environment(\.openDocument) private var openDocument
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showStartupWelcome = true
     @State private var openErrorMessage: String?
     @State private var showMetadataInspector = false
     @State private var showAppearancePopover = false
+    @State private var sidebarWidth: CGFloat = 260
     @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
 
     private let logger = Logger(subsystem: "mdviewer", category: "ui")
@@ -82,25 +84,23 @@ struct ContentView: View {
             Color(nsColor: .windowBackgroundColor)
                 .ignoresSafeArea()
 
-            if showStartupWelcome, document.isEffectivelyEmpty {
-                WelcomeStartView(
-                    openAction: documentOps.openFromDisk,
-                    useStarterAction: documentOps.resetToStarter
-                )
-                .padding(.top, 12)
-                .transition(.elegantSlide(from: .bottom))
-            } else {
-                ReaderContentView(
-                    document: $document,
-                    parsed: parsed,
-                    readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
-                    preferences: preferences,
-                    colorScheme: colorScheme
-                )
-                .transition(.opacity)
+            HStack(spacing: 0) {
+                // Main content
+                mainContent(parsed: parsed)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Custom sidebar - replaces .inspector for better performance
+                if showMetadataInspector {
+                    InspectorSidebar(frontmatter: parsed.frontmatter, isPresented: $showMetadataInspector)
+                        .frame(width: sidebarWidth)
+                        .accessibleTransition(from: .trailing, reduceMotion: reduceMotion)
+                }
             }
         }
         .preferredColorScheme(preferences.effectiveColorScheme)
+        .onChange(of: windowReaderMode) { _, newMode in
+            AccessibilityAnnouncement.modeChanged(to: newMode == .rendered)
+        }
         .toolbar {
             ContentToolbar(
                 readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
@@ -110,9 +110,6 @@ struct ContentView: View {
                 documentText: document.text,
                 hasFrontmatter: parsed.frontmatter != nil
             )
-        }
-        .inspector(isPresented: $showMetadataInspector) {
-            InspectorSidebar(frontmatter: parsed.frontmatter, isPresented: $showMetadataInspector)
         }
         .focusedSceneValue(\.editorActions, editorActions)
         .onAppear {
@@ -129,11 +126,41 @@ struct ContentView: View {
             )
             .transition(.popupScale)
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: showAppearancePopover)
+        .accessibleAnimation(
+            .spring(response: 0.28, dampingFraction: 0.82),
+            value: showAppearancePopover,
+            reduceMotion: reduceMotion
+        )
         .alert("Unable to Open Document", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(openErrorMessage ?? "An unexpected error occurred while opening the document.")
+        }
+    }
+
+    // MARK: - Main Content
+
+    @ViewBuilder
+    private func mainContent(parsed: ParsedMarkdown) -> some View {
+        ZStack {
+            if showStartupWelcome, document.isEffectivelyEmpty {
+                WelcomeStartView(
+                    openAction: documentOps.openFromDisk,
+                    useStarterAction: documentOps.resetToStarter
+                )
+                .padding(.top, 12)
+                .transition(reduceMotion ? .opacity : .elegantSlide(from: .bottom))
+            } else {
+                ReaderContentView(
+                    document: $document,
+                    parsed: parsed,
+                    readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
+                    preferences: preferences,
+                    colorScheme: colorScheme,
+                    reduceMotion: reduceMotion
+                )
+                .transition(.opacity)
+            }
         }
     }
 
@@ -159,6 +186,7 @@ private struct ReaderContentView: View {
     @Binding var readerMode: ReaderMode
     let preferences: AppPreferences
     let colorScheme: ColorScheme
+    let reduceMotion: Bool
 
     var body: some View {
         GeometryReader { geometry in
@@ -167,7 +195,6 @@ private struct ReaderContentView: View {
                     .ignoresSafeArea()
 
                 contentView(geometry: geometry)
-                    .padding(.top, max(0, geometry.safeAreaInsets.top - 4))
             }
         }
     }
@@ -203,8 +230,16 @@ private struct ReaderContentView: View {
             readableWidth: min(preferences.readerColumnWidth.points, geometry.size.width - 48),
             showLineNumbers: preferences.showLineNumbers
         )
-        .smoothAnimation(preferences.readerFontSize)
-        .smoothAnimation(preferences.readerColumnWidth)
+        .accessibleAnimation(
+            reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
+            value: preferences.readerFontSize,
+            reduceMotion: reduceMotion
+        )
+        .accessibleAnimation(
+            reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
+            value: preferences.readerColumnWidth,
+            reduceMotion: reduceMotion
+        )
     }
 
     @ViewBuilder
@@ -212,10 +247,17 @@ private struct ReaderContentView: View {
         RawMarkdownEditor(
             text: $document.text,
             fontSize: preferences.readerFontSize.points,
-            colorScheme: preferences.effectiveColorScheme ?? colorScheme
+            colorScheme: preferences.effectiveColorScheme ?? colorScheme,
+            showLineNumbers: preferences.showLineNumbers
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .smoothAnimation(preferences.readerFontSize)
+        .accessibleAnimation(
+            reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
+            value: preferences.readerFontSize,
+            reduceMotion: reduceMotion
+        )
+        // Raw editor uses full available space without top padding
+        .padding(.top, 0)
     }
 }
 
@@ -233,7 +275,8 @@ private struct AppearancePopover: View {
             appearanceMode: preferenceBinding(\.appearanceMode),
             readerTextSpacing: preferenceBinding(\.readerTextSpacing),
             readerColumnWidth: preferenceBinding(\.readerColumnWidth),
-            showLineNumbers: preferenceBinding(\.showLineNumbers)
+            showLineNumbers: preferenceBinding(\.showLineNumbers),
+            typographyPreferences: preferenceBinding(\.typographyPreferences)
         )
     }
 
@@ -246,41 +289,41 @@ private struct AppearancePopover: View {
 }
 
 /// Unified inspector sidebar that handles both empty and populated states.
-/// Optimized for smooth animations using LazyVStack and minimal state updates.
+/// Uses static content rendering for immediate appearance.
 private struct InspectorSidebar: View {
     let frontmatter: Frontmatter?
     @Binding var isPresented: Bool
 
     var body: some View {
-        // Signpost interval for Instruments profiling
-        let signpostID = uiPerformanceLog.makeSignpostID()
-        let intervalState = uiPerformanceLog.beginInterval("InspectorSidebarRender", id: signpostID)
-        defer { uiPerformanceLog.endInterval("InspectorSidebarRender", intervalState) }
-
-        return VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
                 Text("Metadata")
                     .font(.headline)
+                    .accessibilityLabel("Document Metadata")
                 Spacer()
                 Button {
-                    isPresented = false
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        isPresented = false
+                    }
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .medium))
+                        .accessibilityLabel("Close Inspector")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .accessibilityHint("Close the metadata inspector panel")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
             Divider()
 
-            // Content - LazyVStack for efficient rendering
+            // Content - use static VStack for immediate render
             if let frontmatter {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(frontmatter.entries, id: \.key) { entry in
                             MetadataRow(entry: entry)
                         }
@@ -291,10 +334,11 @@ private struct InspectorSidebar: View {
             }
         }
         .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 }
 
-/// Single metadata row - isolated to prevent parent re-renders.
+/// Single metadata row - pre-computed display value for performance.
 private struct MetadataRow: View {
     let entry: Frontmatter.Entry
 
@@ -303,12 +347,16 @@ private struct MetadataRow: View {
             Text(entry.key)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("\(entry.key) field")
             Text(entry.displayValue)
                 .font(.body)
                 .textSelection(.enabled)
+                .accessibilityLabel("Value: \(entry.displayValue)")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(entry.key): \(entry.displayValue)")
     }
 }
 
@@ -320,14 +368,19 @@ private struct EmptyMetadataState: View {
             Image(systemName: "tag.slash")
                 .font(.system(size: 32))
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("No metadata icon")
+                .accessibilityHidden(true)
             Text("No Metadata")
                 .font(.headline)
+                .accessibilityLabel("No metadata available")
             Text("This document has no YAML frontmatter")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("This document does not contain YAML frontmatter metadata")
             Spacer()
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
     }
 }
 

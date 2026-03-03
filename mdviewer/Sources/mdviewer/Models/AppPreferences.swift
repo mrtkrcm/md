@@ -30,6 +30,8 @@ final class AppPreferences {
     @ObservationIgnored private var _readerTextSpacing: ReaderTextSpacing
     @ObservationIgnored private var _readerColumnWidth: ReaderColumnWidth
     @ObservationIgnored private var _showLineNumbers: Bool
+    @ObservationIgnored private var _typographyPreferences: TypographyPreferences
+    @ObservationIgnored private var _largeFileThreshold: LargeFileThreshold
 
     // MARK: - Observed Properties
 
@@ -163,6 +165,34 @@ final class AppPreferences {
         }
     }
 
+    var typographyPreferences: TypographyPreferences {
+        get {
+            access(keyPath: \.typographyPreferences)
+            return _typographyPreferences
+        }
+        set {
+            withMutation(keyPath: \.typographyPreferences) {
+                _typographyPreferences = newValue
+                if let data = try? JSONEncoder().encode(newValue) {
+                    UserDefaults.standard.set(data, forKey: Keys.typographyPreferences)
+                }
+            }
+        }
+    }
+
+    var largeFileThreshold: LargeFileThreshold {
+        get {
+            access(keyPath: \.largeFileThreshold)
+            return _largeFileThreshold
+        }
+        set {
+            withMutation(keyPath: \.largeFileThreshold) {
+                _largeFileThreshold = newValue
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.largeFileThreshold)
+            }
+        }
+    }
+
     // MARK: - UserDefaults Keys
 
     private enum Keys {
@@ -176,6 +206,8 @@ final class AppPreferences {
         static let readerTextSpacing = "readerTextSpacing"
         static let readerColumnWidth = "readerColumnWidth"
         static let showLineNumbers = "showLineNumbers"
+        static let typographyPreferences = "typographyPreferences"
+        static let largeFileThreshold = "largeFileThreshold"
     }
 
     // MARK: - Computed Properties
@@ -210,6 +242,15 @@ final class AppPreferences {
         _readerTextSpacing = ReaderTextSpacing(rawValue: ud.string(forKey: Keys.readerTextSpacing) ?? "") ?? .balanced
         _readerColumnWidth = ReaderColumnWidth(rawValue: ud.string(forKey: Keys.readerColumnWidth) ?? "") ?? .balanced
         _showLineNumbers = ud.bool(forKey: Keys.showLineNumbers)
+        if
+            let data = ud.data(forKey: Keys.typographyPreferences),
+            let prefs = try? JSONDecoder().decode(TypographyPreferences.self, from: data)
+        {
+            _typographyPreferences = prefs
+        } else {
+            _typographyPreferences = TypographyPreferences()
+        }
+        _largeFileThreshold = LargeFileThreshold.from(rawValue: ud.integer(forKey: Keys.largeFileThreshold))
     }
 
     // MARK: - Font Size Actions

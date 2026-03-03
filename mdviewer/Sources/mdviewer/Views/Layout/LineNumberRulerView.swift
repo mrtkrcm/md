@@ -13,6 +13,7 @@
         private var font: NSFont = .monospacedSystemFont(ofSize: 11, weight: .regular)
         private var textColor: NSColor = .secondaryLabelColor
         private var separatorColor: NSColor = .separatorColor
+        private var backgroundColor: NSColor = .controlBackgroundColor
         /// Cache line-number string sizes by digit count to avoid redundant text measurement
         private var cachedSizesByDigitCount: [Int: NSSize] = [:]
 
@@ -20,6 +21,10 @@
             super.init(scrollView: scrollView, orientation: .verticalRuler)
             ruleThickness = 40
             needsDisplay = true
+
+            // Accessibility configuration
+            setAccessibilityLabel("Line Numbers")
+            setAccessibilityRole(.staticText)
         }
 
         @available(*, unavailable)
@@ -41,7 +46,7 @@
 
         override func draw(_ dirtyRect: NSRect) {
             // Fill background
-            NSColor.controlBackgroundColor.setFill()
+            backgroundColor.setFill()
             dirtyRect.fill()
 
             // Draw separator line on the right edge
@@ -54,6 +59,17 @@
 
             // Draw line numbers
             drawLineNumbers(in: dirtyRect)
+        }
+
+        func applyStyle(
+            textColor: NSColor,
+            separatorColor: NSColor,
+            backgroundColor: NSColor
+        ) {
+            self.textColor = textColor
+            self.separatorColor = separatorColor
+            self.backgroundColor = backgroundColor
+            needsDisplay = true
         }
 
         private func drawLineNumbers(in rect: NSRect) {

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **User-configurable large file warning threshold** - Choose from 500 KB to 10 MB, or disable entirely
+- **Loading state announcements** - VoiceOver announces "Loading document..." for files >50KB
+- **Mode change feedback** - VoiceOver announces "Switched to rendered/raw mode"
+- **Full VoiceOver support** - All UI elements accessible with labels, hints, and rotor navigation
+- **Heading navigation** - Navigate documents by H1-H6 via VoiceOver rotor
+- **Reduced motion support** - All animations respect system accessibility settings
+- **Large file warning** - Dialog warns users before opening files > threshold (configurable, default 1MB)
+- **Comprehensive accessibility testing** - 424 tests including 75+ accessibility-specific tests
+
 ### Changed
 - Refactored Justfile: clear, non-overlapping recipes (`build`, `release`, `package`, `install`, `install-open`)
 - Eliminated double-builds from previous `build`/`build-release` recipes
@@ -23,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - 10 standardized themes: Basic, GitHub, DocC, Solarized, Gruvbox, Dracula, Monokai, Nord, One Dark, Tokyo Night
-- Light/dark mode support for all themes (Display P3 color space)
+- Light/dark mode for all themes (Display P3 color space)
 - 3 spacing presets: compact (1.5x), balanced (1.65x), relaxed (1.8x)
 - Comprehensive test suites: RenderingStability, RawViewLineNumber, ThemeSpacing (26 tests)
 - SwiftFormat configuration (70+ rules), SwiftLint (100+ rules)

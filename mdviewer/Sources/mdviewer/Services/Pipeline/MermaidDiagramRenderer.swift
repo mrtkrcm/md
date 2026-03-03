@@ -110,16 +110,18 @@ struct MermaidDiagramRenderer {
         let attachment = NSTextAttachment()
         attachment.image = image
 
-        // Scale image down to the readable column, preserving aspect ratio.
+        // Always set explicit bounds so NSLayoutManager allocates correct vertical
+        // space for the image. Without explicit bounds, NSTextAttachment defaults to
+        // CGRect.zero which causes the layout manager to clip tall images at the
+        // bottom of the line fragment (mermaid diagrams can be several hundred points
+        // tall). Scale down if wider than the readable column, preserve aspect ratio.
         let maxWidth = containerWidth - 32
-        if image.size.width > maxWidth {
-            let scale = maxWidth / image.size.width
-            attachment.bounds = CGRect(
-                x: 0, y: 0,
-                width: image.size.width * scale,
-                height: image.size.height * scale
-            )
-        }
+        let scale: CGFloat = image.size.width > maxWidth ? maxWidth / image.size.width : 1.0
+        attachment.bounds = CGRect(
+            x: 0, y: 0,
+            width: image.size.width * scale,
+            height: image.size.height * scale
+        )
 
         let result = NSMutableAttributedString(attachment: attachment)
 

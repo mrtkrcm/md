@@ -96,4 +96,10 @@ enum MarkdownRenderAttribute {
     /// Stored on the leading bullet/number character of a list item so the layout
     /// manager can verify marker presence; the foreground color is applied directly.
     static let listMarker = NSAttributedString.Key("mdv.listMarker")
+
+    /// Key for heading level.
+    ///
+    /// Value is an `Int` (1-6) indicating the heading level for accessibility navigation.
+    /// Used by accessibility rotor to enable heading-based navigation.
+    static let headingLevel = NSAttributedString.Key("mdv.headingLevel")
 }

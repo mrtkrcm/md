@@ -12,6 +12,11 @@ internal import SwiftUI
     /// Signpost logger for markdown rendering pipeline profiling.
     private let markdownRenderSignposter = OSSignposter(subsystem: "mdviewer", category: "MarkdownRenderPipeline")
 
+    /// Threshold for considering a document "large" and needing a loading announcement.
+    private let largeDocumentThreshold: Int = 50_000
+
+    /// A native AppKit-based text view for rendering formatted markdown content.
+    /// Provides full VoiceOver support with heading navigation and document structure announcement.
     struct NativeMarkdownTextView: NSViewRepresentable {
         let markdown: String
         let readerFontFamily: ReaderFontFamily
@@ -61,6 +66,13 @@ internal import SwiftUI
             textView.allowsUndo = false
             textView.preferredReadableWidth = readableWidth
 
+            // Configure accessibility for VoiceOver
+            // ReaderTextView provides heading rotor support via accessibilityCustomActions()
+            textView.setAccessibilityLabel("Rendered Markdown Document")
+            textView.setAccessibilityRole(.textArea)
+            textView.setAccessibilityIdentifier("RenderedMarkdownView")
+            textView.setAccessibilityHelp("Use VoiceOver rotor to navigate by headings")
+
             let scrollView = NSScrollView()
             scrollView.drawsBackground = false
             scrollView.borderType = .noBorder
@@ -100,6 +112,13 @@ internal import SwiftUI
             let generation = coordinator.generation
             coordinator.renderTask?.cancel()
 
+            // Announce loading state for large documents
+            let documentSize = request.markdown.count
+            let isLargeDocument = documentSize > largeDocumentThreshold
+            if isLargeDocument {
+                textView.setAccessibilityValue("Loading document...")
+            }
+
             // Signpost: Track async markdown render start
             let signpostID = markdownRenderSignposter.makeSignpostID()
             let intervalState = markdownRenderSignposter.beginInterval("AsyncMarkdownRender", id: signpostID)
@@ -126,6 +145,19 @@ internal import SwiftUI
                 let scrollPoint = textView.enclosingScrollView?.documentVisibleRect.origin
                 textView.textStorage?.setAttributedString(rendered.attributedString)
                 textView.updateContainerGeometry()
+
+                // Update accessibility value with document info
+                let charCount = rendered.attributedString.length
+                let accessibilityValue: String
+                if charCount == 0 {
+                    accessibilityValue = "Empty document"
+                } else if isLargeDocument {
+                    accessibilityValue = "\(charCount) characters, document loaded"
+                } else {
+                    accessibilityValue = "\(charCount) characters, formatted markdown"
+                }
+                textView.setAccessibilityValue(accessibilityValue)
+
                 if let scrollPoint {
                     textView.scroll(scrollPoint)
                 }

@@ -28,6 +28,7 @@ internal import SwiftUI
         let textSpacing: ReaderTextSpacing
         let readableWidth: CGFloat
         let showLineNumbers: Bool
+        var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
         func makeNSView(context: Context) -> NSScrollView {
             // Signpost: TextView creation start
@@ -73,7 +74,7 @@ internal import SwiftUI
             textView.setAccessibilityIdentifier("RenderedMarkdownView")
             textView.setAccessibilityHelp("Use VoiceOver rotor to navigate by headings")
 
-            let scrollView = NSScrollView()
+            let scrollView = ScrollTrackingScrollView()
             scrollView.drawsBackground = false
             scrollView.borderType = .noBorder
             scrollView.focusRingType = .none
@@ -83,11 +84,15 @@ internal import SwiftUI
             scrollView.hasHorizontalScroller = false
             scrollView.autohidesScrollers = true
             scrollView.documentView = textView
+            scrollView.onScroll = onScroll
 
             return scrollView
         }
 
         func updateNSView(_ scrollView: NSScrollView, context: Context) {
+            if let trackingScrollView = scrollView as? ScrollTrackingScrollView {
+                trackingScrollView.onScroll = onScroll
+            }
             guard let textView = scrollView.documentView as? ReaderTextView else { return }
             textView.preferredReadableWidth = readableWidth
 
@@ -181,6 +186,51 @@ internal import SwiftUI
             var currentRequest: RenderRequest?
             var generation: Int = 0
             var renderTask: Task<Void, Never>?
+        }
+    }
+
+    // MARK: - Scroll Tracking Scroll View
+
+    /// NSScrollView subclass that reports scroll position changes for toolbar auto-hide.
+    @MainActor
+    private final class ScrollTrackingScrollView: NSScrollView {
+        var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            setupScrollTracking()
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            setupScrollTracking()
+        }
+
+        private func setupScrollTracking() {
+            postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(boundsDidChange),
+                name: NSView.boundsDidChangeNotification,
+                object: contentView
+            )
+        }
+
+        @objc
+        private func boundsDidChange() {
+            reportScrollPosition()
+        }
+
+        private func reportScrollPosition() {
+            guard
+                let onScroll,
+                let documentView else { return }
+
+            let offset = contentView.bounds.origin.y
+            let contentHeight = documentView.frame.height
+            let visibleHeight = contentView.bounds.height
+
+            onScroll(offset, contentHeight, visibleHeight)
         }
     }
 #endif

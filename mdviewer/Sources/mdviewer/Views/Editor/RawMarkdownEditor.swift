@@ -16,13 +16,15 @@ struct RawMarkdownEditor: View {
     let fontSize: CGFloat
     let colorScheme: ColorScheme
     let showLineNumbers: Bool
+    var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
     var body: some View {
         RawEditorRepresentable(
             text: $text,
             fontSize: fontSize,
             colorScheme: colorScheme,
-            showLineNumbers: showLineNumbers
+            showLineNumbers: showLineNumbers,
+            onScroll: onScroll
         )
         .background(colorScheme == .dark ? Color.black : Color.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -42,17 +44,19 @@ private struct RawEditorRepresentable: NSViewRepresentable {
     let fontSize: CGFloat
     let colorScheme: ColorScheme
     let showLineNumbers: Bool
+    var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
     private let logger = Logger(subsystem: "mdviewer", category: "RawEditor")
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+        let scrollView = ScrollTrackingScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.backgroundColor = colorScheme == .dark ? .black : .white
         scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.onScroll = onScroll
 
         // Configure line numbers if enabled
         if showLineNumbers {
@@ -121,6 +125,9 @@ private struct RawEditorRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        if let trackingScrollView = scrollView as? ScrollTrackingScrollView {
+            trackingScrollView.onScroll = onScroll
+        }
         guard let textView = scrollView.documentView as? RawEditorTextView else { return }
 
         // Update configuration
@@ -484,5 +491,50 @@ private final class RawLineNumberRulerView: NSRulerView {
     override func invalidateHashMarks() {
         super.invalidateHashMarks()
         needsDisplay = true
+    }
+}
+
+// MARK: - Scroll Tracking Scroll View
+
+/// NSScrollView subclass that reports scroll position changes for toolbar auto-hide.
+@MainActor
+private final class ScrollTrackingScrollView: NSScrollView {
+    var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupScrollTracking()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupScrollTracking()
+    }
+
+    private func setupScrollTracking() {
+        postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(boundsDidChange),
+            name: NSView.boundsDidChangeNotification,
+            object: contentView
+        )
+    }
+
+    @objc
+    private func boundsDidChange() {
+        reportScrollPosition()
+    }
+
+    private func reportScrollPosition() {
+        guard
+            let onScroll,
+            let documentView else { return }
+
+        let offset = contentView.bounds.origin.y
+        let contentHeight = documentView.frame.height
+        let visibleHeight = contentView.bounds.height
+
+        onScroll(offset, contentHeight, visibleHeight)
     }
 }

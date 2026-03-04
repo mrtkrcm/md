@@ -45,6 +45,7 @@ struct ContentView: View {
     @State private var showAppearancePopover = false
     @State private var sidebarWidth: CGFloat = 260
     @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
+    @StateObject private var toolbarVisibility = ToolbarVisibilityController()
 
     private let logger = Logger(subsystem: "mdviewer", category: "ui")
 
@@ -117,6 +118,9 @@ struct ContentView: View {
         .onChange(of: windowReaderMode) { _, newMode in
             AccessibilityAnnouncement.modeChanged(to: newMode == .rendered)
         }
+        .onChange(of: toolbarVisibility.isVisible) { _, isVisible in
+            updateToolbarVisibility(isVisible)
+        }
         .toolbar {
             ContentToolbar(
                 readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
@@ -136,6 +140,8 @@ struct ContentView: View {
             if !document.isEffectivelyEmpty {
                 showStartupWelcome = false
             }
+            // Ensure toolbar is visible initially
+            updateToolbarVisibility(true)
         }
         .popover(isPresented: $showAppearancePopover, arrowEdge: .top) {
             AppearancePopover(
@@ -152,6 +158,21 @@ struct ContentView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(openErrorMessage ?? "An unexpected error occurred while opening the document.")
+        }
+    }
+
+    // MARK: - Toolbar Visibility
+
+    /// Updates the toolbar visibility by accessing the underlying NSWindow toolbar.
+    private func updateToolbarVisibility(_ isVisible: Bool) {
+        // Use the responder chain to find the window
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+
+        // Animate toolbar visibility
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = toolbarVisibility.animationDuration
+            context.timingFunction = .init(name: .easeInEaseOut)
+            window.toolbar?.isVisible = isVisible
         }
     }
 
@@ -216,7 +237,14 @@ struct ContentView: View {
                     readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
                     preferences: preferences,
                     colorScheme: colorScheme,
-                    reduceMotion: reduceMotion
+                    reduceMotion: reduceMotion,
+                    onScroll: { offset, contentHeight, visibleHeight in
+                        toolbarVisibility.updateScroll(
+                            offset: offset,
+                            contentHeight: contentHeight,
+                            visibleHeight: visibleHeight
+                        )
+                    }
                 )
                 .transition(.opacity)
             }
@@ -246,6 +274,7 @@ private struct ReaderContentView: View {
     let preferences: AppPreferences
     let colorScheme: ColorScheme
     let reduceMotion: Bool
+    let onScroll: (CGFloat, CGFloat, CGFloat) -> Void
 
     var body: some View {
         GeometryReader { geometry in
@@ -287,7 +316,8 @@ private struct ReaderContentView: View {
             colorScheme: preferences.effectiveColorScheme ?? colorScheme,
             textSpacing: preferences.readerTextSpacing,
             readableWidth: min(preferences.readerColumnWidth.points, geometry.size.width - 48),
-            showLineNumbers: preferences.showLineNumbers
+            showLineNumbers: preferences.showLineNumbers,
+            onScroll: onScroll
         )
         .accessibleAnimation(
             reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
@@ -307,7 +337,8 @@ private struct ReaderContentView: View {
             text: $document.text,
             fontSize: preferences.readerFontSize.points,
             colorScheme: preferences.effectiveColorScheme ?? colorScheme,
-            showLineNumbers: preferences.showLineNumbers
+            showLineNumbers: preferences.showLineNumbers,
+            onScroll: onScroll
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibleAnimation(

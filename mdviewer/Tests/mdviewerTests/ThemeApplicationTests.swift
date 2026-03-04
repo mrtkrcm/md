@@ -175,7 +175,8 @@
                     colorScheme: scheme,
                     textSpacing: .balanced,
                     readableWidth: 720,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let result = await MarkdownRenderService.shared.render(request)
@@ -209,7 +210,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 720,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let darkRequest = RenderRequest(
@@ -222,7 +224,8 @@
                     colorScheme: .dark,
                     textSpacing: .balanced,
                     readableWidth: 720,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let lightResult = await MarkdownRenderService.shared.render(lightRequest)
@@ -283,7 +286,8 @@
                             colorScheme: scheme,
                             textSpacing: .balanced,
                             readableWidth: 720,
-                            showLineNumbers: false
+                            showLineNumbers: false,
+                            typographyPreferences: TypographyPreferences()
                         )
 
                         let result = await MarkdownRenderService.shared.render(request)

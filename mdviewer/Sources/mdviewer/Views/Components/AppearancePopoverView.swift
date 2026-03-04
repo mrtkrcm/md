@@ -64,11 +64,14 @@ struct AppearancePopoverView: View {
             }
             .accessibilityLabel("Reader Theme")
 
-            Picker("Font", selection: $readerFontFamily) {
-                ForEach(ReaderFontFamily.allCases) { family in
-                    Text(family.rawValue).tag(family)
-                }
+            HStack {
+                Text("Font")
+                    .foregroundStyle(.primary)
+                Spacer()
+                FontFamilyPicker(selection: $readerFontFamily)
+                    .frame(width: 140)
             }
+            .accessibilityElement(children: .combine)
             .accessibilityLabel("Reader Font")
 
             Picker("Text Size", selection: $readerFontSize) {

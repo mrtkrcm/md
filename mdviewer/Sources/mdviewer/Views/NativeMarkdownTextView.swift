@@ -28,6 +28,7 @@ internal import SwiftUI
         let textSpacing: ReaderTextSpacing
         let readableWidth: CGFloat
         let showLineNumbers: Bool
+        let typographyPreferences: TypographyPreferences
         var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
         func makeNSView(context: Context) -> NSScrollView {
@@ -106,7 +107,8 @@ internal import SwiftUI
                 colorScheme: colorScheme,
                 textSpacing: textSpacing,
                 readableWidth: readableWidth,
-                showLineNumbers: showLineNumbers
+                showLineNumbers: showLineNumbers,
+                typographyPreferences: typographyPreferences
             )
 
             let coordinator = context.coordinator

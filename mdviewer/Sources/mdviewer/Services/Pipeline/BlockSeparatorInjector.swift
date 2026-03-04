@@ -28,17 +28,20 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
         let length = text.length
         guard length > 0 else { return }
 
+        // Cache NSString representation to avoid repeated conversions
+        let nsText = text.string as NSString
+
         // Table cells are concatenated with no separators by the system parser.
         // Inject tab/newline separators before general block processing so table
         // rows become proper lines that the typography pass can style.
-        injectTableSeparators(into: text)
+        injectTableSeparators(into: text, nsText: nsText)
 
         // The NSAttributedString markdown parser produces flat text.
         // We need to reconstruct paragraph structure from the PresentationIntent attributes.
-        injectSeparatorsAtBlockBoundaries(into: text, length: text.length)
+        injectSeparatorsAtBlockBoundaries(into: text, nsText: nsText, length: text.length)
 
         // Nested list items should visually nest under parents.
-        injectNestedListIndentation(into: text)
+        injectNestedListIndentation(into: text, nsText: nsText)
     }
 
     // MARK: - Private Methods
@@ -55,7 +58,7 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
 
     /// Scans for table cell intents and inserts tab characters between cells
     /// in the same row and newline characters between rows.
-    private func injectTableSeparators(into text: NSMutableAttributedString) {
+    private func injectTableSeparators(into text: NSMutableAttributedString, nsText: NSString) {
         let fullRange = NSRange(location: 0, length: text.length)
         var cells: [TableCell] = []
 
@@ -93,9 +96,9 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
 
         guard cells.count > 1 else { return }
 
-        // Sort by range location to process in document order.
-        // Insert separators in reverse to preserve indices.
+        // Pre-allocate insertions array with estimated capacity
         var insertions: [(location: Int, separator: String)] = []
+        insertions.reserveCapacity(cells.count)
 
         for i in 1 ..< cells.count {
             let prev = cells[i - 1]
@@ -113,10 +116,14 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
             }
         }
 
+        // Reuse attributed string instances to reduce allocations
+        let newlineAttr = NSAttributedString(string: "\n")
+        let tabAttr = NSAttributedString(string: "\t")
+
         for insertion in insertions.reversed() {
             let loc = insertion.location
             guard loc > 0, loc <= text.length else { continue }
-            text.insert(NSAttributedString(string: insertion.separator), at: loc)
+            text.insert(insertion.separator == "\n" ? newlineAttr : tabAttr, at: loc)
         }
     }
 
@@ -125,11 +132,14 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
     /// The parser creates overlapping semantic ranges for different intent types.
     /// We identify logical block transitions by comparing block identity between
     /// adjacent presentation-intent runs.
-    private func injectSeparatorsAtBlockBoundaries(into text: NSMutableAttributedString, length: Int) {
+    private func injectSeparatorsAtBlockBoundaries(
+        into text: NSMutableAttributedString,
+        nsText: NSString,
+        length: Int
+    ) {
         let fullRange = NSRange(location: 0, length: length)
-        let nsText = text.string as NSString
-
         var blockRuns: [BlockRun] = []
+        blockRuns.reserveCapacity(64) // Pre-allocate for typical document size
 
         text.enumerateAttribute(
             MarkdownRenderAttribute.presentationIntent,
@@ -173,25 +183,30 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
 
             // Keep only block-level components and use the most specific one
             // as a stable signature for transition detection.
-            let blockComponents = intent.components.filter { component in
+            var primaryBlock: PresentationIntent.IntentType?
+            for component in intent.components {
                 switch component.kind {
                 case .header, .paragraph, .codeBlock, .blockQuote, .unorderedList, .orderedList,
                      .tableRow, .tableHeaderRow:
-                    return true
-
+                    primaryBlock = component
                 default:
-                    return false
+                    break
                 }
             }
 
-            guard let primaryBlock = blockComponents.last else { return }
-            let signature = "\(primaryBlock.kind)-\(primaryBlock.identity)"
+            guard let block = primaryBlock else { return }
+            let signature = "\(block.kind)-\(block.identity)"
             blockRuns.append(BlockRun(range: range, blockSignature: signature))
         }
 
         guard blockRuns.count > 1 else { return }
 
         var insertionPoints: [Int] = []
+        insertionPoints.reserveCapacity(blockRuns.count / 2)
+
+        // Use Set to avoid duplicate insertions
+        var seenBoundaries = Set<Int>()
+        seenBoundaries.reserveCapacity(blockRuns.count)
 
         for index in 1 ..< blockRuns.count {
             let previous = blockRuns[index - 1]
@@ -205,18 +220,26 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
             // With overlapping intent runs, current.start can be inside
             // the previous run and is not a reliable visual boundary.
             let boundary = min(length, max(0, previousEnd))
+
+            // Skip if we already have a separator at this boundary
+            guard seenBoundaries.insert(boundary).inserted else { continue }
+
             let scanStart = max(0, boundary - 1)
             let scanEnd = min(length, boundary + 1)
             let scanLength = max(0, scanEnd - scanStart)
-            let scanRange = NSRange(location: scanStart, length: scanLength)
 
             // Avoid duplicate separators when the source already contains one.
-            let existingNewline = scanLength > 0
-                && nsText.rangeOfCharacter(
+            let existingNewline: Bool
+            if scanLength > 0 {
+                let scanRange = NSRange(location: scanStart, length: scanLength)
+                existingNewline = nsText.rangeOfCharacter(
                     from: .newlines,
                     options: [],
                     range: scanRange
                 ).location != NSNotFound
+            } else {
+                existingNewline = false
+            }
 
             if !existingNewline, boundary > 0, boundary <= length {
                 insertionPoints.append(boundary)
@@ -224,9 +247,10 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
         }
 
         // Insert newlines in reverse order to maintain indices
-        for location in Set(insertionPoints).sorted(by: >) {
+        let newlineAttr = NSAttributedString(string: "\n")
+        for location in insertionPoints.sorted(by: >) {
             if location > 0, location <= text.length {
-                text.insert(NSAttributedString(string: "\n"), at: location)
+                text.insert(newlineAttr, at: location)
             }
         }
     }
@@ -239,10 +263,10 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
     }
 
     /// Adds tab indentation before nested list items after line boundaries are restored.
-    private func injectNestedListIndentation(into text: NSMutableAttributedString) {
+    private func injectNestedListIndentation(into text: NSMutableAttributedString, nsText: NSString) {
         let fullRange = NSRange(location: 0, length: text.length)
-        let nsText = text.string as NSString
         var runs: [ListRun] = []
+        runs.reserveCapacity(32)
 
         text.enumerateAttribute(
             MarkdownRenderAttribute.presentationIntent,
@@ -271,6 +295,11 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
         guard !runs.isEmpty else { return }
 
         var insertions: [(location: Int, text: String)] = []
+        insertions.reserveCapacity(runs.count)
+
+        // Pre-compute tab strings to avoid repeated String(repeating:) calls
+        var tabCache: [Int: String] = [:]
+
         for run in runs {
             let loc = run.range.location
             guard loc >= 0, loc < text.length else { continue }
@@ -283,12 +312,23 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
             let alreadyIndented = nsText.character(at: loc) == 0x09
             guard !alreadyIndented else { continue }
 
-            let tabs = String(repeating: "\t", count: run.depth - 1)
+            let tabCount = run.depth - 1
+            let tabs = tabCache[tabCount] ?? {
+                let t = String(repeating: "\t", count: tabCount)
+                tabCache[tabCount] = t
+                return t
+            }()
             insertions.append((loc, tabs))
         }
 
+        // Reuse attributed string for tabs
+        let tabAttrCache: [String: NSAttributedString] = Dictionary(
+            uniqueKeysWithValues: tabCache.map { ($0.value, NSAttributedString(string: $0.value)) }
+        )
+
         for insertion in insertions.sorted(by: { $0.location > $1.location }) {
-            text.insert(NSAttributedString(string: insertion.text), at: insertion.location)
+            let attr = tabAttrCache[insertion.text] ?? NSAttributedString(string: insertion.text)
+            text.insert(attr, at: insertion.location)
         }
     }
 }

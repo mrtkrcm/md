@@ -35,7 +35,8 @@
                         colorScheme: scheme,
                         textSpacing: spacing,
                         readableWidth: readableWidth,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
             }
@@ -237,7 +238,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 let github = RenderRequest(
                     markdown: "# Test",
@@ -249,7 +251,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 XCTAssertNotEqual(
                     base.cacheKey,
@@ -269,7 +272,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 let sunset = RenderRequest(
                     markdown: "# Test",
@@ -281,7 +285,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 XCTAssertNotEqual(
                     midnight.cacheKey,
@@ -301,7 +306,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 let dark = RenderRequest(
                     markdown: "# Test",
@@ -313,7 +319,8 @@
                     colorScheme: .dark,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 XCTAssertNotEqual(
                     light.cacheKey,
@@ -333,7 +340,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 let sfPro = RenderRequest(
                     markdown: "# Test",
@@ -345,7 +353,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 XCTAssertNotEqual(
                     newYork.cacheKey,
@@ -440,7 +449,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 let wide = RenderRequest(
                     markdown: "# Test",
@@ -452,7 +462,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 860,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 XCTAssertNotEqual(
                     narrow.cacheKey,

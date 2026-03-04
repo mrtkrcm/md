@@ -63,7 +63,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let result = await MarkdownRenderService.shared.render(request)
@@ -99,7 +100,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let result = await MarkdownRenderService.shared.render(request)
@@ -124,7 +126,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let result = await MarkdownRenderService.shared.render(request)
@@ -157,7 +160,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let result = await MarkdownRenderService.shared.render(request)
@@ -185,7 +189,8 @@
                             colorScheme: scheme,
                             textSpacing: .balanced,
                             readableWidth: 760,
-                            showLineNumbers: false
+                            showLineNumbers: false,
+                            typographyPreferences: TypographyPreferences()
                         )
 
                         let result = await MarkdownRenderService.shared.render(request)
@@ -211,7 +216,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 // First render (cold)

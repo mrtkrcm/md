@@ -168,13 +168,26 @@ internal import SwiftUI
 
             let mutable = NSMutableAttributedString(attributedString: parsed)
 
-            // Apply pipeline stages
+            // Apply pipeline stages with signpost tracing
+            let pipelineSignpostID = OSSignpostID(log: signpostLog)
+
+            os_signpost(.begin, log: signpostLog, name: "InjectSeparators", signpostID: pipelineSignpostID)
             blockSeparatorInjector.injectSeparators(into: mutable)
+            os_signpost(.end, log: signpostLog, name: "InjectSeparators", signpostID: pipelineSignpostID)
+
+            os_signpost(.begin, log: signpostLog, name: "ApplyTypography", signpostID: pipelineSignpostID)
             typographyApplier.applyTypography(to: mutable, request: request)
+            os_signpost(.end, log: signpostLog, name: "ApplyTypography", signpostID: pipelineSignpostID)
+
+            os_signpost(.begin, log: signpostLog, name: "ApplyCodeStyling", signpostID: pipelineSignpostID)
             applyCodeStyling(mutable, request: request)
+            os_signpost(.end, log: signpostLog, name: "ApplyCodeStyling", signpostID: pipelineSignpostID)
+
             // Mermaid pass runs last: it replaces code-block ranges with image
             // attachments, so no text-based pass should follow.
+            os_signpost(.begin, log: signpostLog, name: "RenderMermaid", signpostID: pipelineSignpostID)
             mermaidRenderer.renderDiagrams(in: mutable, request: request)
+            os_signpost(.end, log: signpostLog, name: "RenderMermaid", signpostID: pipelineSignpostID)
 
             return mutable
         }

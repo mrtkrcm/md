@@ -32,9 +32,6 @@ struct TypographySubsectionView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Toggle("Hanging Punctuation", isOn: $typographyPreferences.hangingPunctuation)
-                .accessibilityLabel("Enable Hanging Punctuation")
-
             Toggle("Hyphenation", isOn: $typographyPreferences.hyphenation)
                 .accessibilityLabel("Enable Automatic Hyphenation")
 

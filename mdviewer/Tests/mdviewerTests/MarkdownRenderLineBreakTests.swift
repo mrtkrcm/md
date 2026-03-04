@@ -31,7 +31,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -63,7 +64,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -94,7 +96,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -121,7 +124,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -150,7 +154,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)
@@ -178,7 +183,8 @@
                         colorScheme: .light,
                         textSpacing: spacing,
                         readableWidth: ReaderColumnWidth.balanced.points,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
 
                     let rendered = await MarkdownRenderService.shared.render(request)
@@ -212,7 +218,8 @@
                     colorScheme: .light,
                     textSpacing: .relaxed,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 let rendered = await MarkdownRenderService.shared.render(request)

@@ -43,7 +43,8 @@
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: 760,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
 
                     let rendered = await MarkdownRenderService.shared.render(request)
@@ -88,7 +89,8 @@
                         colorScheme: .dark,
                         textSpacing: .balanced,
                         readableWidth: 760,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
 
                     let rendered = await MarkdownRenderService.shared.render(request)
@@ -128,7 +130,8 @@
                             colorScheme: .light,
                             textSpacing: spacing,
                             readableWidth: 760,
-                            showLineNumbers: false
+                            showLineNumbers: false,
+                            typographyPreferences: TypographyPreferences()
                         )
 
                         let rendered = await MarkdownRenderService.shared.render(request)
@@ -156,7 +159,8 @@
                             colorScheme: scheme,
                             textSpacing: .balanced,
                             readableWidth: 760,
-                            showLineNumbers: false
+                            showLineNumbers: false,
+                            typographyPreferences: TypographyPreferences()
                         )
 
                         let rendered = await MarkdownRenderService.shared.render(request)
@@ -197,7 +201,8 @@
                             colorScheme: scheme,
                             textSpacing: .balanced,
                             readableWidth: 760,
-                            showLineNumbers: false
+                            showLineNumbers: false,
+                            typographyPreferences: TypographyPreferences()
                         )
 
                         let rendered = await MarkdownRenderService.shared.render(request)

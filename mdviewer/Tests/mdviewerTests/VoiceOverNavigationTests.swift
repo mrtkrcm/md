@@ -245,7 +245,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 720,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 XCTAssertNotNil(view)

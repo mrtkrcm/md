@@ -27,7 +27,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 // Cold render: first render, no cache entry.

@@ -317,6 +317,7 @@ private struct ReaderContentView: View {
             textSpacing: preferences.readerTextSpacing,
             readableWidth: min(preferences.readerColumnWidth.points, geometry.size.width - 48),
             showLineNumbers: preferences.showLineNumbers,
+            typographyPreferences: preferences.typographyPreferences,
             onScroll: onScroll
         )
         .accessibleAnimation(

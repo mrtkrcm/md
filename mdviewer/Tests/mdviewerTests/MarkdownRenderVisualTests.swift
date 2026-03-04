@@ -38,7 +38,8 @@
                         colorScheme: scheme,
                         textSpacing: textSpacing,
                         readableWidth: ReaderColumnWidth.balanced.points,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
             }
@@ -900,7 +901,8 @@
                             colorScheme: .light,
                             textSpacing: .balanced,
                             readableWidth: ReaderColumnWidth.balanced.points,
-                            showLineNumbers: false
+                            showLineNumbers: false,
+                            typographyPreferences: TypographyPreferences()
                         )
                     ).attributedString
                     let ns = result.string as NSString
@@ -933,7 +935,8 @@
                             colorScheme: .light,
                             textSpacing: .balanced,
                             readableWidth: ReaderColumnWidth.balanced.points,
-                            showLineNumbers: false
+                            showLineNumbers: false,
+                            typographyPreferences: TypographyPreferences()
                         )
                     ).attributedString
                     let ns = result.string as NSString

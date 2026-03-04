@@ -22,8 +22,10 @@ internal import SwiftUI
         let textSpacing: ReaderTextSpacing
         let readableWidth: CGFloat
         let showLineNumbers: Bool
+        let typographyPreferences: TypographyPreferences
 
         var cacheKey: String {
+            let prefsHash = typographyPreferences.hashValue
             let payload = [
                 markdown,
                 readerFontFamily.rawValue,
@@ -35,6 +37,7 @@ internal import SwiftUI
                 textSpacing.rawValue,
                 String(format: "%.0f", readableWidth),
                 showLineNumbers ? "ln" : "no-ln",
+                String(prefsHash),
             ].joined(separator: "|")
 
             let digest = SHA256.hash(data: Data(payload.utf8))

@@ -46,7 +46,8 @@
                         colorScheme: scheme,
                         textSpacing: textSpacing,
                         readableWidth: readableWidth,
-                        showLineNumbers: showLineNumbers
+                        showLineNumbers: showLineNumbers,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
             }

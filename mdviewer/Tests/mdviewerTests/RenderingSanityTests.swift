@@ -21,7 +21,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
             }
 

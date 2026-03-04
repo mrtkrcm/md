@@ -32,11 +32,14 @@ struct SettingsView: View {
 
             Section("Typography") {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.standard) {
-                    Picker("Font Family", selection: binding(\.readerFontFamily)) {
-                        ForEach(ReaderFontFamily.allCases) { family in
-                            Text(family.rawValue).tag(family)
-                        }
+                    HStack {
+                        Text("Font Family")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        FontFamilyPicker(selection: binding(\.readerFontFamily))
+                            .frame(width: 140)
                     }
+                    .accessibilityElement(children: .combine)
                     .accessibilityLabel("Reader Font Family")
 
                     Picker("Text Size", selection: binding(\.readerFontSize)) {

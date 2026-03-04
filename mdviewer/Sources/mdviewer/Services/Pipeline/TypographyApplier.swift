@@ -8,41 +8,12 @@ internal import Foundation
     internal import AppKit
 #endif
 
-// MARK: - Typography Configuration
-
-/// Configuration for advanced typography features.
-struct TypographyConfig {
-    /// Enable font smoothing for crisp text rendering.
-    var fontSmoothing: Bool = true
-
-    /// Enable ligatures for better character combinations.
-    var ligatures: Bool = true
-
-    /// Use hanging punctuation for cleaner edges.
-    var hangingPunctuation: Bool = true
-
-    /// Enable automatic text justification.
-    var justification: NSTextAlignment = .natural
-
-    /// Minimum lines before widow/orphan control kicks in.
-    var minimumLinesInParagraph: Int = 2
-
-    /// Maximum consecutive hyphenated lines.
-    var maximumConsecutiveHyphens: Int = 2
-
-    /// Use true optical sizing for variable fonts.
-    var opticalSizing: Bool = true
-
-    /// Enable contextual alternates for better readability.
-    var contextualAlternates: Bool = true
-}
-
 // MARK: - Typography Applier
 
 /// Applies professional typography styling including fonts, colors, and spacing.
 ///
 /// This component configures the visual appearance of rendered Markdown
-/// based on the requested theme, font family, and spacing preferences.
+/// based on the requested theme, font family, and user typography preferences.
 /// Implements modern typesetting best practices for optimal readability.
 struct TypographyApplier: TypographyApplying {
     // MARK: - Typography Application
@@ -54,17 +25,17 @@ struct TypographyApplier: TypographyApplying {
         let palette = NativeThemePalette.cached(theme: request.appTheme, scheme: request.colorScheme)
         let bodyFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
 
-        // Apply base font with typographic features.
-        let enhancedFont = applyTypographicFeatures(to: bodyFont, config: TypographyConfig())
+        // Apply base font with user's typographic preferences.
+        let enhancedFont = applyTypographicFeatures(to: bodyFont, preferences: request.typographyPreferences)
         text.addAttribute(.font, value: enhancedFont, range: fullRange)
         text.addAttribute(.foregroundColor, value: palette.textPrimary, range: fullRange)
 
-        // Apply base paragraph style with enhanced typography.
+        // Apply base paragraph style with user preferences.
         let baseStyle = createBaseParagraphStyle(
             lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
             paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize),
-            hyphenationFactor: request.textSpacing.hyphenationFactor,
-            alignment: .natural
+            hyphenationFactor: request.typographyPreferences.hyphenation ? request.textSpacing.hyphenationFactor : 0,
+            alignment: request.typographyPreferences.justification.nsAlignment
         )
         text.addAttribute(.paragraphStyle, value: baseStyle, range: fullRange)
 
@@ -72,11 +43,8 @@ struct TypographyApplier: TypographyApplying {
         truncateTableCells(in: text, bodyFont: enhancedFont, request: request)
         fullRange = NSRange(location: 0, length: text.length)
 
-        // Apply presentation-intent–aware styling
-        applyPresentationIntentStyling(to: text, fullRange: fullRange, request: request, palette: palette)
-
-        // Apply kerning with optical sizing.
-        applyKerning(to: text, request: request, fullRange: fullRange)
+        // Apply presentation-intent–aware styling and kerning in combined pass
+        applyPresentationIntentAndKerning(to: text, fullRange: fullRange, request: request, palette: palette)
 
         // Apply consistent link styling.
         applyLinkStyling(to: text, fullRange: fullRange, palette: palette)
@@ -93,38 +61,36 @@ struct TypographyApplier: TypographyApplying {
 
     // MARK: - Typographic Features
 
-    /// Applies advanced typographic features to the font.
-    private func applyTypographicFeatures(to font: NSFont, config: TypographyConfig) -> NSFont {
-        var features: [NSFontDescriptor.FeatureKey: Int] = [:]
-
-        if config.ligatures {
-            // Enable common ligatures.
-            features[.typeIdentifier] = kCommonLigaturesOnSelector
-            features[.selectorIdentifier] = 1
-        }
-
-        if config.contextualAlternates {
-            // Enable contextual alternates for better readability.
-            features[.typeIdentifier] = kContextualAlternatesOnSelector
-        }
-
-        guard !features.isEmpty else { return font }
+    /// Applies advanced typographic features based on user preferences.
+    private func applyTypographicFeatures(to font: NSFont, preferences: TypographyPreferences) -> NSFont {
+        guard preferences.ligatures else { return font }
 
         let descriptor = font.fontDescriptor.addingAttributes([
-            .featureSettings: [features],
+            .featureSettings: [[
+                NSFontDescriptor.FeatureKey.typeIdentifier: kCommonLigaturesOnSelector,
+                NSFontDescriptor.FeatureKey.selectorIdentifier: 1,
+            ]],
         ])
 
         return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
     }
 
-    // MARK: - Presentation Intent Styling
+    // MARK: - Combined Presentation Intent + Kerning
 
-    private func applyPresentationIntentStyling(
+    /// Combined pass for presentation intent styling and kerning to reduce attribute enumeration.
+    private func applyPresentationIntentAndKerning(
         to text: NSMutableAttributedString,
         fullRange: NSRange,
         request: RenderRequest,
         palette: NativeThemePalette
     ) {
+        let baseKern = request.textSpacing.kern(for: request.readerFontSize)
+        let opticalAdjustment = request.textSpacing.opticalSizeAdjustment(for: request.readerFontSize)
+        let totalBaseKern = baseKern + (request.readerFontSize * opticalAdjustment)
+
+        text.addAttribute(.kern, value: totalBaseKern, range: fullRange)
+
+        // Single enumeration for both presentation intent styling and kerning adjustments
         text.enumerateAttribute(
             MarkdownRenderAttribute.presentationIntent,
             in: fullRange,
@@ -132,15 +98,24 @@ struct TypographyApplier: TypographyApplying {
         ) { value, range, _ in
             guard let intent = value as? PresentationIntent else { return }
 
+            var isCodeBlock = false
+            var isHeading = false
+            var headingLevel = 0
+            var isBlockQuote = false
+
             for component in intent.components {
                 switch component.kind {
                 case .header(let level):
+                    isHeading = true
+                    headingLevel = level
                     applyHeadingStyle(to: text, range: range, request: request, level: level, palette: palette)
 
                 case .codeBlock:
+                    isCodeBlock = true
                     applyCodeBlockStyle(to: text, range: range, request: request, palette: palette)
 
                 case .blockQuote:
+                    isBlockQuote = true
                     applyBlockquoteStyle(to: text, range: range, request: request, palette: palette, intent: intent)
 
                 case .paragraph:
@@ -159,9 +134,24 @@ struct TypographyApplier: TypographyApplying {
                     break
                 }
             }
+
+            // Apply kerning adjustments based on detected types
+            if isHeading {
+                let headingFontSize = fontSizeForHeader(level: headingLevel, baseSize: request.readerFontSize)
+                let headingKern = request.textSpacing.kern(for: headingFontSize)
+                let headingAdjustment = request.textSpacing.opticalSizeAdjustment(for: headingFontSize)
+                let adjustedKern = (headingKern + (headingFontSize * headingAdjustment)) * 0.8
+                text.addAttribute(.kern, value: adjustedKern, range: range)
+            } else if isCodeBlock {
+                let codeKern = request.textSpacing.kern(for: request.codeFontSize) * 0.3
+                text.addAttribute(.kern, value: codeKern, range: range)
+            } else if isBlockQuote {
+                let quoteKern = totalBaseKern + (request.readerFontSize * 0.003)
+                text.addAttribute(.kern, value: quoteKern, range: range)
+            }
         }
 
-        // Apply inline presentation intents.
+        // Handle inline presentation intents
         text.enumerateAttribute(
             MarkdownRenderAttribute.inlinePresentationIntent,
             in: fullRange,
@@ -171,6 +161,12 @@ struct TypographyApplier: TypographyApplying {
             guard rawValue != 0 else { return }
             let intent = InlinePresentationIntent(rawValue: rawValue)
             applyInlineStyles(to: text, range: range, intent: intent, palette: palette, request: request)
+
+            // Apply inline code kerning adjustment
+            if intent.contains(.code) {
+                let inlineCodeKern = request.textSpacing.kern(for: request.readerFontSize) * 0.3
+                text.addAttribute(.kern, value: inlineCodeKern, range: range)
+            }
         }
     }
 
@@ -206,10 +202,12 @@ struct TypographyApplier: TypographyApplying {
             range: range
         )
 
-        let blockquoteCount = intent.components.filter {
-            if case .blockQuote = $0.kind { return true }
-            return false
-        }.count
+        var blockquoteCount = 0
+        for component in intent.components {
+            if case .blockQuote = component.kind {
+                blockquoteCount += 1
+            }
+        }
 
         text.addAttribute(MarkdownRenderAttribute.blockquoteDepth, value: max(1, blockquoteCount), range: range)
         applyBlockquoteParagraphStyle(to: text, range: range, request: request, depth: max(1, blockquoteCount))
@@ -266,62 +264,6 @@ struct TypographyApplier: TypographyApplying {
         applyTableRowParagraphStyle(to: text, range: range, request: request)
     }
 
-    // MARK: - Kerning
-
-    /// Applies element-specific kerning for optimal readability.
-    private func applyKerning(to text: NSMutableAttributedString, request: RenderRequest, fullRange: NSRange) {
-        let baseKern = request.textSpacing.kern(for: request.readerFontSize)
-        let opticalAdjustment = request.textSpacing.opticalSizeAdjustment(for: request.readerFontSize)
-        let totalBaseKern = baseKern + (request.readerFontSize * opticalAdjustment)
-
-        text.addAttribute(.kern, value: totalBaseKern, range: fullRange)
-
-        text.enumerateAttribute(
-            MarkdownRenderAttribute.presentationIntent,
-            in: fullRange,
-            options: []
-        ) { value, range, _ in
-            guard let intent = value as? PresentationIntent else { return }
-
-            for component in intent.components {
-                switch component.kind {
-                case .header(let level):
-                    let headingFontSize = fontSizeForHeader(level: level, baseSize: request.readerFontSize)
-                    let headingKern = request.textSpacing.kern(for: headingFontSize)
-                    let headingAdjustment = request.textSpacing.opticalSizeAdjustment(for: headingFontSize)
-                    let adjustedKern = (headingKern + (headingFontSize * headingAdjustment)) * 0.8
-                    text.addAttribute(.kern, value: adjustedKern, range: range)
-
-                case .codeBlock:
-                    let codeKern = request.textSpacing.kern(for: request.codeFontSize) * 0.3
-                    text.addAttribute(.kern, value: codeKern, range: range)
-
-                case .blockQuote:
-                    let quoteKern = totalBaseKern + (request.readerFontSize * 0.003)
-                    text.addAttribute(.kern, value: quoteKern, range: range)
-
-                default:
-                    break
-                }
-            }
-        }
-
-        text.enumerateAttribute(
-            MarkdownRenderAttribute.inlinePresentationIntent,
-            in: fullRange,
-            options: []
-        ) { value, range, _ in
-            let rawValue = (value as? NSNumber)?.uintValue ?? 0
-            guard rawValue != 0 else { return }
-            let intent = InlinePresentationIntent(rawValue: rawValue)
-
-            if intent.contains(.code) {
-                let inlineCodeKern = request.textSpacing.kern(for: request.readerFontSize) * 0.3
-                text.addAttribute(.kern, value: inlineCodeKern, range: range)
-            }
-        }
-    }
-
     // MARK: - Paragraph Styles
 
     private func createBaseParagraphStyle(
@@ -338,10 +280,7 @@ struct TypographyApplier: TypographyApplying {
         style.hyphenationFactor = hyphenationFactor
         style.alignment = alignment
         style.allowsDefaultTighteningForTruncation = false
-
-        // Enable hanging punctuation for cleaner edges.
         style.usesDefaultHyphenation = hyphenationFactor > 0
-
         return style
     }
 
@@ -356,13 +295,16 @@ struct TypographyApplier: TypographyApplying {
         let nestingFactor = min(1.6, 1.0 + CGFloat(max(0, depth - 1)) * 0.2)
         let spacing = baseSpacing * 0.62 * nestingFactor
         let spacingBefore = baseSpacing * 0.42
-        let hyphenationFactor = max(0, request.textSpacing.hyphenationFactor - 0.05)
+        let hyphenationFactor = request.typographyPreferences.hyphenation
+            ? max(0, request.textSpacing.hyphenationFactor - 0.05)
+            : 0
 
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
             paragraphSpacing: spacing,
             paragraphSpacingBefore: spacingBefore,
-            hyphenationFactor: hyphenationFactor
+            hyphenationFactor: hyphenationFactor,
+            alignment: request.typographyPreferences.justification.nsAlignment
         )
 
         let blockquoteIndent: CGFloat = 12 + CGFloat(max(0, depth - 1)) * 10
@@ -376,11 +318,14 @@ struct TypographyApplier: TypographyApplying {
     private func applyParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
         let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
         let spacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let hyphenationFactor = max(0, request.textSpacing.hyphenationFactor - 0.05)
+        let hyphenationFactor = request.typographyPreferences.hyphenation
+            ? max(0, request.textSpacing.hyphenationFactor - 0.05)
+            : 0
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
             paragraphSpacing: spacing,
-            hyphenationFactor: hyphenationFactor
+            hyphenationFactor: hyphenationFactor,
+            alignment: request.typographyPreferences.justification.nsAlignment
         )
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
@@ -392,7 +337,8 @@ struct TypographyApplier: TypographyApplying {
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
             paragraphSpacing: spacing,
-            hyphenationFactor: 0
+            hyphenationFactor: 0,
+            alignment: request.typographyPreferences.justification.nsAlignment
         )
 
         let listIndent: CGFloat = 24
@@ -415,7 +361,8 @@ struct TypographyApplier: TypographyApplying {
             lineSpacing: lineSpacing,
             paragraphSpacing: cellSpacing,
             paragraphSpacingBefore: cellSpacing * 0.5,
-            hyphenationFactor: 0
+            hyphenationFactor: 0,
+            alignment: request.typographyPreferences.justification.nsAlignment
         )
 
         let tableInset: CGFloat = 16
@@ -491,7 +438,8 @@ struct TypographyApplier: TypographyApplying {
             lineSpacing: lineSpacing,
             paragraphSpacing: spacing,
             paragraphSpacingBefore: spacingBefore,
-            hyphenationFactor: 0
+            hyphenationFactor: 0,
+            alignment: request.typographyPreferences.justification.nsAlignment
         )
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
@@ -519,7 +467,8 @@ struct TypographyApplier: TypographyApplying {
         let style = createBaseParagraphStyle(
             lineSpacing: lineSpacing,
             paragraphSpacing: spacing,
-            hyphenationFactor: 0
+            hyphenationFactor: 0,
+            alignment: .left
         )
 
         if hasLineNumbers {
@@ -595,9 +544,13 @@ struct TypographyApplier: TypographyApplying {
 
         let hrFont = NSFont.systemFont(ofSize: 6, weight: .regular)
         var insertAfter: [Int] = []
+        insertAfter.reserveCapacity(8)
 
+        // Cache NSString to avoid repeated conversions
+        let nsText = text.string as NSString
         var i = fullRange.location
         let end = NSMaxRange(fullRange)
+
         while i < end {
             var effectiveRange = NSRange(location: i, length: 1)
             let intent = text.attribute(
@@ -618,11 +571,8 @@ struct TypographyApplier: TypographyApplying {
                 text.addAttribute(.paragraphStyle, value: hrStyle, range: range)
                 text.addAttribute(.font, value: hrFont, range: range)
 
-                if rangeEnd < end {
-                    let nextChar = (text.string as NSString).character(at: rangeEnd)
-                    if nextChar != unichar(0x000A) {
-                        insertAfter.append(rangeEnd)
-                    }
+                if rangeEnd < end, nsText.character(at: rangeEnd) != unichar(0x000A) {
+                    insertAfter.append(rangeEnd)
                 }
             }
 
@@ -648,6 +598,7 @@ struct TypographyApplier: TypographyApplying {
     ) {
         let font = request.readerFontFamily.nsFont(size: request.readerFontSize)
         var insertions: [(location: Int, marker: String)] = []
+        insertions.reserveCapacity(32)
 
         text.enumerateAttribute(
             MarkdownRenderAttribute.presentationIntent,
@@ -725,8 +676,11 @@ struct TypographyApplier: TypographyApplying {
         let usableWidth = request.readableWidth - tableInset * 2
         let colWidth = max(90, usableWidth * 0.20) - 4
         let attrs: [NSAttributedString.Key: Any] = [.font: bodyFont]
+
+        // Cache NSString to avoid repeated conversions
         let nsString = text.string as NSString
         var mutations: [(substringRange: NSRange, replacement: String)] = []
+        mutations.reserveCapacity(16)
 
         nsString.enumerateSubstrings(
             in: NSRange(location: 0, length: text.length),
@@ -738,6 +692,7 @@ struct TypographyApplier: TypographyApplying {
             guard segments.count > 1 else { return }
 
             var newSegments: [String] = []
+            newSegments.reserveCapacity(segments.count)
             var changed = false
 
             for (idx, segment) in segments.enumerated() {
@@ -803,6 +758,7 @@ struct TypographyApplier: TypographyApplying {
         palette: NativeThemePalette,
         request: RenderRequest
     ) {
+        // Cache NSString conversion
         let nsString = text.string as NSString
         let fullRange = NSRange(location: 0, length: text.length)
         guard let regex = Self.taskListRegex else { return }

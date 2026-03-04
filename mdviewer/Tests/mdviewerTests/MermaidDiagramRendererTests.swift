@@ -40,7 +40,8 @@
                         colorScheme: scheme,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
             }

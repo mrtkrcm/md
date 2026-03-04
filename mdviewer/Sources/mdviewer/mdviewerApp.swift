@@ -15,11 +15,16 @@ struct mdviewerApp: App {
         @FocusedValue(\.editorActions) private var focusedEditorActions
     #endif
 
+    @State private var showingKeybindings = false
+
     var body: some Scene {
         DocumentGroup(newDocument: MarkdownDocument()) { file in
             ContentView(document: file.$document, fileURL: file.fileURL)
                 .frame(minWidth: 600, minHeight: 400)
                 .environment(\.preferences, AppPreferences.shared)
+                .sheet(isPresented: $showingKeybindings) {
+                    KeybindingsView()
+                }
         }
         .defaultSize(width: 900, height: 700)
         #if os(macOS)
@@ -77,22 +82,23 @@ struct mdviewerApp: App {
 
                     Divider()
 
-                    Button("Zoom In") {
-                        AppPreferences.shared.increaseFontSize()
-                    }
-                    .keyboardShortcut("=", modifiers: [.command])
-                    .disabled(!AppPreferences.shared.canIncreaseFontSize)
+                    // Zoom controls - using explicit key equivalents
+                    Group {
+                        Button("Zoom In") {
+                            AppPreferences.shared.increaseFontSize()
+                        }
+                        .keyboardShortcut(KeyboardShortcut("=", modifiers: .command))
 
-                    Button("Zoom Out") {
-                        AppPreferences.shared.decreaseFontSize()
-                    }
-                    .keyboardShortcut("-", modifiers: [.command])
-                    .disabled(!AppPreferences.shared.canDecreaseFontSize)
+                        Button("Zoom Out") {
+                            AppPreferences.shared.decreaseFontSize()
+                        }
+                        .keyboardShortcut(KeyboardShortcut("-", modifiers: .command))
 
-                    Button("Reset Zoom") {
-                        AppPreferences.shared.resetFontSize()
+                        Button("Reset Zoom") {
+                            AppPreferences.shared.resetFontSize()
+                        }
+                        .keyboardShortcut(KeyboardShortcut("0", modifiers: .command))
                     }
-                    .keyboardShortcut("0", modifiers: [.command])
 
                     Divider()
 
@@ -100,6 +106,14 @@ struct mdviewerApp: App {
                         sendEditorAction(\.showAppearanceSettings)
                     }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
+                }
+
+                // Help Menu with keybindings
+                CommandMenu("Help") {
+                    Button("Keyboard Shortcuts") {
+                        showingKeybindings = true
+                    }
+                    .keyboardShortcut("/", modifiers: .command)
                 }
 
                 // Window Menu - Tabbing and Full Screen
@@ -122,6 +136,11 @@ struct mdviewerApp: App {
                         NSApplication.shared.keyWindow?.toggleFullScreen(nil)
                     }
                     .keyboardShortcut("f", modifiers: [.command, .control])
+                }
+
+                // Replace standard zoom with our custom implementation
+                CommandGroup(replacing: .textFormatting) {
+                    // Empty - we handle zoom in View menu
                 }
             }
         #endif

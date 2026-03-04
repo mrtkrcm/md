@@ -53,7 +53,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 let rhs = RenderRequest(
                     markdown: "```swift\nlet x = 1\n```",
@@ -65,7 +66,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
                 let changed = RenderRequest(
                     markdown: "```swift\nlet x = 2\n```",
@@ -77,7 +79,8 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 XCTAssertEqual(lhs.cacheKey, rhs.cacheKey)
@@ -104,7 +107,8 @@
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
 
@@ -139,7 +143,8 @@
                     colorScheme: .dark,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
-                    showLineNumbers: false
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
                 )
 
                 var outputs = [String]()
@@ -202,7 +207,8 @@
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
 
@@ -250,7 +256,8 @@
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
 
@@ -299,7 +306,8 @@
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
 
@@ -342,7 +350,8 @@
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
 
@@ -384,7 +393,8 @@
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
-                        showLineNumbers: false
+                        showLineNumbers: false,
+                        typographyPreferences: TypographyPreferences()
                     )
                 ).attributedString
 

@@ -78,7 +78,7 @@ private final class FolderViewModel: ObservableObject {
             // Perform scan
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
-                    try scanFolderItems(at: folderURL, limit: maxFolderItems)
+                    try await scanFolderItems(at: folderURL, limit: maxFolderItems)
                 }.value
                 items = result.items
                 didReachItemLimit = result.didReachLimit
@@ -329,12 +329,11 @@ private struct FolderScanResult: Sendable {
 
 private let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "text", "txt"]
 
-private func scanFolderItems(at folderURL: URL, limit: Int) throws -> FolderScanResult {
+private func scanFolderItems(at folderURL: URL, limit: Int) async throws -> FolderScanResult {
     let fileManager = FileManager.default
 
     // First, find all folders that contain markdown files
-    var foldersWithMarkdown: Set<URL> = []
-    var allMarkdownFiles: [FolderItem] = []
+    var allMarkdownFiles: [URL] = []
 
     // Use enumerator to scan the entire directory tree
     guard
@@ -349,6 +348,8 @@ private func scanFolderItems(at folderURL: URL, limit: Int) throws -> FolderScan
     }
 
     // Collect all markdown files and track which folders contain them
+    // Use resource values from enumerator to avoid additional lookups
+    var folderDepths: [URL: Int] = [:] // Track which folders contain markdown and their depth
     while let url = enumerator.nextObject() as? URL {
         let ext = url.pathExtension.lowercased()
 
@@ -357,45 +358,118 @@ private func scanFolderItems(at folderURL: URL, limit: Int) throws -> FolderScan
             continue
         }
 
-        // Create FolderItem for the file
-        if let item = FolderItem(url: url), !item.isDirectory {
-            allMarkdownFiles.append(item)
+        // Get resource values that were already fetched by enumerator
+        guard
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]),
+            let isDir = values.isDirectory
+        else {
+            continue
+        }
+
+        let isPackage = values.isPackage ?? false
+
+        // Skip packages and non-markdown files
+        if isDir, !isPackage {
+            // This is a directory, skip it
+            continue
+        }
+        if !isDir {
+            // This is a markdown file
+            allMarkdownFiles.append(url)
 
             // Mark all parent directories up to the root folder
+            // Use a more efficient approach by calculating depth once
             var currentURL = url.deletingLastPathComponent()
+            var depth = 1
             while currentURL.path.hasPrefix(folderURL.path), currentURL != folderURL {
-                foldersWithMarkdown.insert(currentURL)
+                folderDepths[currentURL] = max(folderDepths[currentURL] ?? 0, depth)
                 currentURL = currentURL.deletingLastPathComponent()
+                depth += 1
             }
         }
     }
 
-    // Create folder items for folders that contain markdown
-    var folderItems: [FolderItem] = []
-    for folderURL in foldersWithMarkdown.sorted(by: { $0.path < $1.path }) {
-        if let folderItem = FolderItem(url: folderURL) {
-            folderItems.append(folderItem)
+    // Extract folders that contain markdown, sorted by depth then name
+    let sortedFolders = folderDepths.keys.sorted { lhs, rhs in
+        let lhsDepth = folderDepths[lhs] ?? 0
+        let rhsDepth = folderDepths[rhs] ?? 0
+        if lhsDepth != rhsDepth {
+            return lhsDepth < rhsDepth // shallower folders first
+        }
+        return lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
+    }
+
+    // Build final sorted result incrementally to avoid final sort
+    var resultItems: [FolderItem] = []
+    resultItems.reserveCapacity(min(sortedFolders.count + allMarkdownFiles.count, limit))
+
+    // Add folders first (already sorted) - process concurrently for better performance
+    let folderItems = await withTaskGroup(of: FolderItem?.self) { group in
+        for folderURL in sortedFolders {
+            group.addTask {
+                FolderItem(url: folderURL)
+            }
+        }
+
+        var items: [FolderItem] = []
+        for await item in group {
+            if let item {
+                items.append(item)
+            }
+        }
+        return items
+    }
+
+    // Add folders to result (already properly sorted)
+    for folderItem in folderItems {
+        resultItems.append(folderItem)
+
+        // Check limit
+        if resultItems.count >= limit {
+            return FolderScanResult(
+                items: Array(resultItems.prefix(limit)),
+                didReachLimit: true
+            )
         }
     }
 
-    // Combine folders and files, with folders first
-    var allItems = folderItems + allMarkdownFiles
-
-    // Sort: folders first (alphabetically), then files (alphabetically)
-    allItems.sort { lhs, rhs in
-        if lhs.isDirectory != rhs.isDirectory {
-            return lhs.isDirectory && !rhs.isDirectory
-        }
-        return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+    // Add files in sorted order - process concurrently
+    let sortedFiles = allMarkdownFiles.sorted { lhs, rhs in
+        lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
     }
 
-    // Apply the limit
-    let didReachLimit = allItems.count > limit
-    let finalItems = Array(allItems.prefix(limit))
+    let fileItems = await withTaskGroup(of: FolderItem?.self) { group in
+        for url in sortedFiles {
+            group.addTask {
+                FolderItem(url: url)
+            }
+        }
+
+        var items: [FolderItem] = []
+        for await item in group {
+            if let item {
+                items.append(item)
+            }
+        }
+        return items
+    }
+
+    // Add files to result
+    for fileItem in fileItems {
+        resultItems.append(fileItem)
+
+        // Check limit
+        if resultItems.count >= limit {
+            return FolderScanResult(
+                items: Array(resultItems.prefix(limit)),
+                didReachLimit: true
+            )
+        }
+    }
 
     return FolderScanResult(
-        items: finalItems,
-        didReachLimit: didReachLimit
+        items: resultItems,
+        didReachLimit: false
     )
 }
 

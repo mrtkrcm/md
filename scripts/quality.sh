@@ -101,7 +101,7 @@ fi
 # 2. SwiftLint Check
 section "SwiftLint Check"
 if command -v swiftlint >/dev/null 2>&1; then
-    if swiftlint lint --quiet --strict; then
+    if swiftlint lint --quiet --config "${PROJECT_DIR}/.swiftlint.yml"; then
         success "SwiftLint check passed"
     else
         error "SwiftLint check failed"

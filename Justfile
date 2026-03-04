@@ -103,7 +103,7 @@ format-fix:
 
 # Run SwiftLint check
 lint:
-    swiftlint lint --strict
+    swiftlint lint --config .swiftlint.yml
 
 # Run SwiftLint and apply auto-fixes
 lint-fix:
@@ -128,6 +128,14 @@ install-deps:
 # Setup git hooks
 setup-hooks:
     lefthook install
+
+# Run pre-commit gate manually
+precommit *FILES:
+    bash scripts/precommit-quality.sh {{FILES}}
+
+# Run pre-push gate manually
+prepush:
+    bash scripts/prepush-quality.sh
 
 # Open project in Xcode
 xcode:

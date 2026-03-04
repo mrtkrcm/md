@@ -6,6 +6,38 @@
 internal import AppKit
 internal import SwiftUI
 
+// MARK: - Palette Cache
+
+/// Thread-safe cache for theme palettes using dispatch queue for synchronization.
+/// Palettes are immutable value types keyed by (theme, colorScheme).
+private final class PaletteCache: @unchecked Sendable {
+    static let shared = PaletteCache()
+    private var cache: [String: NativeThemePalette] = [:]
+    private let queue = DispatchQueue(label: "com.mdviewer.paletteCache", attributes: .concurrent)
+
+    func palette(for theme: AppTheme, scheme: ColorScheme) -> NativeThemePalette {
+        let key = "\(theme.rawValue)_\(scheme)"
+
+        // Fast path: concurrent read
+        if let cached = queue.sync(execute: { cache[key] }) {
+            return cached
+        }
+
+        // Slow path: create with barrier write
+        let palette = NativeThemePalette(theme: theme, scheme: scheme)
+        queue.async(flags: .barrier) { [weak self] in
+            self?.cache[key] = palette
+        }
+        return palette
+    }
+
+    func clear() {
+        queue.async(flags: .barrier) { [weak self] in
+            self?.cache.removeAll()
+        }
+    }
+}
+
 // MARK: - Native Theme Palette
 
 /// Color palette for rendering Markdown in the native NSTextView.
@@ -16,6 +48,14 @@ struct NativeThemePalette {
 
     let theme: AppTheme
     let scheme: ColorScheme
+
+    // MARK: - Cached Factory
+
+    /// Returns a cached palette for the given theme and scheme.
+    /// Uses a thread-safe cache to avoid recreating palettes on every render.
+    static func cached(theme: AppTheme, scheme: ColorScheme) -> NativeThemePalette {
+        PaletteCache.shared.palette(for: theme, scheme: scheme)
+    }
 
     // MARK: - Text Colors
 

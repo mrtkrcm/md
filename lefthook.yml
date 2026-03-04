@@ -3,26 +3,17 @@
 
 # Pre-commit hooks
 pre-commit:
-  parallel: true
+  parallel: false
   commands:
-    swiftformat:
-      glob: "*.swift"
-      run: scripts/format-check.sh {staged_files}
-    swiftlint:
-      glob: "*.swift"
-      run: swiftlint lint --strict {staged_files}
-    swift-build:
-      glob: "*.swift"
-      run: cd mdviewer && swift build 2>&1 | head -20
+    quality-staged:
+      run: bash scripts/precommit-quality.sh {staged_files}
 
 # Pre-push hooks
 pre-push:
-  parallel: true
+  parallel: false
   commands:
-    test:
-      run: cd mdviewer && swift test 2>&1 | tail -30
     quality:
-      run: scripts/quality.sh --quick
+      run: bash scripts/prepush-quality.sh
 
 # Commit message validation
 commit-msg:

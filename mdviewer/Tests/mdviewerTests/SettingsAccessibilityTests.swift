@@ -30,9 +30,9 @@
                     "Appearance Mode",
                     "Default View Mode",
                     "Reader Theme",
-                    "Reader Font",
-                    "Reader Text Size",
-                    "Reader Text Spacing",
+                    "Reader Font Family",
+                    "Reader Font Size",
+                    "Reader Line Spacing",
                     "Reader Column Width",
                     "Syntax Highlighting Palette",
                     "Code Font Size",
@@ -49,9 +49,11 @@
             @MainActor
             func testSettingsSectionHeaders() {
                 let sectionTitles = [
-                    "Appearance",
-                    "Markdown",
-                    "Syntax Highlighting",
+                    "General",
+                    "Typography",
+                    "Reading",
+                    "Code",
+                    "System",
                 ]
 
                 for title in sectionTitles {

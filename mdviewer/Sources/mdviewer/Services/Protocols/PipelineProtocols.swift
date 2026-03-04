@@ -44,7 +44,7 @@ protocol MarkdownParsing {
 /// Protocol for typography application.
 ///
 /// Implementations apply font, spacing, and color styling to parsed Markdown.
-protocol TypographyApplying {
+protocol TypographyApplying: Sendable {
     /// Applies typography styling to text.
     ///
     /// - Parameters:

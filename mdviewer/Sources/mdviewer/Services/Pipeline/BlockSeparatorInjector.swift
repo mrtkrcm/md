@@ -139,12 +139,14 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
             guard let intent = value as? PresentationIntent else { return }
 
             var listItemIdentity: Int?
+            var listItemOrdinal: Int?
             var listDepth = 0
             var listKindSignature = ""
             for component in intent.components {
                 switch component.kind {
-                case .listItem:
+                case .listItem(let ordinal):
                     listItemIdentity = component.identity
+                    listItemOrdinal = ordinal
 
                 case .unorderedList:
                     listDepth += 1
@@ -160,7 +162,11 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
             }
 
             if let listItemIdentity, listDepth > 0 {
-                let signature = "listItem-\(listItemIdentity)-d\(listDepth)-\(listKindSignature)"
+                // Include range location to ensure each list item has a unique signature.
+                // The parser may reuse identity/ordinal for nested items at the same level,
+                // so we need the location to distinguish them.
+                let listOrdinal = listItemOrdinal ?? 0
+                let signature = "listItem-\(listItemIdentity)-ord\(listOrdinal)-d\(listDepth)-\(listKindSignature)-loc\(range.location)"
                 blockRuns.append(BlockRun(range: range, blockSignature: signature))
                 return
             }

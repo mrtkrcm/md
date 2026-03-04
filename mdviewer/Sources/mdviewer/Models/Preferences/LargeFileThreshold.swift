@@ -10,12 +10,12 @@ internal import Foundation
 /// Represents the threshold at which to show large file warnings.
 /// Users can configure this based on their system performance and preferences.
 enum LargeFileThreshold: Int, CaseIterable, Identifiable, Codable {
-    case never = 0            // Never show warnings
-    case kb500 = 512_000       // 500 KB
-    case mb1 = 1_048_576       // 1 MB (default)
-    case mb2 = 2_097_152       // 2 MB
-    case mb5 = 5_242_880       // 5 MB
-    case mb10 = 10_485_760     // 10 MB
+    case never = 0 // Never show warnings
+    case kb500 = 512_000 // 500 KB
+    case mb1 = 1_048_576 // 1 MB (default)
+    case mb2 = 2_097_152 // 2 MB
+    case mb5 = 5_242_880 // 5 MB
+    case mb10 = 10_485_760 // 10 MB
 
     var id: Int { rawValue }
 

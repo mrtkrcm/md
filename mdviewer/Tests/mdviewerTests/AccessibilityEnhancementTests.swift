@@ -199,7 +199,7 @@
 
             @MainActor
             func testContentViewAccessibility() {
-                let view = ContentView(document: .constant(MarkdownDocument()))
+                let view = ContentView(document: .constant(MarkdownDocument()), fileURL: nil)
 
                 XCTAssertNotNil(view)
             }

@@ -163,7 +163,7 @@
 
             @MainActor
             func testContentViewHasAccessibilityConfiguration() {
-                let view = ContentView(document: .constant(MarkdownDocument()))
+                let view = ContentView(document: .constant(MarkdownDocument()), fileURL: nil)
                 XCTAssertNotNil(view)
             }
 
@@ -208,9 +208,10 @@
                     readerMode: .constant(.rendered),
                     showAppearancePopover: .constant(false),
                     showMetadataInspector: .constant(false),
-                    openAction: {},
+                    sidebarMode: .constant(.metadata),
                     documentText: "test content",
-                    hasFrontmatter: true
+                    hasFrontmatter: true,
+                    fileURL: nil
                 )
 
                 XCTAssertNotNil(toolbar)

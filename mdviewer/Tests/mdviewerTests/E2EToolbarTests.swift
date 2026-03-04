@@ -30,9 +30,10 @@
                     readerMode: .constant(.rendered),
                     showAppearancePopover: .constant(false),
                     showMetadataInspector: .constant(false),
-                    openAction: {},
+                    sidebarMode: .constant(.metadata),
                     documentText: "test",
-                    hasFrontmatter: true
+                    hasFrontmatter: true,
+                    fileURL: nil
                 )
 
                 // Verify toolbar content can be created without crashing
@@ -43,7 +44,7 @@
             @MainActor
             func testToolbarItemsHaveCorrectIdentifiers() {
                 // Verify toolbar item IDs are stable for state restoration
-                let ids = ["mode", "inspector", "appearance", "share", "open"]
+                let ids = ["mode", "inspector", "appearance", "share"]
                 let uniqueIds = Set(ids)
                 XCTAssertEqual(ids.count, uniqueIds.count, "Toolbar item IDs must be unique")
             }
@@ -66,7 +67,7 @@
             @MainActor
             func testToolbarButtonsUseSFSymbols() {
                 // Verify all toolbar icons use valid SF Symbol names
-                let symbols = ["sidebar.right", "paintbrush", "square.and.arrow.up", "folder"]
+                let symbols = ["sidebar.right", "paintbrush", "square.and.arrow.up"]
                 for symbol in symbols {
                     let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
                     XCTAssertNotNil(image, "SF Symbol '\(symbol)' should be available")
@@ -80,6 +81,7 @@
                 let readerMode = StateBox(ReaderMode.rendered)
                 let showPopover = StateBox(false)
                 let showInspector = StateBox(false)
+                let sidebarMode = StateBox(SidebarMode.metadata)
 
                 let bindingMode = Binding(
                     get: { readerMode.value },
@@ -93,14 +95,19 @@
                     get: { showInspector.value },
                     set: { showInspector.value = $0 }
                 )
+                let bindingSidebarMode = Binding(
+                    get: { sidebarMode.value },
+                    set: { sidebarMode.value = $0 }
+                )
 
                 let view = ContentToolbar(
                     readerMode: bindingMode,
                     showAppearancePopover: bindingPopover,
                     showMetadataInspector: bindingInspector,
-                    openAction: {},
+                    sidebarMode: bindingSidebarMode,
                     documentText: "test",
-                    hasFrontmatter: true
+                    hasFrontmatter: true,
+                    fileURL: nil
                 )
 
                 XCTAssertNotNil(view)

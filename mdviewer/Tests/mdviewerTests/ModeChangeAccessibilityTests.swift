@@ -92,7 +92,7 @@
             @MainActor
             func testContentViewHasModeChangeHandler() {
                 // Verify ContentView has the onChange handler for windowReaderMode
-                let view = ContentView(document: .constant(MarkdownDocument()))
+                let view = ContentView(document: .constant(MarkdownDocument()), fileURL: nil)
                 XCTAssertNotNil(view)
             }
 

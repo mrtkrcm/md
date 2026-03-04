@@ -84,6 +84,8 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         definition: LanguageDefinition,
         syntax: NativeSyntaxStyle
     ) {
+        let sourceText = text.string
+
         // NSMutableIndexSet gives O(log n) intersection tests vs the previous O(n)
         // linear scan over a [NSRange] array. For a 500-line file with 200+ matches
         // this drops highlighting from ~O(n²) to ~O(n log n).
@@ -94,6 +96,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             for: definition.patterns.strings,
             in: text,
             range: range,
+            sourceText: sourceText,
             color: syntax.string,
             protectedIndices: protectedIndices
         )
@@ -102,6 +105,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             for: definition.patterns.blockComments,
             in: text,
             range: range,
+            sourceText: sourceText,
             color: syntax.comment,
             protectedIndices: protectedIndices
         )
@@ -110,6 +114,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             for: definition.patterns.lineComments,
             in: text,
             range: range,
+            sourceText: sourceText,
             color: syntax.comment,
             protectedIndices: protectedIndices
         )
@@ -118,6 +123,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             for: definition.patterns.keywords,
             in: text,
             range: range,
+            sourceText: sourceText,
             color: syntax.keyword,
             protectedIndices: protectedIndices,
             skipProtected: true
@@ -127,6 +133,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             for: definition.patterns.numbers,
             in: text,
             range: range,
+            sourceText: sourceText,
             color: syntax.number,
             protectedIndices: protectedIndices,
             skipProtected: true
@@ -136,6 +143,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             for: definition.patterns.types,
             in: text,
             range: range,
+            sourceText: sourceText,
             color: syntax.type,
             protectedIndices: protectedIndices,
             skipProtected: true
@@ -145,6 +153,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             for: definition.patterns.calls,
             in: text,
             range: range,
+            sourceText: sourceText,
             color: syntax.call,
             protectedIndices: protectedIndices,
             skipProtected: true
@@ -155,6 +164,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
             for: definition.patterns.properties,
             in: text,
             range: range,
+            sourceText: sourceText,
             color: syntax.call,
             protectedIndices: protectedIndices,
             skipProtected: true
@@ -165,13 +175,14 @@ struct SyntaxHighlighter: SyntaxHighlighting {
         for pattern: NSRegularExpression?,
         in text: NSMutableAttributedString,
         range: NSRange,
+        sourceText: String,
         color: NSColor,
         protectedIndices: NSMutableIndexSet,
         skipProtected: Bool = false
     ) {
         guard let pattern else { return }
 
-        pattern.enumerateMatches(in: text.string, options: [], range: range) { match, _, _ in
+        pattern.enumerateMatches(in: sourceText, options: [], range: range) { match, _, _ in
             guard let match else { return }
 
             let matchRange = match.range

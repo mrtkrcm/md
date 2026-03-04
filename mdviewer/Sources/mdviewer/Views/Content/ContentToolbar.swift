@@ -20,9 +20,10 @@ struct ContentToolbar: ToolbarContent {
     @Binding var readerMode: ReaderMode
     @Binding var showAppearancePopover: Bool
     @Binding var showMetadataInspector: Bool
-    let openAction: () -> Void
+    @Binding var sidebarMode: SidebarMode
     let documentText: String
     let hasFrontmatter: Bool
+    let fileURL: URL?
 
     var body: some ToolbarContent {
         // Centered mode switcher - native NSSegmentedControl style
@@ -49,16 +50,22 @@ struct ContentToolbar: ToolbarContent {
         ToolbarItem(id: "inspector", placement: .automatic) {
             Button {
                 toolbarSignposter.emitEvent("InspectorToggleTapped")
+                if !showMetadataInspector {
+                    if sidebarMode == .folder, fileURL == nil, hasFrontmatter {
+                        sidebarMode = .metadata
+                    } else if sidebarMode == .metadata, !hasFrontmatter, fileURL != nil {
+                        sidebarMode = .folder
+                    }
+                }
                 showMetadataInspector.toggle()
             } label: {
                 Image(systemName: "sidebar.right")
             }
-            .help(hasFrontmatter ? "Toggle Metadata Panel" : "No metadata available")
-            .disabled(!hasFrontmatter)
-            .opacity(hasFrontmatter ? 1.0 : 0.5)
-            .accessibilityLabel("Metadata Inspector")
-            .accessibilityHint(hasFrontmatter ? "Show or hide document metadata panel" :
-                "No metadata available in this document")
+            .help(sidebarHelpText)
+            .disabled(!canShowSidebar)
+            .opacity(canShowSidebar ? 1.0 : 0.5)
+            .accessibilityLabel("Inspector")
+            .accessibilityHint(sidebarAccessibilityHint)
             .accessibilityValue(showMetadataInspector ? "Visible" : "Hidden")
         }
 
@@ -81,16 +88,28 @@ struct ContentToolbar: ToolbarContent {
             .accessibilityLabel("Share Document")
             .accessibilityHint("Share the document text")
         }
+    }
 
-        ToolbarItem(id: "open", placement: .automatic) {
-            Button {
-                openAction()
-            } label: {
-                Image(systemName: "folder")
-            }
-            .help("Open markdown file")
-            .accessibilityLabel("Open File")
-            .accessibilityHint("Open a markdown file from disk")
+    // MARK: - Helpers
+
+    private var canShowSidebar: Bool {
+        hasFrontmatter || fileURL != nil
+    }
+
+    private var sidebarHelpText: String {
+        if !canShowSidebar {
+            return "No metadata or folder available"
         }
+        if showMetadataInspector {
+            return "Hide Sidebar"
+        }
+        return "Show Sidebar"
+    }
+
+    private var sidebarAccessibilityHint: String {
+        if !canShowSidebar {
+            return "No metadata or folder information available"
+        }
+        return "Show or hide the sidebar panel"
     }
 }

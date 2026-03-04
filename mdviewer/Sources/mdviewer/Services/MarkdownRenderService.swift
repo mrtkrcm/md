@@ -187,27 +187,10 @@ internal import SwiftUI
         private func applyCodeStyling(_ text: NSMutableAttributedString, request: RenderRequest) {
             let syntax = request.syntaxPalette.nativeSyntax
             let fullRange = NSRange(location: 0, length: text.length)
-
-            // Collect code block ranges first
-            var codeBlockRanges: [NSRange] = []
-            text.enumerateAttribute(
-                MarkdownRenderAttribute.presentationIntent,
-                in: fullRange,
-                options: []
-            ) { value, range, _ in
-                guard let intent = value as? PresentationIntent else { return }
-
-                for component in intent.components {
-                    if case .codeBlock = component.kind {
-                        codeBlockRanges.append(range)
-                    }
-                }
-            }
-
-            // Apply highlighting to collected ranges
-            for range in codeBlockRanges {
-                syntaxHighlighter.highlight(text, in: range, syntax: syntax)
-            }
+            // SyntaxHighlighter already discovers code block subranges (and languages) from
+            // presentation intents. Calling it once over the full text avoids a redundant
+            // pre-scan and temporary range allocation on every render.
+            syntaxHighlighter.highlight(text, in: fullRange, syntax: syntax)
         }
 
         // MARK: - Testing Support

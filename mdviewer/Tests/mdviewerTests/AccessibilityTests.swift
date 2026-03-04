@@ -22,9 +22,10 @@
                     readerMode: .constant(.rendered),
                     showAppearancePopover: .constant(false),
                     showMetadataInspector: .constant(false),
-                    openAction: {},
+                    sidebarMode: .constant(.metadata),
                     documentText: "test",
-                    hasFrontmatter: true
+                    hasFrontmatter: true,
+                    fileURL: nil
                 )
 
                 // Verify toolbar can be created

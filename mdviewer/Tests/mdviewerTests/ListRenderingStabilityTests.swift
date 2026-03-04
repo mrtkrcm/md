@@ -305,7 +305,7 @@
                         // The character must not be "." (end of an ordinal "N.").
                         XCTAssertNotEqual(
                             ch,
-                            unichar((".").unicodeScalars.first!.value),
+                            unichar(".".unicodeScalars.first!.value),
                             "Code block line '\(codeLine)' must not be preceded by an ordinal marker"
                         )
                         break

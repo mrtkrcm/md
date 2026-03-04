@@ -5,6 +5,7 @@
 //  Main content container that composes reader, editor, and toolbar views.
 //
 
+internal import Foundation
 internal import OSLog
 internal import SwiftUI
 #if os(macOS)
@@ -19,10 +20,17 @@ private let uiPerformanceLog = OSSignposter(subsystem: "mdviewer", category: "UI
 
 // MARK: - Content View
 
+/// Sidebar content mode.
+enum SidebarMode: String, CaseIterable {
+    case metadata = "metadata_view"
+    case folder = "folder_view"
+}
+
 /// Main content view that coordinates document display, editing, and toolbar.
 @MainActor
 struct ContentView: View {
     @Binding var document: MarkdownDocument
+    let fileURL: URL?
 
     @Environment(\.preferences) private var preferences
     @Environment(\.openDocument) private var openDocument
@@ -33,6 +41,7 @@ struct ContentView: View {
     @State private var showStartupWelcome = true
     @State private var openErrorMessage: String?
     @State private var showMetadataInspector = false
+    @State private var sidebarMode: SidebarMode = .folder
     @State private var showAppearancePopover = false
     @State private var sidebarWidth: CGFloat = 260
     @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
@@ -91,9 +100,16 @@ struct ContentView: View {
 
                 // Custom sidebar - replaces .inspector for better performance
                 if showMetadataInspector {
-                    InspectorSidebar(frontmatter: parsed.frontmatter, isPresented: $showMetadataInspector)
-                        .frame(width: sidebarWidth)
-                        .accessibleTransition(from: .trailing, reduceMotion: reduceMotion)
+                    InspectorSidebar(
+                        frontmatter: parsed.frontmatter,
+                        documentText: document.text,
+                        isPresented: $showMetadataInspector,
+                        sidebarMode: $sidebarMode,
+                        fileURL: fileURL,
+                        onOpenFile: openFileInCurrentWindow
+                    )
+                    .frame(width: sidebarWidth)
+                    .accessibleTransition(from: .trailing, reduceMotion: reduceMotion)
                 }
             }
         }
@@ -106,9 +122,10 @@ struct ContentView: View {
                 readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
                 showAppearancePopover: $showAppearancePopover,
                 showMetadataInspector: $showMetadataInspector,
-                openAction: documentOps.openFromDisk,
+                sidebarMode: $sidebarMode,
                 documentText: document.text,
-                hasFrontmatter: parsed.frontmatter != nil
+                hasFrontmatter: parsed.frontmatter != nil,
+                fileURL: fileURL
             )
         }
         .focusedSceneValue(\.editorActions, editorActions)
@@ -135,6 +152,48 @@ struct ContentView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(openErrorMessage ?? "An unexpected error occurred while opening the document.")
+        }
+    }
+
+    // MARK: - File Opening
+
+    /// Opens a file in the current window by replacing document content.
+    private func openFileInCurrentWindow(url: URL) {
+        Task { @MainActor in
+            do {
+                // Check file size
+                guard url.path != fileURL?.path else {
+                    // Already open
+                    return
+                }
+
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let fileSize = attributes[.size] as? Int64 ?? 0
+
+                guard fileSize <= MarkdownDocument.maxReadableFileSizeBytes else {
+                    openErrorMessage = "File is too large to open (\(fileSize) bytes)."
+                    return
+                }
+
+                // Read file content
+                let data = try Data(contentsOf: url)
+                guard let text = MarkdownDocument.decode(data: data) else {
+                    openErrorMessage = "Unable to decode file content."
+                    return
+                }
+
+                // Update document content directly
+                document.text = text
+                showStartupWelcome = false
+
+                // Update window title via NSDocumentController
+                NSDocumentController.shared.openDocument(withContentsOf: url, display: false) { _, _, _ in
+                    // Document is now associated with this window
+                }
+            } catch {
+                logger.error("Failed to open file: \(error.localizedDescription)")
+                openErrorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -288,53 +347,90 @@ private struct AppearancePopover: View {
     }
 }
 
-/// Unified inspector sidebar that handles both empty and populated states.
+/// Unified inspector sidebar that handles metadata and folder views.
 /// Uses static content rendering for immediate appearance.
 private struct InspectorSidebar: View {
     let frontmatter: Frontmatter?
+    let documentText: String
     @Binding var isPresented: Bool
+    @Binding var sidebarMode: SidebarMode
+    let fileURL: URL?
+    let onOpenFile: (URL) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
+            // Header with mode picker
             HStack {
-                Text("Metadata")
-                    .font(.headline)
-                    .accessibilityLabel("Document Metadata")
+                Picker("", selection: $sidebarMode) {
+                    Label("Folder", systemImage: "folder")
+                        .tag(SidebarMode.folder)
+                        .accessibilityLabel("Folder View")
+                    Label("Info", systemImage: "info.circle")
+                        .tag(SidebarMode.metadata)
+                        .accessibilityLabel("Metadata View")
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+
                 Spacer()
+
                 Button {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withAnimation(.easeOut(duration: DesignTokens.Animation.normal)) {
                         isPresented = false
                     }
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
                         .accessibilityLabel("Close Inspector")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .accessibilityHint("Close the metadata inspector panel")
+                .accessibilityHint("Close the inspector panel")
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, DesignTokens.Spacing.extraWide)
+            .padding(.vertical, DesignTokens.Spacing.relaxed)
 
             Divider()
 
-            // Content - use static VStack for immediate render
-            if let frontmatter {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(frontmatter.entries, id: \.key) { entry in
-                            MetadataRow(entry: entry)
-                        }
-                    }
-                }
-            } else {
-                EmptyMetadataState()
+            // Content based on mode
+            switch sidebarMode {
+            case .folder:
+                folderContent
+            case .metadata:
+                metadataContent
             }
         }
         .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    @ViewBuilder
+    private var metadataContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if let frontmatter {
+                    ForEach(frontmatter.entries, id: \.key) { entry in
+                        MetadataRow(entry: entry)
+                    }
+                    Divider()
+                        .padding(.vertical, DesignTokens.Spacing.standard)
+                        .padding(.horizontal, DesignTokens.Spacing.extraWide)
+                } else {
+                    EmptyMetadataState()
+                }
+
+                DocumentStatsSection(stats: DocumentStats(documentText: documentText, fileURL: fileURL))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var folderContent: some View {
+        if let fileURL {
+            FolderSidebarView(fileURL: fileURL, onOpenFile: onOpenFile)
+        } else {
+            EmptyFolderState()
+        }
     }
 }
 
@@ -343,18 +439,18 @@ private struct MetadataRow: View {
     let entry: Frontmatter.Entry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.tight) {
             Text(entry.key)
-                .font(.caption)
+                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("\(entry.key) field")
             Text(entry.displayValue)
-                .font(.body)
+                .font(.system(size: DesignTokens.Typography.standard))
                 .textSelection(.enabled)
                 .accessibilityLabel("Value: \(entry.displayValue)")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, DesignTokens.Spacing.extraWide)
+        .padding(.vertical, DesignTokens.Spacing.standard)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(entry.key): \(entry.displayValue)")
     }
@@ -363,8 +459,7 @@ private struct MetadataRow: View {
 /// Empty state for when no frontmatter exists.
 private struct EmptyMetadataState: View {
     var body: some View {
-        VStack(spacing: 12) {
-            Spacer()
+        VStack(spacing: DesignTokens.Spacing.relaxed) {
             Image(systemName: "tag.slash")
                 .font(.system(size: 32))
                 .foregroundStyle(.secondary)
@@ -377,9 +472,151 @@ private struct EmptyMetadataState: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("This document does not contain YAML frontmatter metadata")
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, DesignTokens.Spacing.extraWide)
+        .padding(.vertical, DesignTokens.Spacing.extraLarge)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct DocumentStats {
+    let words: Int
+    let characters: Int
+    let lines: Int
+    let readingTimeMinutes: Int
+    let fileSizeBytes: Int64
+    let lastModified: Date?
+
+    init(documentText: String, fileURL: URL?) {
+        let tokens = documentText.split(whereSeparator: \.isWhitespace)
+        words = tokens.count
+        characters = documentText.count
+        lines = documentText.isEmpty ? 0 : documentText.split(whereSeparator: \.isNewline).count
+        readingTimeMinutes = words > 0 ? max(1, Int(ceil(Double(words) / 200.0))) : 0
+
+        if
+            let fileURL,
+            let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+            let fileSize = attributes[.size] as? NSNumber
+        {
+            fileSizeBytes = fileSize.int64Value
+            lastModified = attributes[.modificationDate] as? Date
+        } else {
+            fileSizeBytes = Int64(documentText.utf8.count)
+            lastModified = nil
+        }
+    }
+}
+
+private struct DocumentStatsSection: View {
+    let stats: DocumentStats
+
+    private static let fileSizeFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        formatter.includesUnit = true
+        return formatter
+    }()
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Document Stats")
+                .font(.system(size: DesignTokens.Typography.standard, weight: .semibold))
+                .padding(.horizontal, DesignTokens.Spacing.extraWide)
+                .padding(.bottom, DesignTokens.Spacing.standard)
+                .accessibilityAddTraits(.isHeader)
+
+            StatsRow(label: "Words", value: "\(stats.words)")
+            StatsRow(label: "Characters", value: "\(stats.characters)")
+            StatsRow(label: "Lines", value: "\(stats.lines)")
+            StatsRow(
+                label: "Reading Time",
+                value: stats.readingTimeMinutes > 0 ? "\(stats.readingTimeMinutes) min" : "—"
+            )
+            StatsRow(label: "File Size", value: Self.fileSizeFormatter.string(fromByteCount: stats.fileSizeBytes))
+            StatsRow(label: "Modified", value: modifiedText, showsDivider: false)
+        }
+        .padding(.bottom, DesignTokens.Spacing.standard)
+    }
+
+    private var modifiedText: String {
+        guard let lastModified = stats.lastModified else { return "—" }
+        return Self.dateFormatter.string(from: lastModified)
+    }
+}
+
+private struct StatsRow: View {
+    let label: String
+    let value: String
+    var showsDivider: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.standard) {
+                    Text(label)
+                        .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: DesignTokens.Spacing.relaxed)
+                    Text(value)
+                        .font(.system(size: DesignTokens.Typography.standard))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
+                }
+
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.tight) {
+                    Text(label)
+                        .font(.system(size: DesignTokens.Typography.caption, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text(value)
+                        .font(.system(size: DesignTokens.Typography.bodySmall))
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                }
+            }
+
+            if showsDivider {
+                Divider()
+            }
+        }
+        .padding(.horizontal, DesignTokens.Spacing.extraWide)
+        .padding(.vertical, DesignTokens.Spacing.standard)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
+    }
+}
+
+/// Empty state for when no file URL is available.
+private struct EmptyFolderState: View {
+    var body: some View {
+        VStack(spacing: DesignTokens.Spacing.relaxed) {
+            Spacer()
+            Image(systemName: "folder.badge.questionmark")
+                .font(.system(size: DesignTokens.Typography.title))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("No folder icon")
+                .accessibilityHidden(true)
+            Text("No Folder")
+                .font(.headline)
+                .accessibilityLabel("No folder available")
+            Text("This document is not saved to a folder")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Document is not saved to a folder")
             Spacer()
         }
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, DesignTokens.Spacing.extraWide)
         .accessibilityElement(children: .contain)
     }
 }
@@ -387,7 +624,7 @@ private struct EmptyMetadataState: View {
 // MARK: - Previews
 
 #Preview("Content View - Empty") {
-    ContentView(document: .constant(MarkdownDocument()))
+    ContentView(document: .constant(MarkdownDocument()), fileURL: nil)
         .environment(\.preferences, AppPreferences.shared)
 }
 
@@ -405,6 +642,6 @@ private struct EmptyMetadataState: View {
     let greeting = "Hello"
     print(greeting)
     ```
-    """)))
-    .environment(\.preferences, AppPreferences.shared)
+    """)), fileURL: nil)
+        .environment(\.preferences, AppPreferences.shared)
 }

@@ -49,6 +49,21 @@
                 "```mermaid\n\(source)\n```"
             }
 
+            private func largeFlowchartSource(nodeCount: Int) -> String {
+                let clampedCount = max(10, nodeCount)
+                var lines = ["flowchart TD"]
+                for index in 0 ..< clampedCount {
+                    lines.append("    N\(index)[Node \(index)]")
+                    if index > 0 {
+                        lines.append("    N\(index - 1) --> N\(index)")
+                    }
+                    if index > 2, index.isMultiple(of: 7) {
+                        lines.append("    N\(index - 3) --> N\(index)")
+                    }
+                }
+                return lines.joined(separator: "\n")
+            }
+
             // MARK: - Detection
 
             func testMermaidBlockIsReplacedWithAttachment() async {
@@ -320,6 +335,21 @@
                 for (name, source) in diagrams {
                     let result = await rendered(mermaidMarkdown(source))
                     XCTAssertGreaterThan(result.length, 0, "\(name) must produce non-empty output")
+                }
+            }
+
+            // MARK: - Performance
+
+            func testLargeMermaidDocumentStressRenders() async {
+                let markdown = (0 ..< 72)
+                    .map { index in
+                        mermaidMarkdown(largeFlowchartSource(nodeCount: 80 + index))
+                    }
+                    .joined(separator: "\n\n")
+
+                for _ in 0 ..< 3 {
+                    let result = await rendered(markdown)
+                    XCTAssertGreaterThan(result.length, 0, "Large mermaid stress render must produce output")
                 }
             }
         }

@@ -10,6 +10,38 @@
         @testable internal import mdviewer
 
         final class SyntaxHighlighterTests: XCTestCase {
+            @MainActor
+            func testSyntaxHighlighterCodeBlockPerformance400Lines() throws {
+                try runSyntaxHighlighterPerformance(lines: 400)
+            }
+
+            @MainActor
+            func testSyntaxHighlighterCodeBlockPerformance50Lines() throws {
+                try runSyntaxHighlighterPerformance(lines: 50)
+            }
+
+            @MainActor
+            func testSyntaxHighlighterCodeBlockPerformance200Lines() throws {
+                try runSyntaxHighlighterPerformance(lines: 200)
+            }
+
+            @MainActor
+            private func runSyntaxHighlighterPerformance(lines: Int) throws {
+                let markdown = largeSwiftCodeBlock(lines: lines)
+                let parsed = try MarkdownParser().parse(markdown)
+                let base = NSMutableAttributedString(attributedString: parsed)
+                let highlighter = SyntaxHighlighter()
+                let fullRange = NSRange(location: 0, length: base.length)
+                let syntax = SyntaxPalette.midnight.nativeSyntax
+
+                XCTContext.runActivity(named: "SyntaxHighlighter.highlight \(lines)-line code block") { _ in
+                    measure(metrics: [XCTClockMetric()]) {
+                        let text = NSMutableAttributedString(attributedString: base)
+                        highlighter.highlight(text, in: fullRange, syntax: syntax)
+                    }
+                }
+            }
+
             func testRenderRequestCacheKeyIsDeterministic() {
                 let lhs = RenderRequest(
                     markdown: "```swift\nlet x = 1\n```",
@@ -447,6 +479,23 @@
                 """
 
                 XCTAssertEqual(LanguageRegistry.detectLanguage(in: yamlCode)?.id, "yaml")
+            }
+
+            private func largeSwiftCodeBlock(lines: Int) -> String {
+                var body: [String] = []
+                body.reserveCapacity(lines * 2)
+
+                for index in 0 ..< lines {
+                    body.append("let value\(index) = \(index)")
+                    body.append("if value\(index) > 10 { print(\"item \\(value\(index))\") }")
+                    body.append("// comment \(index)")
+                }
+
+                return """
+                ```swift
+                \(body.joined(separator: "\n"))
+                ```
+                """
             }
         }
     #endif

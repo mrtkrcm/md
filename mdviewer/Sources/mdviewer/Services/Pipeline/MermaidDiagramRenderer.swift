@@ -9,6 +9,7 @@
 
 internal import AppKit
 internal import BeautifulMermaid
+internal import OSLog
 internal import SwiftUI
 
 // MARK: - MermaidDiagramRenderer
@@ -19,6 +20,14 @@ internal import SwiftUI
 /// ranges in the attributed string; any subsequent text-based pass would operate
 /// on the attachment character instead of the original code text.
 struct MermaidDiagramRenderer {
+    private static let logger = Logger(subsystem: "mdviewer", category: "mermaid-render")
+    private static let imageCache = MermaidImageCache()
+
+    private enum Layout {
+        static let horizontalInset = DesignTokens.Spacing.extraWide
+        static let verticalBlockSpacing = DesignTokens.Spacing.relaxed
+    }
+
     // MARK: - Public Interface
 
     /// Scans `text` for fenced code blocks tagged with language "mermaid" and
@@ -89,12 +98,22 @@ struct MermaidDiagramRenderer {
         theme: DiagramTheme,
         containerWidth: CGFloat
     ) -> NSImage? {
+        let cacheKey = cacheKey(for: source, theme: theme)
+        if let cached = Self.imageCache.object(forKey: cacheKey as NSString) {
+            return cached
+        }
+
         do {
             // Use the default scale (2x Retina). Width is constrained via attachment
             // bounds in attachmentString(for:containerWidth:) after rendering.
-            return try MermaidRenderer.renderImage(source: source, theme: theme)
+            guard let image = try MermaidRenderer.renderImage(source: source, theme: theme) else {
+                Self.logger.warning("Mermaid render returned no image")
+                return nil
+            }
+            Self.imageCache.setObject(image, forKey: cacheKey as NSString)
+            return image
         } catch {
-            // Fall through — the raw code block remains visible.
+            Self.logger.warning("Mermaid render failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
@@ -115,7 +134,7 @@ struct MermaidDiagramRenderer {
         // CGRect.zero which causes the layout manager to clip tall images at the
         // bottom of the line fragment (mermaid diagrams can be several hundred points
         // tall). Scale down if wider than the readable column, preserve aspect ratio.
-        let maxWidth = containerWidth - 32
+        let maxWidth = max(0, containerWidth - (Layout.horizontalInset * 2))
         let scale: CGFloat = image.size.width > maxWidth ? maxWidth / image.size.width : 1.0
         attachment.bounds = CGRect(
             x: 0, y: 0,
@@ -128,13 +147,18 @@ struct MermaidDiagramRenderer {
         // Wrap with a paragraph style that adds breathing room above and below
         // the diagram, matching the vertical rhythm of other block elements.
         let style = NSMutableParagraphStyle()
-        style.paragraphSpacing = 12
-        style.paragraphSpacingBefore = 12
-        style.firstLineHeadIndent = 16
-        style.headIndent = 16
+        style.paragraphSpacing = Layout.verticalBlockSpacing
+        style.paragraphSpacingBefore = Layout.verticalBlockSpacing
+        style.firstLineHeadIndent = Layout.horizontalInset
+        style.headIndent = Layout.horizontalInset
         result.addAttribute(.paragraphStyle, value: style, range: NSRange(location: 0, length: result.length))
 
         return result
+    }
+
+    private func cacheKey(for source: String, theme: DiagramTheme) -> String {
+        let themeIdentifier = String(describing: theme)
+        return "\(themeIdentifier)::\(source.hashValue)"
     }
 
     // MARK: - Theme Mapping
@@ -168,5 +192,47 @@ struct MermaidDiagramRenderer {
         case .tokyonight:
             return scheme == .dark ? .tokyoNight : .tokyoNightLight
         }
+    }
+}
+
+private final class MermaidImageCache: @unchecked Sendable {
+    private let cache = NSCache<NSString, NSImage>()
+
+    init() {
+        cache.countLimit = Self.countLimit
+        cache.totalCostLimit = Self.totalCostLimit
+    }
+
+    func object(forKey key: NSString) -> NSImage? {
+        cache.object(forKey: key)
+    }
+
+    func setObject(_ image: NSImage, forKey key: NSString) {
+        cache.setObject(image, forKey: key, cost: imageCost(for: image))
+    }
+
+    private func imageCost(for image: NSImage) -> Int {
+        if let data = image.tiffRepresentation {
+            return data.count
+        }
+        let width = max(1, Int(image.size.width))
+        let height = max(1, Int(image.size.height))
+        return width * height * 4
+    }
+
+    private static var countLimit: Int {
+        let envValue = ProcessInfo.processInfo.environment["MDVIEWER_MERMAID_CACHE_COUNT_LIMIT"]
+        if let envValue, let parsed = Int(envValue), parsed > 0 {
+            return parsed
+        }
+        return 64
+    }
+
+    private static var totalCostLimit: Int {
+        let envValue = ProcessInfo.processInfo.environment["MDVIEWER_MERMAID_CACHE_TOTAL_COST_MB"]
+        if let envValue, let parsed = Int(envValue), parsed > 0 {
+            return parsed * 1024 * 1024
+        }
+        return 24 * 1024 * 1024
     }
 }

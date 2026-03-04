@@ -51,7 +51,7 @@ struct TypographyApplier: TypographyApplying {
         var fullRange = NSRange(location: 0, length: text.length)
         guard fullRange.length > 0 else { return }
 
-        let palette = NativeThemePalette(theme: request.appTheme, scheme: request.colorScheme)
+        let palette = NativeThemePalette.cached(theme: request.appTheme, scheme: request.colorScheme)
         let bodyFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
 
         // Apply base font with typographic features.

@@ -11,14 +11,12 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/nicklockwood/SwiftFormat", from: "0.58.7"),
-        .package(url: "https://github.com/kyle-n/HighlightedTextEditor", from: "2.1.0"),
         .package(url: "https://github.com/lukilabs/beautiful-mermaid-swift", from: "0.1.1"),
     ],
     targets: [
         .executableTarget(
             name: "mdviewer",
             dependencies: [
-                .product(name: "HighlightedTextEditor", package: "HighlightedTextEditor"),
                 .product(name: "BeautifulMermaid", package: "beautiful-mermaid-swift"),
             ],
             exclude: ["Info.plist", "Resources", "Design/DESIGN_SYSTEM.md", "Services/Pipeline/PARSER_ARCHITECTURE.md"],

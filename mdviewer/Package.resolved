@@ -1,5 +1,5 @@
 {
-  "originHash" : "0bcff7a7def76aed08585ec0d0a50a67894b8dc4a663c0951221e4e31b68a29c",
+  "originHash" : "b5b5e95d4e98e911a7def43956f777014c0e357329d6c88954187eeae6be132d",
   "pins" : [
     {
       "identity" : "beautiful-mermaid-swift",
@@ -17,15 +17,6 @@
       "state" : {
         "revision" : "92efb78b73a8b665ee74bacfb0f1f5b17bbe1b38",
         "version" : "0.1.0"
-      }
-    },
-    {
-      "identity" : "highlightedtexteditor",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kyle-n/HighlightedTextEditor",
-      "state" : {
-        "revision" : "759d7b4bd2c10d0bbe93bc62d68572a3702049e3",
-        "version" : "2.1.2"
       }
     },
     {

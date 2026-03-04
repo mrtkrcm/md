@@ -120,11 +120,38 @@
             XCTAssertEqual(ReaderColumnWidth.narrow.points, 640, accuracy: 0.001)
             XCTAssertEqual(ReaderColumnWidth.balanced.points, 720, accuracy: 0.001)
             XCTAssertEqual(ReaderColumnWidth.wide.points, 840, accuracy: 0.001)
+            XCTAssertEqual(ReaderColumnWidth.fullWidth.points, CGFloat.greatestFiniteMagnitude)
         }
 
         func testColumnWidthOrderPreserved() {
             XCTAssertLessThan(ReaderColumnWidth.narrow.points, ReaderColumnWidth.balanced.points)
             XCTAssertLessThan(ReaderColumnWidth.balanced.points, ReaderColumnWidth.wide.points)
+            XCTAssertLessThan(ReaderColumnWidth.wide.points, ReaderColumnWidth.fullWidth.points)
+        }
+
+        func testFullWidthClampedToWindowWidth() {
+            // min(fullWidth.points, windowWidth - padding) should equal windowWidth - padding
+            let windowWidth: CGFloat = 1200
+            let padding: CGFloat = 24
+            let clamped = min(ReaderColumnWidth.fullWidth.points, windowWidth - (padding * 2))
+            XCTAssertEqual(clamped, windowWidth - (padding * 2), accuracy: 0.001)
+        }
+
+        // MARK: - ReaderContentPadding
+
+        func testContentPaddingPoints() {
+            XCTAssertEqual(ReaderContentPadding.compact.points, 8, accuracy: 0.001)
+            XCTAssertEqual(ReaderContentPadding.normal.points, 24, accuracy: 0.001)
+            XCTAssertEqual(ReaderContentPadding.relaxed.points, 48, accuracy: 0.001)
+        }
+
+        func testContentPaddingOrderPreserved() {
+            XCTAssertLessThan(ReaderContentPadding.compact.points, ReaderContentPadding.normal.points)
+            XCTAssertLessThan(ReaderContentPadding.normal.points, ReaderContentPadding.relaxed.points)
+        }
+
+        func testContentPaddingFromUnknownDefaultsNormal() {
+            XCTAssertEqual(ReaderContentPadding.from(rawValue: "Unknown"), .normal)
         }
 
         // MARK: - ReaderFontSize

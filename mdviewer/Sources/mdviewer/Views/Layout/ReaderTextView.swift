@@ -26,7 +26,10 @@
     @MainActor
     final class ReaderTextView: NSTextView, @unchecked Sendable {
         var preferredReadableWidth: CGFloat = 720
-        private let minimumHorizontalInset: CGFloat = 24
+        /// Minimum inset applied on each side of the content column. Drives both the
+        /// minimum padding and the vertical top/bottom inset. Settable so the caller
+        /// can reflect the user's chosen content padding preference.
+        var preferredHorizontalInset: CGFloat = 24
         private var lastAvailableWidth: CGFloat = 0
 
         /// Cached heading information for accessibility rotor navigation.
@@ -213,13 +216,13 @@
             }
 
             // Guard: need at least enough room for minimum insets + 1pt of content
-            let minimumUsable = minimumHorizontalInset * 2 + 1
+            let minimumUsable = preferredHorizontalInset * 2 + 1
             guard availableWidth >= minimumUsable else { return }
 
             // Calculate target width with insets
-            let maxContentWidth = availableWidth - (minimumHorizontalInset * 2)
+            let maxContentWidth = availableWidth - (preferredHorizontalInset * 2)
             let targetWidth = min(preferredReadableWidth, maxContentWidth)
-            let hInset = max(minimumHorizontalInset, (availableWidth - targetWidth) / 2)
+            let hInset = max(preferredHorizontalInset, (availableWidth - targetWidth) / 2)
 
             // Only update if changed significantly (skip redundant layout passes)
             if
@@ -234,12 +237,12 @@
 
             // Update container and insets
             textContainer.containerSize = NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude)
-            textContainerInset = NSSize(width: hInset, height: minimumHorizontalInset)
+            textContainerInset = NSSize(width: hInset, height: preferredHorizontalInset)
 
             // Update view frame to match content
             layoutManager?.ensureLayout(for: textContainer)
             let usedHeight = layoutManager?.usedRect(for: textContainer).height ?? 0
-            let totalHeight = usedHeight + (minimumHorizontalInset * 2)
+            let totalHeight = usedHeight + (preferredHorizontalInset * 2)
             setFrameSize(NSSize(width: availableWidth, height: max(totalHeight, 1)))
         }
     }

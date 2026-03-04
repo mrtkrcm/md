@@ -118,9 +118,6 @@ struct ContentView: View {
         .onChange(of: windowReaderMode) { _, newMode in
             AccessibilityAnnouncement.modeChanged(to: newMode == .rendered)
         }
-        .onChange(of: toolbarVisibility.isVisible) { _, isVisible in
-            updateToolbarVisibility(isVisible)
-        }
         .toolbar {
             ContentToolbar(
                 readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
@@ -140,8 +137,10 @@ struct ContentView: View {
             if !document.isEffectivelyEmpty {
                 showStartupWelcome = false
             }
-            // Ensure toolbar is visible initially
+            // Ensure toolbar is visible initially and wire direct callback so toolbar
+            // updates bypass the SwiftUI render cycle for zero-delay response.
             updateToolbarVisibility(true)
+            toolbarVisibility.onVisibilityChange = updateToolbarVisibility
         }
         .popover(isPresented: $showAppearancePopover, arrowEdge: .top) {
             AppearancePopover(
@@ -164,16 +163,10 @@ struct ContentView: View {
     // MARK: - Toolbar Visibility
 
     /// Updates the toolbar visibility by accessing the underlying NSWindow toolbar.
+    /// NSToolbar manages its own slide animation — no NSAnimationContext needed.
     private func updateToolbarVisibility(_ isVisible: Bool) {
-        // Use the responder chain to find the window
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-
-        // Animate toolbar visibility
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = toolbarVisibility.animationDuration
-            context.timingFunction = .init(name: .easeInEaseOut)
-            window.toolbar?.isVisible = isVisible
-        }
+        window.toolbar?.isVisible = isVisible
     }
 
     // MARK: - File Opening
@@ -315,7 +308,11 @@ private struct ReaderContentView: View {
             syntaxPalette: preferences.syntaxPalette,
             colorScheme: preferences.effectiveColorScheme ?? colorScheme,
             textSpacing: preferences.readerTextSpacing,
-            readableWidth: min(preferences.readerColumnWidth.points, geometry.size.width - 48),
+            readableWidth: min(
+                preferences.readerColumnWidth.points,
+                geometry.size.width - (preferences.readerContentPadding.points * 2)
+            ),
+            contentPadding: preferences.readerContentPadding.points,
             showLineNumbers: preferences.showLineNumbers,
             typographyPreferences: preferences.typographyPreferences,
             onScroll: onScroll
@@ -328,6 +325,11 @@ private struct ReaderContentView: View {
         .accessibleAnimation(
             reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
             value: preferences.readerColumnWidth,
+            reduceMotion: reduceMotion
+        )
+        .accessibleAnimation(
+            reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
+            value: preferences.readerContentPadding,
             reduceMotion: reduceMotion
         )
     }
@@ -366,6 +368,7 @@ private struct AppearancePopover: View {
             appearanceMode: preferenceBinding(\.appearanceMode),
             readerTextSpacing: preferenceBinding(\.readerTextSpacing),
             readerColumnWidth: preferenceBinding(\.readerColumnWidth),
+            readerContentPadding: preferenceBinding(\.readerContentPadding),
             showLineNumbers: preferenceBinding(\.showLineNumbers),
             typographyPreferences: preferenceBinding(\.typographyPreferences)
         )
@@ -388,6 +391,9 @@ private struct InspectorSidebar: View {
     @Binding var sidebarMode: SidebarMode
     let fileURL: URL?
     let onOpenFile: (URL) -> Void
+
+    /// Cache document stats to avoid recomputing on every render
+    @State private var cachedDocumentStats: DocumentStats?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -434,6 +440,20 @@ private struct InspectorSidebar: View {
         }
         .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
         .background(Color(nsColor: .controlBackgroundColor))
+        .onAppear {
+            // Pre-compute document stats on sidebar appearance
+            if cachedDocumentStats == nil {
+                cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: fileURL)
+            }
+        }
+        .onChange(of: documentText) { _, _ in
+            // Update stats when document changes
+            cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: fileURL)
+        }
+        .onChange(of: fileURL) { _, _ in
+            // Update stats when file URL changes
+            cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: fileURL)
+        }
     }
 
     @ViewBuilder
@@ -451,7 +471,9 @@ private struct InspectorSidebar: View {
                     EmptyMetadataState()
                 }
 
-                DocumentStatsSection(stats: DocumentStats(documentText: documentText, fileURL: fileURL))
+                if let stats = cachedDocumentStats {
+                    DocumentStatsSection(stats: stats)
+                }
             }
         }
     }

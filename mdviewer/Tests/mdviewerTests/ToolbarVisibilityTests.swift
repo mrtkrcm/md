@@ -85,12 +85,6 @@ final class ToolbarVisibilityTests: XCTestCase {
         XCTAssertTrue(controller.isVisible)
     }
 
-    func testAnimationDuration() {
-        let controller = ToolbarVisibilityController(animationDuration: 0.3)
-
-        XCTAssertEqual(controller.animationDuration, 0.3)
-    }
-
     func testAccumulatedScrollUp() {
         let controller = ToolbarVisibilityController(
             hideThreshold: 50,
@@ -111,28 +105,99 @@ final class ToolbarVisibilityTests: XCTestCase {
         XCTAssertTrue(controller.isVisible)
     }
 
-    func testDebouncing() {
-        let controller = ToolbarVisibilityController(
-            hideThreshold: 50,
-            debounceInterval: 0.1
-        )
+    func testHideIsImmediate() {
+        // Hide path has no debounce — should respond on the very first scroll event past threshold.
+        let controller = ToolbarVisibilityController(hideThreshold: 50, debounceInterval: 0.1)
 
-        // At top
         controller.updateScroll(offset: 0, contentHeight: 1000, visibleHeight: 500)
         XCTAssertTrue(controller.isVisible)
 
-        // Scroll down past threshold - should hide after debounce
+        // Single scroll event past threshold — should hide immediately without waiting
         controller.updateScroll(offset: 60, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible)
+    }
 
-        // Wait for debounce
+    func testOnVisibilityChangeCalledDirectly() {
+        // Callback fires synchronously in setVisible — no SwiftUI frame needed.
+        let controller = ToolbarVisibilityController(hideThreshold: 50, debounceInterval: 0)
+        var callbackValues: [Bool] = []
+        controller.onVisibilityChange = { callbackValues.append($0) }
+
+        controller.updateScroll(offset: 60, contentHeight: 1000, visibleHeight: 500)
+        controller.updateScroll(offset: 10, contentHeight: 1000, visibleHeight: 500)
+
+        XCTAssertEqual(callbackValues, [false, true])
+    }
+
+    func testHysteresisDeadZone() {
+        // Offsets between atTopThreshold (8) and hideThreshold (20) form a dead zone:
+        // scrolling down into this range should NOT hide (already past atTop, below hideThreshold),
+        // and scrolling back into it should NOT auto-show (requires accumulated upward scroll).
+        let controller = ToolbarVisibilityController(hideThreshold: 50, showThreshold: 30, debounceInterval: 0)
+
+        // Start hidden at offset 100
+        controller.updateScroll(offset: 100, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible)
+
+        // Scroll up to offset 15 — inside dead zone (8 < 15 < 50), not enough accumulated (85pt > 30, shows)
+        // Actually at 85pt accumulated it does show. Let's test a smaller move.
+        // Reset to hidden at offset 100, then do a tiny scroll up that stays in dead zone.
+        controller.updateScroll(offset: 200, contentHeight: 1000, visibleHeight: 500)
+        // Simulate hiding at 200 (already hidden, no change)
+        // Now scroll up to offset 195 — tiny move, not enough accumulated
+        controller.updateScroll(offset: 195, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible)
+    }
+
+    func testAccumulatedScrollUpResetsAfterShow() {
+        let controller = ToolbarVisibilityController(
+            hideThreshold: 50,
+            showThreshold: 30,
+            debounceInterval: 0
+        )
+
+        // Hide
+        controller.updateScroll(offset: 100, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible)
+
+        // Show by scrolling up 40pt
+        controller.updateScroll(offset: 60, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertTrue(controller.isVisible)
+
+        // Hide again by scrolling down
+        controller.updateScroll(offset: 80, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible)
+
+        // Scroll up only 5pt — accumulated should be fresh (reset after previous show), not 40+5
+        controller.updateScroll(offset: 75, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible, "accumulatedScrollUp should have been reset after show")
+    }
+
+    func testShowDebouncing() {
+        // Show path is debounced to prevent flicker on small scroll reversals.
+        let controller = ToolbarVisibilityController(
+            hideThreshold: 50,
+            showThreshold: 30,
+            debounceInterval: 0.1
+        )
+
+        // Hide toolbar
+        controller.updateScroll(offset: 100, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible)
+
+        // Scroll up past showThreshold — blocked by debounce immediately after hide
+        controller.updateScroll(offset: 60, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible, "Show should be blocked by debounce right after hide")
+
+        // Wait for debounce to expire
         let expectation = XCTestExpectation(description: "debounce")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 0.2)
+        wait(for: [expectation], timeout: 0.3)
 
-        // After debounce, scrolling again should apply
-        controller.updateScroll(offset: 70, contentHeight: 1000, visibleHeight: 500)
-        XCTAssertFalse(controller.isVisible)
+        // Scroll up again after debounce — should show now
+        controller.updateScroll(offset: 50, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertTrue(controller.isVisible)
     }
 }

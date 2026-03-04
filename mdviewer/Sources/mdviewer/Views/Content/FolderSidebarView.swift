@@ -14,6 +14,86 @@ internal import SwiftUI
 /// Maximum files to show in sidebar
 private let maxFolderItems = 500
 
+/// Cache for folder scan results to avoid repeated expensive scans
+private actor FolderScanCache {
+    private var cache: [URL: (result: FolderScanResult, timestamp: Date)] = [:]
+    private let cacheDuration: TimeInterval = 30 // 30 seconds
+
+    func get(for url: URL) -> FolderScanResult? {
+        guard let cached = cache[url] else { return nil }
+        if Date().timeIntervalSince(cached.timestamp) > cacheDuration {
+            cache.removeValue(forKey: url)
+            return nil
+        }
+        return cached.result
+    }
+
+    func set(_ result: FolderScanResult, for url: URL) {
+        cache[url] = (result, Date())
+    }
+
+    func invalidate(for url: URL) {
+        cache.removeValue(forKey: url)
+    }
+}
+
+private let folderScanCache = FolderScanCache()
+
+/// ViewModel for managing folder sidebar state and operations
+@MainActor
+private final class FolderViewModel: ObservableObject {
+    @Published private(set) var items: [FolderItem] = []
+    @Published private(set) var isLoading = false
+    @Published private(set) var didReachItemLimit = false
+
+    private let fileURL: URL
+    private var currentFilePath: String = ""
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        currentFilePath = fileURL.path
+        loadContents()
+    }
+
+    func updateFileURL(_ newURL: URL) {
+        guard newURL.path != currentFilePath else { return }
+        currentFilePath = newURL.path
+        loadContents()
+    }
+
+    private func loadContents() {
+        isLoading = true
+
+        Task { @MainActor in
+            let folderURL = fileURL.deletingLastPathComponent()
+
+            // Check cache first
+            if let cachedResult = await folderScanCache.get(for: folderURL) {
+                items = cachedResult.items
+                didReachItemLimit = cachedResult.didReachLimit
+                isLoading = false
+                return
+            }
+
+            // Perform scan
+            do {
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try scanFolderItems(at: folderURL, limit: maxFolderItems)
+                }.value
+                items = result.items
+                didReachItemLimit = result.didReachLimit
+
+                // Cache the result
+                await folderScanCache.set(result, for: folderURL)
+            } catch {
+                items = []
+                didReachItemLimit = false
+            }
+            isLoading = false
+        }
+    }
+}
+
 /// Sidebar showing folder contents
 @MainActor
 struct FolderSidebarView: View {
@@ -21,14 +101,12 @@ struct FolderSidebarView: View {
     let onOpenFile: ((URL) -> Void)?
 
     @Environment(\.openDocument) private var openDocument
-    @State private var items: [FolderItem] = []
-    @State private var currentFilePath: String = ""
-    @State private var isLoading = false
-    @State private var didReachItemLimit = false
+    @StateObject private var viewModel: FolderViewModel
 
     init(fileURL: URL, onOpenFile: ((URL) -> Void)? = nil) {
         self.fileURL = fileURL
         self.onOpenFile = onOpenFile
+        _viewModel = StateObject(wrappedValue: FolderViewModel(fileURL: fileURL))
     }
 
     var body: some View {
@@ -37,13 +115,8 @@ struct FolderSidebarView: View {
             Divider()
             contentView
         }
-        .onAppear {
-            currentFilePath = fileURL.path
-            loadContents()
-        }
         .onChange(of: fileURL) { _, newURL in
-            currentFilePath = newURL.path
-            loadContents()
+            viewModel.updateFileURL(newURL)
         }
     }
 
@@ -75,14 +148,14 @@ struct FolderSidebarView: View {
 
     @ViewBuilder
     private var contentView: some View {
-        if isLoading {
+        if viewModel.isLoading {
             loadingView
-        } else if items.isEmpty {
+        } else if viewModel.items.isEmpty {
             emptyView
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(items) { item in
+                    ForEach(viewModel.items) { item in
                         rowView(for: item)
                     }
                 }
@@ -91,7 +164,7 @@ struct FolderSidebarView: View {
     }
 
     private func rowView(for item: FolderItem) -> some View {
-        let isCurrent = item.path == currentFilePath
+        let isCurrent = item.path == fileURL.path
 
         return HStack(spacing: 6) {
             Image(systemName: item.icon)
@@ -120,7 +193,10 @@ struct FolderSidebarView: View {
         .cornerRadius(4)
         .help(item.name)
         .onTapGesture {
-            handleTap(item)
+            // Only handle taps for files, not directories
+            if !item.isDirectory {
+                handleTap(item)
+            }
         }
     }
 
@@ -160,10 +236,10 @@ struct FolderSidebarView: View {
     }
 
     private var subtitleText: String {
-        if didReachItemLimit {
-            return "Showing \(items.count) of \(maxFolderItems)+"
+        if viewModel.didReachItemLimit {
+            return "Showing \(viewModel.items.count) of \(maxFolderItems)+"
         }
-        return "\(items.count) item\(items.count == 1 ? "" : "s")"
+        return "\(viewModel.items.count) item\(viewModel.items.count == 1 ? "" : "s")"
     }
 
     // MARK: - Helpers
@@ -179,26 +255,6 @@ struct FolderSidebarView: View {
 
     // MARK: - Actions
 
-    private func loadContents() {
-        isLoading = true
-
-        Task { @MainActor in
-            let folderURL = fileURL.deletingLastPathComponent()
-
-            do {
-                let result = try await Task.detached(priority: .userInitiated) {
-                    try scanFolderItems(at: folderURL, limit: maxFolderItems)
-                }.value
-                items = result.items
-                didReachItemLimit = result.didReachLimit
-            } catch {
-                items = []
-                didReachItemLimit = false
-            }
-            isLoading = false
-        }
-    }
-
     private func handleTap(_ item: FolderItem) {
         if item.isDirectory {
             NSWorkspace.shared.open(item.url)
@@ -210,7 +266,6 @@ struct FolderSidebarView: View {
         if isCmd {
             Task { try? await openDocument(at: item.url) }
         } else {
-            currentFilePath = item.path
             onOpenFile?(item.url)
         }
     }
@@ -275,23 +330,72 @@ private struct FolderScanResult: Sendable {
 private let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "text", "txt"]
 
 private func scanFolderItems(at folderURL: URL, limit: Int) throws -> FolderScanResult {
-    let contents = try FileManager.default.contentsOfDirectory(
-        at: folderURL,
-        includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
-        options: [.skipsHiddenFiles, .skipsPackageDescendants]
-    )
+    let fileManager = FileManager.default
 
-    let filtered = contents.compactMap(FolderItem.init(url:))
-    let sorted = filtered.sorted {
-        if $0.isDirectory != $1.isDirectory {
-            return $0.isDirectory && !$1.isDirectory
-        }
-        return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+    // First, find all folders that contain markdown files
+    var foldersWithMarkdown: Set<URL> = []
+    var allMarkdownFiles: [FolderItem] = []
+
+    // Use enumerator to scan the entire directory tree
+    guard
+        let enumerator = fileManager.enumerator(
+            at: folderURL,
+            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants],
+            errorHandler: nil
+        )
+    else {
+        return FolderScanResult(items: [], didReachLimit: false)
     }
 
+    // Collect all markdown files and track which folders contain them
+    while let url = enumerator.nextObject() as? URL {
+        let ext = url.pathExtension.lowercased()
+
+        // Only process markdown files
+        guard markdownExtensions.contains(ext) || ext.isEmpty else {
+            continue
+        }
+
+        // Create FolderItem for the file
+        if let item = FolderItem(url: url), !item.isDirectory {
+            allMarkdownFiles.append(item)
+
+            // Mark all parent directories up to the root folder
+            var currentURL = url.deletingLastPathComponent()
+            while currentURL.path.hasPrefix(folderURL.path), currentURL != folderURL {
+                foldersWithMarkdown.insert(currentURL)
+                currentURL = currentURL.deletingLastPathComponent()
+            }
+        }
+    }
+
+    // Create folder items for folders that contain markdown
+    var folderItems: [FolderItem] = []
+    for folderURL in foldersWithMarkdown.sorted(by: { $0.path < $1.path }) {
+        if let folderItem = FolderItem(url: folderURL) {
+            folderItems.append(folderItem)
+        }
+    }
+
+    // Combine folders and files, with folders first
+    var allItems = folderItems + allMarkdownFiles
+
+    // Sort: folders first (alphabetically), then files (alphabetically)
+    allItems.sort { lhs, rhs in
+        if lhs.isDirectory != rhs.isDirectory {
+            return lhs.isDirectory && !rhs.isDirectory
+        }
+        return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+    }
+
+    // Apply the limit
+    let didReachLimit = allItems.count > limit
+    let finalItems = Array(allItems.prefix(limit))
+
     return FolderScanResult(
-        items: Array(sorted.prefix(limit)),
-        didReachLimit: sorted.count > limit
+        items: finalItems,
+        didReachLimit: didReachLimit
     )
 }
 

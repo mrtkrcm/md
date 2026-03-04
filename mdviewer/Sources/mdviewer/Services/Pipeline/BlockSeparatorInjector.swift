@@ -314,9 +314,9 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
 
             let tabCount = run.depth - 1
             let tabs = tabCache[tabCount] ?? {
-                let t = String(repeating: "\t", count: tabCount)
-                tabCache[tabCount] = t
-                return t
+                let tabString = String(repeating: "\t", count: tabCount)
+                tabCache[tabCount] = tabString
+                return tabString
             }()
             insertions.append((loc, tabs))
         }

@@ -66,10 +66,12 @@ struct TypographyApplier: TypographyApplying {
         guard preferences.ligatures else { return font }
 
         let descriptor = font.fontDescriptor.addingAttributes([
-            .featureSettings: [[
-                NSFontDescriptor.FeatureKey.typeIdentifier: kCommonLigaturesOnSelector,
-                NSFontDescriptor.FeatureKey.selectorIdentifier: 1,
-            ]],
+            .featureSettings: [
+                [
+                    NSFontDescriptor.FeatureKey.typeIdentifier: kCommonLigaturesOnSelector,
+                    NSFontDescriptor.FeatureKey.selectorIdentifier: 1,
+                ],
+            ],
         ])
 
         return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
@@ -504,7 +506,7 @@ struct TypographyApplier: TypographyApplying {
         }
 
         if wantsBold || wantsItalic, let baseFont = workingFont {
-            let emphasized = fontByApplyingTraits(baseFont, bold: wantsBold, italic: wantsItalic)
+            let emphasized = cachedFontByApplyingTraits(baseFont, bold: wantsBold, italic: wantsItalic)
             text.addAttribute(.font, value: emphasized, range: range)
         }
 
@@ -551,8 +553,12 @@ struct TypographyApplier: TypographyApplying {
         var i = fullRange.location
         let end = NSMaxRange(fullRange)
 
+        // Pre-allocate buffer for intent checks
+        var effectiveRange = NSRange(location: 0, length: 0)
+
         while i < end {
-            var effectiveRange = NSRange(location: i, length: 1)
+            effectiveRange.location = i
+            effectiveRange.length = 1
             let intent = text.attribute(
                 MarkdownRenderAttribute.presentationIntent,
                 at: i,
@@ -682,6 +688,9 @@ struct TypographyApplier: TypographyApplying {
         var mutations: [(substringRange: NSRange, replacement: String)] = []
         mutations.reserveCapacity(16)
 
+        // Pre-calculate ellipsis width to avoid repeated calculations
+        let ellipsisWidth = ("…" as NSString).size(withAttributes: attrs).width
+
         nsString.enumerateSubstrings(
             in: NSRange(location: 0, length: text.length),
             options: [.byParagraphs]
@@ -700,22 +709,33 @@ struct TypographyApplier: TypographyApplying {
                     newSegments.append(segment)
                     continue
                 }
-                let width = (segment as NSString).size(withAttributes: attrs).width
+
+                let segmentNSString = segment as NSString
+                let width = segmentNSString.size(withAttributes: attrs).width
                 if width <= colWidth {
                     newSegments.append(segment)
                 } else {
+                    // Use a more efficient truncation approach
+                    let availableWidth = colWidth - ellipsisWidth
                     let chars = Array(segment)
-                    var lo = 0, hi = chars.count
-                    while lo < hi {
-                        let mid = (lo + hi + 1) / 2
-                        let candidate = String(chars.prefix(mid)) + "…"
-                        if (candidate as NSString).size(withAttributes: attrs).width <= colWidth {
-                            lo = mid
-                        } else {
-                            hi = mid - 1
+                    var truncatedLength = 0
+
+                    // Estimate character count based on average character width
+                    let avgCharWidth = width / CGFloat(chars.count)
+                    let estimatedLength = Int(availableWidth / avgCharWidth)
+                    truncatedLength = min(estimatedLength, chars.count)
+
+                    // Fine-tune with binary search if needed
+                    while truncatedLength > 0 {
+                        let candidate = String(chars.prefix(truncatedLength))
+                        if (candidate as NSString).size(withAttributes: attrs).width <= availableWidth {
+                            break
                         }
+                        truncatedLength -= 1
                     }
-                    newSegments.append(String(chars.prefix(lo)) + "…")
+
+                    let truncated = String(chars.prefix(truncatedLength)) + "…"
+                    newSegments.append(truncated)
                     changed = true
                 }
             }
@@ -731,26 +751,41 @@ struct TypographyApplier: TypographyApplying {
 
     // MARK: - Task List Styling
 
-    private static let taskListRegex: NSRegularExpression? = try? NSRegularExpression(pattern: #"\[( |x|X)\]"#)
+    private static let taskListRegex: NSRegularExpression = // swiftlint:disable:next force_try
+        try! NSRegularExpression(pattern: #"\[( |x|X)\]"#, options: [])
 
-    private func fontByApplyingTraits(_ base: NSFont, bold: Bool, italic: Bool) -> NSFont {
+    /// Font cache for commonly used variants
+    private nonisolated(unsafe) static let fontCache: NSCache<NSString, NSFont> = {
+        let cache = NSCache<NSString, NSFont>()
+        cache.countLimit = 50 // Limit to prevent unbounded growth
+        return cache
+    }()
+
+    private func cachedFontByApplyingTraits(_ base: NSFont, bold: Bool, italic: Bool) -> NSFont {
+        let cacheKey = "\(base.fontName)-\(base.pointSize)-\(bold ? "B" : "")-\(italic ? "I" : "")" as NSString
+
+        if let cached = Self.fontCache.object(forKey: cacheKey) {
+            return cached
+        }
+
         var traits = base.fontDescriptor.symbolicTraits
         if bold { traits.insert(.bold) }
         if italic { traits.insert(.italic) }
 
         let descriptor = base.fontDescriptor.withSymbolicTraits(traits)
-        if let converted = NSFont(descriptor: descriptor, size: base.pointSize) {
-            return converted
-        }
+        let font = NSFont(descriptor: descriptor, size: base.pointSize) ?? {
+            var fallback = base
+            if bold {
+                fallback = NSFontManager.shared.convert(fallback, toHaveTrait: .boldFontMask)
+            }
+            if italic {
+                fallback = NSFontManager.shared.convert(fallback, toHaveTrait: .italicFontMask)
+            }
+            return fallback
+        }()
 
-        var fallback = base
-        if bold {
-            fallback = NSFontManager.shared.convert(fallback, toHaveTrait: .boldFontMask)
-        }
-        if italic {
-            fallback = NSFontManager.shared.convert(fallback, toHaveTrait: .italicFontMask)
-        }
-        return fallback
+        Self.fontCache.setObject(font, forKey: cacheKey)
+        return font
     }
 
     func applyTaskListStyling(
@@ -761,8 +796,7 @@ struct TypographyApplier: TypographyApplying {
         // Cache NSString conversion
         let nsString = text.string as NSString
         let fullRange = NSRange(location: 0, length: text.length)
-        guard let regex = Self.taskListRegex else { return }
-        let markerMatches = regex.matches(in: text.string, options: [], range: fullRange)
+        let markerMatches = Self.taskListRegex.matches(in: text.string, options: [], range: fullRange)
         guard !markerMatches.isEmpty else { return }
 
         let markerFont = NSFont.monospacedSystemFont(ofSize: max(11, request.readerFontSize * 0.9), weight: .semibold)

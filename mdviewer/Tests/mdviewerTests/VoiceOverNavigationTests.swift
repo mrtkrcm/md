@@ -245,6 +245,7 @@
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 720,
+                    contentPadding: 24,
                     showLineNumbers: false,
                     typographyPreferences: TypographyPreferences()
                 )

@@ -11,6 +11,8 @@ enum ReaderColumnWidth: String, CaseIterable, Identifiable, Sendable {
     case narrow = "Narrow"
     case balanced = "Balanced"
     case wide = "Wide"
+    /// Expands content to fill the full available width (minus content padding).
+    case fullWidth = "Full Width"
 
     var id: String { rawValue }
 
@@ -23,6 +25,7 @@ enum ReaderColumnWidth: String, CaseIterable, Identifiable, Sendable {
         case .narrow: return 640
         case .balanced: return 720
         case .wide: return 840
+        case .fullWidth: return CGFloat.greatestFiniteMagnitude
         }
     }
 }

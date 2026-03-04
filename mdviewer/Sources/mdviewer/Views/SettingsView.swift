@@ -63,6 +63,13 @@ struct SettingsView: View {
                     }
                     .accessibilityLabel("Reader Column Width")
 
+                    Picker("Content Padding", selection: binding(\.readerContentPadding)) {
+                        ForEach(ReaderContentPadding.allCases) { padding in
+                            Text(padding.rawValue).tag(padding)
+                        }
+                    }
+                    .accessibilityLabel("Reader Content Padding")
+
                     TypographySubsectionView(typographyPreferences: Binding(
                         get: { preferences.typographyPreferences },
                         set: { preferences.typographyPreferences = $0 }

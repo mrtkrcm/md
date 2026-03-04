@@ -18,6 +18,7 @@ struct AppearancePopoverView: View {
     @Binding var appearanceMode: AppearanceMode
     @Binding var readerTextSpacing: ReaderTextSpacing
     @Binding var readerColumnWidth: ReaderColumnWidth
+    @Binding var readerContentPadding: ReaderContentPadding
     @Binding var showLineNumbers: Bool
     @Binding var typographyPreferences: TypographyPreferences
 
@@ -94,6 +95,13 @@ struct AppearancePopoverView: View {
                 }
             }
             .accessibilityLabel("Reader Column Width")
+
+            Picker("Content Padding", selection: $readerContentPadding) {
+                ForEach(ReaderContentPadding.allCases) { padding in
+                    Text(padding.rawValue).tag(padding)
+                }
+            }
+            .accessibilityLabel("Reader Content Padding")
         }
     }
 
@@ -138,6 +146,7 @@ struct AppearancePopoverView: View {
         appearanceMode: .constant(.auto),
         readerTextSpacing: .constant(.balanced),
         readerColumnWidth: .constant(.balanced),
+        readerContentPadding: .constant(.normal),
         showLineNumbers: .constant(true),
         typographyPreferences: .constant(TypographyPreferences())
     )

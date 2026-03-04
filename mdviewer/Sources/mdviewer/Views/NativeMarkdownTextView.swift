@@ -27,6 +27,7 @@ internal import SwiftUI
         let colorScheme: ColorScheme
         let textSpacing: ReaderTextSpacing
         let readableWidth: CGFloat
+        let contentPadding: CGFloat
         let showLineNumbers: Bool
         let typographyPreferences: TypographyPreferences
         var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
@@ -67,6 +68,7 @@ internal import SwiftUI
             textView.isRichText = true
             textView.allowsUndo = false
             textView.preferredReadableWidth = readableWidth
+            textView.preferredHorizontalInset = contentPadding
 
             // Configure accessibility for VoiceOver
             // ReaderTextView provides heading rotor support via accessibilityCustomActions()
@@ -96,6 +98,7 @@ internal import SwiftUI
             }
             guard let textView = scrollView.documentView as? ReaderTextView else { return }
             textView.preferredReadableWidth = readableWidth
+            textView.preferredHorizontalInset = contentPadding
 
             let request = RenderRequest(
                 markdown: markdown,

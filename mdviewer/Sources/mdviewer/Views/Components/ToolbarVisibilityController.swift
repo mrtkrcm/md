@@ -14,32 +14,34 @@ final class ToolbarVisibilityController: ObservableObject {
     /// Current visibility state of the toolbar.
     @Published private(set) var isVisible: Bool = true
 
-    /// Scroll threshold after which toolbar hides (in points).
+    /// Scroll offset after which toolbar hides (in points).
     let hideThreshold: CGFloat
 
     /// Distance scrolled up before showing toolbar again.
     let showThreshold: CGFloat
 
-    /// Animation duration for show/hide transitions.
-    let animationDuration: TimeInterval
-
-    /// Minimum delay between visibility changes (debounce).
+    /// Minimum delay between show events (debounce for show path only).
     let debounceInterval: TimeInterval
+
+    /// Called synchronously when visibility changes — bypasses the SwiftUI render cycle.
+    var onVisibilityChange: ((Bool) -> Void)?
+
+    // Hysteresis: toolbar auto-shows only when within this distance of the top.
+    // Kept lower than hideThreshold so there is a dead zone that prevents flicker
+    // when the user bounces or micro-scrolls near the hide boundary.
+    private let atTopThreshold: CGFloat = 8
 
     private var lastScrollOffset: CGFloat = 0
     private var accumulatedScrollUp: CGFloat = 0
     private var lastVisibilityChange: Date = .distantPast
-    private var isAtTop: Bool = true
 
     init(
-        hideThreshold: CGFloat = 50,
+        hideThreshold: CGFloat = 20,
         showThreshold: CGFloat = 30,
-        animationDuration: TimeInterval = 0.25,
-        debounceInterval: TimeInterval = 0.1
+        debounceInterval: TimeInterval = 0.05
     ) {
         self.hideThreshold = hideThreshold
         self.showThreshold = showThreshold
-        self.animationDuration = animationDuration
         self.debounceInterval = debounceInterval
     }
 
@@ -51,30 +53,30 @@ final class ToolbarVisibilityController: ObservableObject {
     func updateScroll(offset: CGFloat, contentHeight: CGFloat, visibleHeight: CGFloat) {
         let delta = offset - lastScrollOffset
         lastScrollOffset = offset
-        isAtTop = offset <= hideThreshold
 
-        // Always show at top
-        if isAtTop, !isVisible {
+        // Show at top immediately (tight zone for hysteresis — smaller than hideThreshold
+        // so there is a dead zone between atTopThreshold and hideThreshold that prevents
+        // the toolbar from toggling on micro-scrolls or rubber-band bounces).
+        if offset <= atTopThreshold, !isVisible {
             setVisible(true)
             accumulatedScrollUp = 0
             return
         }
 
-        // Debounce rapid changes
-        let now = Date()
-        guard now.timeIntervalSince(lastVisibilityChange) >= debounceInterval else { return }
-
         if delta > 0 {
-            // Scrolling down
+            // Scrolling down — hide immediately, no debounce
             accumulatedScrollUp = 0
             if offset > hideThreshold, isVisible {
                 setVisible(false)
             }
         } else if delta < 0 {
-            // Scrolling up
+            // Scrolling up — accumulate distance, debounce to prevent flicker on reversals
             accumulatedScrollUp += abs(delta)
+            let now = Date()
+            guard now.timeIntervalSince(lastVisibilityChange) >= debounceInterval else { return }
             if accumulatedScrollUp >= showThreshold, !isVisible {
                 setVisible(true)
+                accumulatedScrollUp = 0
             }
         }
     }
@@ -91,7 +93,6 @@ final class ToolbarVisibilityController: ObservableObject {
     func reset() {
         lastScrollOffset = 0
         accumulatedScrollUp = 0
-        isAtTop = true
         setVisible(true)
     }
 
@@ -99,6 +100,7 @@ final class ToolbarVisibilityController: ObservableObject {
         guard isVisible != visible else { return }
         isVisible = visible
         lastVisibilityChange = Date()
+        onVisibilityChange?(visible)
     }
 }
 

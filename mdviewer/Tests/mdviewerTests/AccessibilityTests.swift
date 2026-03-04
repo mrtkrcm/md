@@ -87,6 +87,7 @@
                     appearanceMode: .constant(.auto),
                     readerTextSpacing: .constant(.balanced),
                     readerColumnWidth: .constant(.balanced),
+                    readerContentPadding: .constant(.normal),
                     showLineNumbers: .constant(true),
                     typographyPreferences: .constant(TypographyPreferences())
                 )

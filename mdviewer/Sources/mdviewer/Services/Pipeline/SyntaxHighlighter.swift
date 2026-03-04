@@ -21,6 +21,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
     func highlight(_ text: NSMutableAttributedString, in range: NSRange, syntax: NativeSyntaxStyle) {
         guard range.length > 0 else { return }
 
+        let nsText = text.string as NSString
         let codeBlocks = findCodeBlocks(in: text, range: range)
 
         for (codeRange, language) in codeBlocks {
@@ -35,10 +36,7 @@ struct SyntaxHighlighter: SyntaxHighlighting {
                 definition = LanguageRegistry.definition(for: language)
             } else {
                 // Auto-detect language from code content
-                let codeText = text.string
-                let start = codeRange.location
-                let end = min(start + codeRange.length, codeText.count)
-                let substring = (codeText as NSString).substring(with: NSRange(location: start, length: end - start))
+                let substring = nsText.substring(with: codeRange)
                 definition = LanguageRegistry.detectLanguage(in: substring)
             }
 

@@ -497,9 +497,13 @@ private final class RawLineNumberRulerView: NSRulerView {
 // MARK: - Scroll Tracking Scroll View
 
 /// NSScrollView subclass that reports scroll position changes for toolbar auto-hide.
+/// Uses coalesced updates to prevent excessive notifications during smooth scrolling.
 @MainActor
 private final class ScrollTrackingScrollView: NSScrollView {
     var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
+
+    private var lastReportedOffset: CGFloat = 0
+    private var scrollUpdateTask: Task<Void, Never>?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -523,7 +527,14 @@ private final class ScrollTrackingScrollView: NSScrollView {
 
     @objc
     private func boundsDidChange() {
-        reportScrollPosition()
+        // Cancel any pending update and schedule a new one
+        scrollUpdateTask?.cancel()
+        scrollUpdateTask = Task { @MainActor [weak self] in
+            // Small delay to coalesce rapid scroll events
+            try? await Task.sleep(for: .milliseconds(4)) // ~240fps coalescing
+            guard !Task.isCancelled else { return }
+            self?.reportScrollPosition()
+        }
     }
 
     private func reportScrollPosition() {
@@ -535,6 +546,14 @@ private final class ScrollTrackingScrollView: NSScrollView {
         let contentHeight = documentView.frame.height
         let visibleHeight = contentView.bounds.height
 
+        // Only report if offset changed significantly (prevents micro-updates)
+        guard abs(offset - lastReportedOffset) > 0.5 else { return }
+        lastReportedOffset = offset
+
         onScroll(offset, contentHeight, visibleHeight)
+    }
+
+    deinit {
+        scrollUpdateTask?.cancel()
     }
 }

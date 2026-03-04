@@ -163,10 +163,20 @@ struct ContentView: View {
     // MARK: - Toolbar Visibility
 
     /// Updates the toolbar visibility by accessing the underlying NSWindow toolbar.
-    /// NSToolbar manages its own slide animation — no NSAnimationContext needed.
+    /// Uses smooth animations to prevent content shifting and visual jarring.
     private func updateToolbarVisibility(_ isVisible: Bool) {
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-        window.toolbar?.isVisible = isVisible
+
+        // Only update if the visibility state actually changed
+        let currentVisibility = window.toolbar?.isVisible ?? true
+        guard currentVisibility != isVisible else { return }
+
+        // Use NSAnimationContext for smooth toolbar transitions
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.toolbar?.isVisible = isVisible
+        }
     }
 
     // MARK: - File Opening

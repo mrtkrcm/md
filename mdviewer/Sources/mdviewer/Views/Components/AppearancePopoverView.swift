@@ -95,6 +95,7 @@ struct AppearancePopoverView: View {
                 }
             }
             .accessibilityLabel("Reader Column Width")
+            .help("Rendered mode only. Sets the maximum text column width.")
 
             Picker("Content Padding", selection: $readerContentPadding) {
                 ForEach(ReaderContentPadding.allCases) { padding in

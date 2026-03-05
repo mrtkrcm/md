@@ -129,6 +129,56 @@ final class ToolbarVisibilityTests: XCTestCase {
         XCTAssertEqual(callbackValues, [false, true])
     }
 
+    func testMonotonicDownwardJitterDoesNotReShowToolbar() {
+        let controller = ToolbarVisibilityController(
+            hideThreshold: 50,
+            showThreshold: 30,
+            debounceInterval: 0
+        )
+
+        // Hide at top-down transition.
+        controller.updateScroll(offset: 0, contentHeight: 1000, visibleHeight: 500)
+        controller.updateScroll(offset: 60, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible)
+
+        // Small upward/downward noise (below 1pt threshold) should not trigger a show.
+        controller.updateScroll(offset: 59.6, contentHeight: 1000, visibleHeight: 500)
+        controller.updateScroll(offset: 59.9, contentHeight: 1000, visibleHeight: 500)
+        controller.updateScroll(offset: 59.4, contentHeight: 1000, visibleHeight: 500)
+        controller.updateScroll(offset: 59.1, contentHeight: 1000, visibleHeight: 500)
+
+        XCTAssertFalse(controller.isVisible)
+
+        // Continue downward travel is still hidden.
+        controller.updateScroll(offset: 80, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible)
+    }
+
+    func testLayoutShiftCooldownSuppressesFalseJitter() {
+        let controller = ToolbarVisibilityController(
+            hideThreshold: 50,
+            showThreshold: 30,
+            debounceInterval: 0
+        )
+
+        controller.updateScroll(offset: 0, contentHeight: 1000, visibleHeight: 500)
+        controller.updateScroll(offset: 60, contentHeight: 1000, visibleHeight: 500)
+        XCTAssertFalse(controller.isVisible)
+
+        // Simulate layout-derived size change that can happen when toolbar visibility changes.
+        controller.updateScroll(offset: 60, contentHeight: 1025, visibleHeight: 540)
+        controller.updateScroll(offset: 59.5, contentHeight: 1026, visibleHeight: 541)
+        controller.updateScroll(offset: 59.7, contentHeight: 1026, visibleHeight: 541)
+
+        // Even with noisy upward deltas after layout churn, do not re-show yet.
+        controller.updateScroll(offset: 58.8, contentHeight: 1026, visibleHeight: 541)
+        XCTAssertFalse(controller.isVisible)
+
+        // Keep scrolling downward again.
+        controller.updateScroll(offset: 80, contentHeight: 1026, visibleHeight: 541)
+        XCTAssertFalse(controller.isVisible)
+    }
+
     func testHysteresisDeadZone() {
         // Offsets between atTopThreshold (8) and hideThreshold (20) form a dead zone:
         // scrolling down into this range should NOT hide (already past atTop, below hideThreshold),

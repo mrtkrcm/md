@@ -24,6 +24,27 @@ internal import SwiftUI
         let showLineNumbers: Bool
         let typographyPreferences: TypographyPreferences
 
+        /// Width changes only affect output when markdown contains width-sensitive blocks.
+        var requiresWidthAwareRerender: Bool {
+            markdown.contains("```mermaid")
+                || markdown.contains("~~~mermaid")
+                || markdown.contains("|")
+        }
+
+        /// Compares all render-affecting fields except readable width.
+        func equalsIgnoringReadableWidth(_ other: RenderRequest) -> Bool {
+            markdown == other.markdown
+                && readerFontFamily == other.readerFontFamily
+                && readerFontSize == other.readerFontSize
+                && codeFontSize == other.codeFontSize
+                && appTheme == other.appTheme
+                && syntaxPalette == other.syntaxPalette
+                && colorScheme == other.colorScheme
+                && textSpacing == other.textSpacing
+                && showLineNumbers == other.showLineNumbers
+                && typographyPreferences == other.typographyPreferences
+        }
+
         var cacheKey: String {
             let prefsHash = typographyPreferences.hashValue
             let payload = [

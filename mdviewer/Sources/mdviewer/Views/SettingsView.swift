@@ -20,6 +20,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .padding(.vertical, DesignTokens.Spacing.tight)
                 .accessibilityLabel("Appearance Mode")
 
                 Picker("Theme", selection: binding(\.theme)) {
@@ -27,56 +28,62 @@ struct SettingsView: View {
                         Text(theme.rawValue).tag(theme)
                     }
                 }
+                .padding(.vertical, DesignTokens.Spacing.tight)
                 .accessibilityLabel("Reader Theme")
             }
 
             Section("Typography") {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.standard) {
-                    HStack {
-                        Text("Font Family")
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        FontFamilyPicker(selection: binding(\.readerFontFamily))
-                            .frame(width: 140)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Reader Font Family")
+                HStack {
+                    Text("Font Family")
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    FontFamilyPicker(selection: binding(\.readerFontFamily))
+                        .frame(width: 140)
+                }
+                .padding(.vertical, DesignTokens.Spacing.tight)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Reader Font Family")
 
-                    Picker("Text Size", selection: binding(\.readerFontSize)) {
-                        ForEach(ReaderFontSize.allCases) { size in
-                            Text(size.label).tag(size)
-                        }
-                    }
-                    .accessibilityLabel("Reader Font Size")
-
-                    Picker("Line Spacing", selection: binding(\.readerTextSpacing)) {
-                        ForEach(ReaderTextSpacing.allCases) { spacing in
-                            Text(spacing.rawValue).tag(spacing)
-                        }
-                    }
-                    .accessibilityLabel("Reader Line Spacing")
-
-                    Picker("Column Width", selection: binding(\.readerColumnWidth)) {
-                        ForEach(ReaderColumnWidth.allCases) { width in
-                            Text(width.rawValue).tag(width)
-                        }
-                    }
-                    .accessibilityLabel("Reader Column Width")
-
-                    Picker("Content Padding", selection: binding(\.readerContentPadding)) {
-                        ForEach(ReaderContentPadding.allCases) { padding in
-                            Text(padding.rawValue).tag(padding)
-                        }
-                    }
-                    .accessibilityLabel("Reader Content Padding")
-
-                    TypographySubsectionView(typographyPreferences: Binding(
-                        get: { preferences.typographyPreferences },
-                        set: { preferences.typographyPreferences = $0 }
-                    )) { newValue in
-                        preferences.typographyPreferences = newValue
+                Picker("Text Size", selection: binding(\.readerFontSize)) {
+                    ForEach(ReaderFontSize.allCases) { size in
+                        Text(size.label).tag(size)
                     }
                 }
+                .padding(.vertical, DesignTokens.Spacing.tight)
+                .accessibilityLabel("Reader Font Size")
+
+                Picker("Line Spacing", selection: binding(\.readerTextSpacing)) {
+                    ForEach(ReaderTextSpacing.allCases) { spacing in
+                        Text(spacing.rawValue).tag(spacing)
+                    }
+                }
+                .padding(.vertical, DesignTokens.Spacing.tight)
+                .accessibilityLabel("Reader Line Spacing")
+
+                Picker("Column Width", selection: binding(\.readerColumnWidth)) {
+                    ForEach(ReaderColumnWidth.allCases) { width in
+                        Text(width.rawValue).tag(width)
+                    }
+                }
+                .padding(.vertical, DesignTokens.Spacing.tight)
+                .accessibilityLabel("Reader Column Width")
+                .help("Rendered mode only. Sets the maximum text column width.")
+
+                Picker("Content Padding", selection: binding(\.readerContentPadding)) {
+                    ForEach(ReaderContentPadding.allCases) { padding in
+                        Text(padding.rawValue).tag(padding)
+                    }
+                }
+                .padding(.vertical, DesignTokens.Spacing.tight)
+                .accessibilityLabel("Reader Content Padding")
+
+                TypographySubsectionView(typographyPreferences: Binding(
+                    get: { preferences.typographyPreferences },
+                    set: { preferences.typographyPreferences = $0 }
+                )) { newValue in
+                    preferences.typographyPreferences = newValue
+                }
+                .padding(.vertical, DesignTokens.Spacing.tight)
             }
 
             Section("Reading") {
@@ -85,6 +92,7 @@ struct SettingsView: View {
                         Text(mode.rawValue).tag(mode)
                     }
                 }
+                .padding(.vertical, DesignTokens.Spacing.tight)
                 .accessibilityLabel("Default View Mode")
             }
 
@@ -94,6 +102,7 @@ struct SettingsView: View {
                         Text(palette.rawValue).tag(palette)
                     }
                 }
+                .padding(.vertical, DesignTokens.Spacing.tight)
                 .accessibilityLabel("Syntax Highlighting Palette")
 
                 Picker("Code Font Size", selection: binding(\.codeFontSize)) {
@@ -101,9 +110,11 @@ struct SettingsView: View {
                         Text(size.label).tag(size)
                     }
                 }
+                .padding(.vertical, DesignTokens.Spacing.tight)
                 .accessibilityLabel("Code Font Size")
 
                 Toggle("Line Numbers", isOn: binding(\.showLineNumbers))
+                    .padding(.vertical, DesignTokens.Spacing.tight)
                     .accessibilityLabel("Show Line Numbers")
                     .accessibilityHint("Display line numbers in the editor")
             }
@@ -114,6 +125,7 @@ struct SettingsView: View {
                         Text(threshold.label).tag(threshold)
                     }
                 }
+                .padding(.vertical, DesignTokens.Spacing.tight)
                 .accessibilityLabel("Large File Warning Threshold")
                 .accessibilityHint("Show warning when opening files larger than this size")
             }

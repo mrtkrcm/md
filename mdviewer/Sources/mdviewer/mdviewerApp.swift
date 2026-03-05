@@ -6,6 +6,7 @@
 internal import SwiftUI
 #if os(macOS)
     internal import AppKit
+    internal import OSLog
 #endif
 
 @main
@@ -16,6 +17,9 @@ struct mdviewerApp: App {
     #endif
 
     @State private var showingKeybindings = false
+    #if os(macOS)
+        private let logger = Logger(subsystem: "mdviewer", category: "default-association")
+    #endif
 
     var body: some Scene {
         DocumentGroup(newDocument: MarkdownDocument()) { file in
@@ -114,6 +118,12 @@ struct mdviewerApp: App {
                         showingKeybindings = true
                     }
                     .keyboardShortcut("/", modifiers: .command)
+
+                    Divider()
+
+                    Button("Set Default For *.md Files") {
+                        setDefaultMarkdownAssociation()
+                    }
                 }
 
                 // Window Menu - Tabbing and Full Screen
@@ -158,6 +168,31 @@ struct mdviewerApp: App {
         /// Sends an action to the focused editor if available
         private func sendEditorAction(_ keyPath: KeyPath<EditorActions, () -> Void>) {
             focusedEditorActions?[keyPath: keyPath]()
+        }
+
+        private func setDefaultMarkdownAssociation() {
+            do {
+                try DefaultMarkdownAppRegistrar.setAppAsDefaultMarkdownHandler()
+                showAssociationAlert(
+                    title: "Default App Updated",
+                    message: "md is now set as the default app for Markdown files."
+                )
+            } catch {
+                logger.error("Failed to set default markdown association: \(error.localizedDescription)")
+                showAssociationAlert(
+                    title: "Could Not Update Default App",
+                    message: error.localizedDescription
+                )
+            }
+        }
+
+        private func showAssociationAlert(title: String, message: String) {
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = message
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
         }
     #endif
 }

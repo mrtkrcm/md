@@ -22,7 +22,7 @@ enum ReaderContentPadding: String, CaseIterable, Identifiable, Sendable {
     /// Inset in points applied on each side of the content area.
     var points: CGFloat {
         switch self {
-        case .compact: return 8
+        case .compact: return 16
         case .normal: return 24
         case .relaxed: return 48
         }

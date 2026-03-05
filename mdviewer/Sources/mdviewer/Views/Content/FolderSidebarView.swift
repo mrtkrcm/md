@@ -99,13 +99,6 @@ private final class FolderViewModel: ObservableObject {
     func updateFileURL(_ newURL: URL) {
         guard newURL.path != currentFilePath else { return }
         currentFilePath = newURL.path
-        let nextRoot = newURL.deletingLastPathComponent()
-        if nextRoot.path != rootFolderURL.path {
-            rootFolderURL = nextRoot
-            currentFolderURL = nextRoot
-            loadContents()
-            return
-        }
         rebuildRows()
     }
 
@@ -437,6 +430,9 @@ struct FolderSidebarView: View {
 
                 guard let tableView else { return }
                 if rowsChanged {
+                    tableView.reloadData()
+                } else if pathChanged {
+                    // Refresh custom tick/text coloring that depends on currentFilePath.
                     tableView.reloadData()
                 }
 

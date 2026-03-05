@@ -45,6 +45,7 @@ struct ContentView: View {
     @State private var showAppearancePopover = false
     @State private var sidebarWidth: CGFloat = 260
     @State private var activeFileURL: URL?
+    @State private var sidebarRootFileURL: URL?
     @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
     @StateObject private var toolbarVisibility = ToolbarVisibilityController()
 
@@ -111,7 +112,8 @@ struct ContentView: View {
                         documentText: document.text,
                         isPresented: $showMetadataInspector,
                         sidebarMode: $sidebarMode,
-                        fileURL: activeFileURL,
+                        currentFileURL: activeFileURL,
+                        folderRootFileURL: sidebarRootFileURL,
                         onOpenFile: openFileInCurrentWindow
                     )
                     .frame(width: sidebarWidth)
@@ -125,6 +127,9 @@ struct ContentView: View {
         }
         .onChange(of: fileURL) { _, newURL in
             activeFileURL = newURL
+            if sidebarRootFileURL == nil {
+                sidebarRootFileURL = newURL
+            }
             FolderSidebarPreloader.prewarmIfNeeded(fileURL: newURL)
         }
         .toolbar {
@@ -140,6 +145,9 @@ struct ContentView: View {
             }
             if activeFileURL == nil {
                 activeFileURL = fileURL
+            }
+            if sidebarRootFileURL == nil {
+                sidebarRootFileURL = fileURL
             }
             FolderSidebarPreloader.prewarmIfNeeded(fileURL: activeFileURL)
             // Initialize toolbar visibility callback used by scroll auto-hide.
@@ -225,6 +233,9 @@ struct ContentView: View {
                 document.text = text
                 showStartupWelcome = false
                 activeFileURL = url
+                if sidebarRootFileURL == nil {
+                    sidebarRootFileURL = url
+                }
 
                 // Synchronize current window metadata and clear edited state for the newly loaded file.
                 if let window = NSApp.keyWindow ?? NSApp.mainWindow {
@@ -446,7 +457,8 @@ private struct InspectorSidebar: View {
     let documentText: String
     @Binding var isPresented: Bool
     @Binding var sidebarMode: SidebarMode
-    let fileURL: URL?
+    let currentFileURL: URL?
+    let folderRootFileURL: URL?
     let onOpenFile: (URL) -> Void
 
     /// Cache document stats to avoid recomputing on every render
@@ -500,16 +512,16 @@ private struct InspectorSidebar: View {
         .onAppear {
             // Pre-compute document stats on sidebar appearance
             if cachedDocumentStats == nil {
-                cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: fileURL)
+                cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: currentFileURL)
             }
         }
         .onChange(of: documentText) { _, _ in
             // Update stats when document changes
-            cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: fileURL)
+            cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: currentFileURL)
         }
-        .onChange(of: fileURL) { _, _ in
+        .onChange(of: currentFileURL) { _, _ in
             // Update stats when file URL changes
-            cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: fileURL)
+            cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: currentFileURL)
         }
     }
 
@@ -537,8 +549,12 @@ private struct InspectorSidebar: View {
 
     @ViewBuilder
     private var folderContent: some View {
-        if let fileURL {
-            FolderSidebarView(fileURL: fileURL, currentFileURL: fileURL, onOpenFile: onOpenFile)
+        if let folderRootFileURL {
+            FolderSidebarView(
+                fileURL: folderRootFileURL,
+                currentFileURL: currentFileURL,
+                onOpenFile: onOpenFile
+            )
         } else {
             EmptyFolderState()
         }

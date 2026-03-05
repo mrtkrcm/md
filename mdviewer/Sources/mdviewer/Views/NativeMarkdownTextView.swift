@@ -30,7 +30,9 @@ internal import SwiftUI
         let contentPadding: CGFloat
         let showLineNumbers: Bool
         let typographyPreferences: TypographyPreferences
-        var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
+        var onScrollGestureStart: ((CGFloat) -> Void)?
+        var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
+        var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
 
         func makeNSView(context: Context) -> NSScrollView {
             // Signpost: TextView creation start
@@ -52,7 +54,8 @@ internal import SwiftUI
 
             let textContainer = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
             textContainer.lineFragmentPadding = 0
-            textContainer.widthTracksTextView = true
+            // ReaderTextView manages readable column width manually; do not auto-track full width.
+            textContainer.widthTracksTextView = false
             // Ensure proper container sizing behavior for macOS native rendering
             textContainer.heightTracksTextView = false
             layoutManager.addTextContainer(textContainer)
@@ -87,18 +90,30 @@ internal import SwiftUI
             scrollView.hasHorizontalScroller = false
             scrollView.autohidesScrollers = true
             scrollView.documentView = textView
-            scrollView.onScroll = onScroll
+            scrollView.onScrollGestureStart = onScrollGestureStart
+            scrollView.onScrollGestureLive = onScrollGestureLive
+            scrollView.onScrollGestureEnd = onScrollGestureEnd
 
             return scrollView
         }
 
         func updateNSView(_ scrollView: NSScrollView, context: Context) {
             if let trackingScrollView = scrollView as? ScrollTrackingScrollView {
-                trackingScrollView.onScroll = onScroll
+                trackingScrollView.onScrollGestureStart = onScrollGestureStart
+                trackingScrollView.onScrollGestureLive = onScrollGestureLive
+                trackingScrollView.onScrollGestureEnd = onScrollGestureEnd
             }
             guard let textView = scrollView.documentView as? ReaderTextView else { return }
+            let previousReadableWidth = textView.preferredReadableWidth
+            let previousHorizontalInset = textView.preferredHorizontalInset
             textView.preferredReadableWidth = readableWidth
             textView.preferredHorizontalInset = contentPadding
+            if
+                abs(previousReadableWidth - readableWidth) > 0.5
+                || abs(previousHorizontalInset - contentPadding) > 0.5
+            {
+                textView.updateContainerGeometry()
+            }
 
             let request = RenderRequest(
                 markdown: markdown,
@@ -116,11 +131,24 @@ internal import SwiftUI
 
             let coordinator = context.coordinator
             guard coordinator.currentRequest != request else { return }
+            let previousRequest = coordinator.currentRequest
+            let isWidthOnlyChange: Bool
+            if let previousRequest {
+                isWidthOnlyChange = previousRequest.equalsIgnoringReadableWidth(request)
+                    && abs(previousRequest.readableWidth - request.readableWidth) > 0.5
+            } else {
+                isWidthOnlyChange = false
+            }
 
             coordinator.currentRequest = request
             coordinator.generation += 1
             let generation = coordinator.generation
             coordinator.renderTask?.cancel()
+
+            // Width-only changes do not require a full render for regular markdown.
+            if isWidthOnlyChange, !request.requiresWidthAwareRerender {
+                return
+            }
 
             // Announce loading state for large documents
             let documentSize = request.markdown.count
@@ -129,14 +157,16 @@ internal import SwiftUI
                 textView.setAccessibilityValue("Loading document...")
             }
 
-            // Signpost: Track async markdown render start
-            let signpostID = markdownRenderSignposter.makeSignpostID()
-            let intervalState = markdownRenderSignposter.beginInterval("AsyncMarkdownRender", id: signpostID)
-
             coordinator.renderTask = Task { @MainActor [weak textView] in
-                let rendered = await MarkdownRenderService.shared.render(request)
+                if isWidthOnlyChange {
+                    try? await Task.sleep(for: .milliseconds(140))
+                }
+                guard !Task.isCancelled else { return }
 
-                // End the async render interval when complete
+                // Signpost: Track async markdown render start
+                let signpostID = markdownRenderSignposter.makeSignpostID()
+                let intervalState = markdownRenderSignposter.beginInterval("AsyncMarkdownRender", id: signpostID)
+                let rendered = await MarkdownRenderService.shared.render(request)
                 markdownRenderSignposter.endInterval("AsyncMarkdownRender", intervalState)
 
                 guard !Task.isCancelled else { return }
@@ -195,13 +225,14 @@ internal import SwiftUI
     }
 
     /// NSScrollView subclass that reports scroll position changes for toolbar auto-hide.
-    /// Uses coalesced updates to prevent excessive notifications during smooth scrolling.
     @MainActor
     private final class ScrollTrackingScrollView: NSScrollView {
-        var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
+        var onScrollGestureStart: ((CGFloat) -> Void)?
+        var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
+        var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
 
-        private var lastReportedOffset: CGFloat = 0
-        private var scrollUpdateTask: Task<Void, Never>?
+        private var liveScrollStartOffset: CGFloat?
+        private var liveScrollLastOffset: CGFloat?
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
@@ -214,46 +245,66 @@ internal import SwiftUI
         }
 
         private func setupScrollTracking() {
-            // Use coalesced notifications instead of every bounds change
-            postsBoundsChangedNotifications = true
             NotificationCenter.default.addObserver(
                 self,
-                selector: #selector(boundsDidChange),
-                name: NSView.boundsDidChangeNotification,
-                object: contentView
+                selector: #selector(willStartLiveScroll),
+                name: NSScrollView.willStartLiveScrollNotification,
+                object: self
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(didEndLiveScroll),
+                name: NSScrollView.didEndLiveScrollNotification,
+                object: self
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(didLiveScroll),
+                name: NSScrollView.didLiveScrollNotification,
+                object: self
             )
         }
 
         @objc
-        private func boundsDidChange() {
-            // Cancel any pending update and schedule a new one
-            scrollUpdateTask?.cancel()
-            scrollUpdateTask = Task { @MainActor [weak self] in
-                // Small delay to coalesce rapid scroll events
-                try? await Task.sleep(for: .milliseconds(4)) // ~240fps coalescing
-                guard !Task.isCancelled else { return }
-                self?.reportScrollPosition()
+        private func willStartLiveScroll() {
+            let startOffset = contentView.bounds.origin.y
+            liveScrollStartOffset = startOffset
+            liveScrollLastOffset = startOffset
+            onScrollGestureStart?(startOffset)
+        }
+
+        @objc
+        private func didLiveScroll() {
+            guard let onScrollGestureLive else { return }
+            let currentOffset = contentView.bounds.origin.y
+            let previousOffset = liveScrollLastOffset ?? currentOffset
+            let delta = currentOffset - previousOffset
+            liveScrollLastOffset = currentOffset
+            let canScroll = canScrollVertically()
+            guard abs(delta) > 1 else { return }
+            onScrollGestureLive(delta, currentOffset, canScroll)
+        }
+
+        @objc
+        private func didEndLiveScroll() {
+            guard let onScrollGestureEnd else { return }
+            guard let startOffset = liveScrollStartOffset else { return }
+            let finalOffset = contentView.bounds.origin.y
+            let delta = finalOffset - startOffset
+            let canScroll = canScrollVertically()
+            liveScrollStartOffset = nil
+            liveScrollLastOffset = nil
+            if !canScroll {
+                onScrollGestureEnd(0, finalOffset, false)
+                return
             }
+            guard abs(delta) > 1 else { return }
+            onScrollGestureEnd(delta, finalOffset, true)
         }
 
-        private func reportScrollPosition() {
-            guard
-                let onScroll,
-                let documentView else { return }
-
-            let offset = contentView.bounds.origin.y
-            let contentHeight = documentView.frame.height
-            let visibleHeight = contentView.bounds.height
-
-            // Only report if offset changed significantly (prevents micro-updates)
-            guard abs(offset - lastReportedOffset) > 0.5 else { return }
-            lastReportedOffset = offset
-
-            onScroll(offset, contentHeight, visibleHeight)
-        }
-
-        deinit {
-            scrollUpdateTask?.cancel()
+        private func canScrollVertically() -> Bool {
+            guard let documentView else { return false }
+            return documentView.bounds.height > contentView.bounds.height + 1
         }
     }
 #endif

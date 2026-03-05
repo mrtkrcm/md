@@ -140,7 +140,7 @@
         // MARK: - ReaderContentPadding
 
         func testContentPaddingPoints() {
-            XCTAssertEqual(ReaderContentPadding.compact.points, 8, accuracy: 0.001)
+            XCTAssertEqual(ReaderContentPadding.compact.points, 16, accuracy: 0.001)
             XCTAssertEqual(ReaderContentPadding.normal.points, 24, accuracy: 0.001)
             XCTAssertEqual(ReaderContentPadding.relaxed.points, 48, accuracy: 0.001)
         }

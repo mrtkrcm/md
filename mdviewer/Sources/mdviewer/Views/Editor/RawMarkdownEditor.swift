@@ -16,7 +16,30 @@ struct RawMarkdownEditor: View {
     let fontSize: CGFloat
     let colorScheme: ColorScheme
     let showLineNumbers: Bool
-    var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
+    let contentPadding: CGFloat
+    var onScrollGestureStart: ((CGFloat) -> Void)?
+    var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
+    var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
+
+    init(
+        text: Binding<String>,
+        fontSize: CGFloat,
+        colorScheme: ColorScheme,
+        showLineNumbers: Bool,
+        contentPadding: CGFloat = 8,
+        onScrollGestureStart: ((CGFloat) -> Void)? = nil,
+        onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)? = nil,
+        onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)? = nil
+    ) {
+        _text = text
+        self.fontSize = fontSize
+        self.colorScheme = colorScheme
+        self.showLineNumbers = showLineNumbers
+        self.contentPadding = contentPadding
+        self.onScrollGestureStart = onScrollGestureStart
+        self.onScrollGestureLive = onScrollGestureLive
+        self.onScrollGestureEnd = onScrollGestureEnd
+    }
 
     var body: some View {
         RawEditorRepresentable(
@@ -24,7 +47,10 @@ struct RawMarkdownEditor: View {
             fontSize: fontSize,
             colorScheme: colorScheme,
             showLineNumbers: showLineNumbers,
-            onScroll: onScroll
+            contentPadding: contentPadding,
+            onScrollGestureStart: onScrollGestureStart,
+            onScrollGestureLive: onScrollGestureLive,
+            onScrollGestureEnd: onScrollGestureEnd
         )
         .background(colorScheme == .dark ? Color.black : Color.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -44,9 +70,16 @@ private struct RawEditorRepresentable: NSViewRepresentable {
     let fontSize: CGFloat
     let colorScheme: ColorScheme
     let showLineNumbers: Bool
-    var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
+    let contentPadding: CGFloat
+    var onScrollGestureStart: ((CGFloat) -> Void)?
+    var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
+    var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
 
     private let logger = Logger(subsystem: "mdviewer", category: "RawEditor")
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = ScrollTrackingScrollView()
@@ -56,7 +89,9 @@ private struct RawEditorRepresentable: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.backgroundColor = colorScheme == .dark ? .black : .white
         scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.onScroll = onScroll
+        scrollView.onScrollGestureStart = onScrollGestureStart
+        scrollView.onScrollGestureLive = onScrollGestureLive
+        scrollView.onScrollGestureEnd = onScrollGestureEnd
 
         // Configure line numbers if enabled
         if showLineNumbers {
@@ -72,15 +107,30 @@ private struct RawEditorRepresentable: NSViewRepresentable {
         textView.focusRingType = .none
         textView.isEditable = true
         textView.isSelectable = true
+        textView.delegate = context.coordinator
 
         // Configure accessibility for VoiceOver
         textView.setAccessibilityLabel("Markdown Source Editor")
         textView.setAccessibilityRole(.textArea)
         textView.setAccessibilityIdentifier("RawMarkdownEditor")
 
-        // Zero top inset, small horizontal padding
-        textView.textContainerInset = NSSize(width: 8, height: 0)
+        // Disable expensive editor subsystems that are not needed for markdown source editing.
+        textView.isAutomaticTextCompletionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.isGrammarCheckingEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticDataDetectionEnabled = false
+        textView.isAutomaticLinkDetectionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+
+        // Apply adjustable horizontal padding from preferences.
+        textView.textContainerInset = NSSize(width: contentPadding, height: 0)
         textView.textContainer?.lineFragmentPadding = 4
+
+        // Avoid forcing full-document layout while scrolling large files.
+        textView.layoutManager?.allowsNonContiguousLayout = true
 
         // Layout
         textView.minSize = NSSize(width: 0, height: 0)
@@ -95,9 +145,8 @@ private struct RawEditorRepresentable: NSViewRepresentable {
 
         scrollView.documentView = textView
 
-        // Set text and apply highlighting
-        textView.string = text
-        applyHighlighting(to: textView)
+        // Set text without registering undo so opening a document is not marked as edited.
+        applyProgrammaticText(text, to: textView, coordinator: context.coordinator)
 
         // Set up line number ruler
         if showLineNumbers {
@@ -126,22 +175,26 @@ private struct RawEditorRepresentable: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         if let trackingScrollView = scrollView as? ScrollTrackingScrollView {
-            trackingScrollView.onScroll = onScroll
+            trackingScrollView.onScrollGestureStart = onScrollGestureStart
+            trackingScrollView.onScrollGestureLive = onScrollGestureLive
+            trackingScrollView.onScrollGestureEnd = onScrollGestureEnd
         }
         guard let textView = scrollView.documentView as? RawEditorTextView else { return }
 
         // Update configuration
         textView.fontSize = fontSize
         textView.colorScheme = colorScheme
+        let previousInset = textView.textContainerInset.width
+        textView.textContainerInset = NSSize(width: contentPadding, height: 0)
+        textView.textContainer?.lineFragmentPadding = 4
+        if abs(previousInset - contentPadding) > 0.5, let textContainer = textView.textContainer {
+            textView.layoutManager?.ensureLayout(for: textContainer)
+            textView.needsDisplay = true
+        }
 
         if textView.string != text {
             logger.debug("updateNSView: text changed, length = \(text.count)")
-            textView.string = text
-            applyHighlighting(to: textView)
-
-            // Update accessibility value for VoiceOver
-            let accessibilityValue = text.isEmpty ? "Empty document" : "\(text.count) characters"
-            textView.setAccessibilityValue(accessibilityValue)
+            applyProgrammaticText(text, to: textView, coordinator: context.coordinator)
         }
 
         // Update ruler if present
@@ -153,6 +206,21 @@ private struct RawEditorRepresentable: NSViewRepresentable {
     }
 
     // MARK: - Syntax Highlighting
+
+    private func applyProgrammaticText(
+        _ value: String,
+        to textView: RawEditorTextView,
+        coordinator: Coordinator
+    ) {
+        coordinator.isApplyingProgrammaticText = true
+        let previousAllowsUndo = textView.allowsUndo
+        textView.allowsUndo = false
+        textView.string = value
+        applyHighlighting(to: textView)
+        textView.undoManager?.removeAllActions()
+        textView.allowsUndo = previousAllowsUndo
+        coordinator.isApplyingProgrammaticText = false
+    }
 
     private func applyHighlighting(to textView: NSTextView) {
         guard let storage = textView.textStorage else {
@@ -321,6 +389,24 @@ private struct RawEditorRepresentable: NSViewRepresentable {
 
         return false
     }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        private var text: Binding<String>
+        fileprivate var isApplyingProgrammaticText = false
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard !isApplyingProgrammaticText else { return }
+            guard let textView = notification.object as? NSTextView else { return }
+            let latestText = textView.string
+            guard text.wrappedValue != latestText else { return }
+            text.wrappedValue = latestText
+        }
+    }
 }
 
 // MARK: - Raw Editor Text View
@@ -384,6 +470,14 @@ private final class RawLineNumberRulerView: NSRulerView {
 
     private var digitWidth: CGFloat { fontSize * 0.6 }
     private var padding: CGFloat { fontSize * 0.8 }
+    private var lineStartIndices: [Int] = [0]
+    var isLiveScrolling: Bool = false {
+        didSet {
+            if oldValue != isLiveScrolling {
+                needsDisplay = true
+            }
+        }
+    }
 
     /// Minimum contrast ratio for WCAG AA compliance (4.5:1 for normal text)
     private let minimumContrastRatio: CGFloat = 4.5
@@ -392,6 +486,8 @@ private final class RawLineNumberRulerView: NSRulerView {
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         ruleThickness = 40
         needsDisplay = true
+        rebuildLineIndex()
+        startObservingTextChanges()
 
         // Set accessibility label for the ruler
         setAccessibilityLabel("Line Numbers")
@@ -405,8 +501,7 @@ private final class RawLineNumberRulerView: NSRulerView {
 
     override var requiredThickness: CGFloat {
         // Calculate based on number of digits needed
-        guard let textView = scrollView?.documentView as? NSTextView else { return 40 }
-        let lineCount = max(1, textView.string.components(separatedBy: .newlines).count)
+        let lineCount = max(1, lineStartIndices.count)
         let digits = String(lineCount).count
         return max(32, (CGFloat(digits) * digitWidth) + padding)
     }
@@ -431,7 +526,9 @@ private final class RawLineNumberRulerView: NSRulerView {
         separatorPath.stroke()
 
         // Draw line numbers
-        drawLineNumbers(in: dirtyRect)
+        if !isLiveScrolling {
+            drawLineNumbers(in: dirtyRect)
+        }
     }
 
     private func drawLineNumbers(in rect: NSRect) {
@@ -458,13 +555,7 @@ private final class RawLineNumberRulerView: NSRulerView {
         let visibleCharRange = layoutManager.characterRange(forGlyphRange: visibleGlyphRange, actualGlyphRange: nil)
 
         // Calculate starting line number
-        let text = textView.string as NSString
-        var lineNumber = 1
-        if visibleCharRange.location > 0 {
-            for i in 0 ..< visibleCharRange.location {
-                if text.character(at: i) == 0x0A { lineNumber += 1 }
-            }
-        }
+        var lineNumber = lineNumber(at: visibleCharRange.location)
 
         // Enumerate line fragments and draw numbers
         layoutManager.enumerateLineFragments(forGlyphRange: visibleGlyphRange) { [weak self] lineRect, _, _, _, _ in
@@ -489,21 +580,83 @@ private final class RawLineNumberRulerView: NSRulerView {
 
     /// Called when scroll view scrolls
     override func invalidateHashMarks() {
+        if isLiveScrolling {
+            return
+        }
         super.invalidateHashMarks()
         needsDisplay = true
+    }
+
+    private func startObservingTextChanges() {
+        guard let textView = scrollView?.documentView as? NSTextView else { return }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(textDidChange),
+            name: NSText.didChangeNotification,
+            object: textView
+        )
+    }
+
+    @objc
+    private func textDidChange(_: Notification) {
+        rebuildLineIndex()
+        needsDisplay = true
+        ruleThickness = requiredThickness
+    }
+
+    private func rebuildLineIndex() {
+        guard let textView = scrollView?.documentView as? NSTextView else {
+            lineStartIndices = [0]
+            return
+        }
+
+        let text = textView.string as NSString
+        var starts = [0]
+        var location = 0
+        let length = text.length
+        while location < length {
+            let lineRange = text.lineRange(for: NSRange(location: location, length: 0))
+            let next = lineRange.location + lineRange.length
+            if next < length {
+                starts.append(next)
+            }
+            if next <= location {
+                break
+            }
+            location = next
+        }
+        lineStartIndices = starts
+    }
+
+    private func lineNumber(at characterIndex: Int) -> Int {
+        guard !lineStartIndices.isEmpty else { return 1 }
+        var low = 0
+        var high = lineStartIndices.count - 1
+        var answer = 0
+        while low <= high {
+            let mid = (low + high) / 2
+            if lineStartIndices[mid] <= characterIndex {
+                answer = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        return answer + 1
     }
 }
 
 // MARK: - Scroll Tracking Scroll View
 
 /// NSScrollView subclass that reports scroll position changes for toolbar auto-hide.
-/// Uses coalesced updates to prevent excessive notifications during smooth scrolling.
 @MainActor
 private final class ScrollTrackingScrollView: NSScrollView {
-    var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
+    var onScrollGestureStart: ((CGFloat) -> Void)?
+    var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
+    var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
 
-    private var lastReportedOffset: CGFloat = 0
-    private var scrollUpdateTask: Task<Void, Never>?
+    private var liveScrollStartOffset: CGFloat?
+    private var liveScrollLastOffset: CGFloat?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -516,44 +669,71 @@ private final class ScrollTrackingScrollView: NSScrollView {
     }
 
     private func setupScrollTracking() {
-        postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(boundsDidChange),
-            name: NSView.boundsDidChangeNotification,
-            object: contentView
+            selector: #selector(willStartLiveScroll),
+            name: NSScrollView.willStartLiveScrollNotification,
+            object: self
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(didEndLiveScroll),
+            name: NSScrollView.didEndLiveScrollNotification,
+            object: self
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(didLiveScroll),
+            name: NSScrollView.didLiveScrollNotification,
+            object: self
         )
     }
 
     @objc
-    private func boundsDidChange() {
-        // Cancel any pending update and schedule a new one
-        scrollUpdateTask?.cancel()
-        scrollUpdateTask = Task { @MainActor [weak self] in
-            // Small delay to coalesce rapid scroll events
-            try? await Task.sleep(for: .milliseconds(4)) // ~240fps coalescing
-            guard !Task.isCancelled else { return }
-            self?.reportScrollPosition()
+    private func willStartLiveScroll() {
+        let startOffset = contentView.bounds.origin.y
+        liveScrollStartOffset = startOffset
+        liveScrollLastOffset = startOffset
+        if let ruler = verticalRulerView as? RawLineNumberRulerView {
+            ruler.isLiveScrolling = true
         }
+        onScrollGestureStart?(startOffset)
     }
 
-    private func reportScrollPosition() {
-        guard
-            let onScroll,
-            let documentView else { return }
-
-        let offset = contentView.bounds.origin.y
-        let contentHeight = documentView.frame.height
-        let visibleHeight = contentView.bounds.height
-
-        // Only report if offset changed significantly (prevents micro-updates)
-        guard abs(offset - lastReportedOffset) > 0.5 else { return }
-        lastReportedOffset = offset
-
-        onScroll(offset, contentHeight, visibleHeight)
+    @objc
+    private func didLiveScroll() {
+        guard let onScrollGestureLive else { return }
+        let currentOffset = contentView.bounds.origin.y
+        let previousOffset = liveScrollLastOffset ?? currentOffset
+        let delta = currentOffset - previousOffset
+        liveScrollLastOffset = currentOffset
+        let canScroll = canScrollVertically()
+        guard abs(delta) > 1 else { return }
+        onScrollGestureLive(delta, currentOffset, canScroll)
     }
 
-    deinit {
-        scrollUpdateTask?.cancel()
+    @objc
+    private func didEndLiveScroll() {
+        if let ruler = verticalRulerView as? RawLineNumberRulerView {
+            ruler.isLiveScrolling = false
+        }
+        guard let onScrollGestureEnd else { return }
+        guard let startOffset = liveScrollStartOffset else { return }
+        let finalOffset = contentView.bounds.origin.y
+        let delta = finalOffset - startOffset
+        let canScroll = canScrollVertically()
+        liveScrollStartOffset = nil
+        liveScrollLastOffset = nil
+        if !canScroll {
+            onScrollGestureEnd(0, finalOffset, false)
+            return
+        }
+        guard abs(delta) > 1 else { return }
+        onScrollGestureEnd(delta, finalOffset, true)
+    }
+
+    private func canScrollVertically() -> Bool {
+        guard let documentView else { return false }
+        return documentView.bounds.height > contentView.bounds.height + 1
     }
 }

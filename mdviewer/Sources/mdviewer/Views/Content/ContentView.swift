@@ -44,6 +44,7 @@ struct ContentView: View {
     @State private var sidebarMode: SidebarMode = .folder
     @State private var showAppearancePopover = false
     @State private var sidebarWidth: CGFloat = 260
+    @State private var activeFileURL: URL?
     @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
     @StateObject private var toolbarVisibility = ToolbarVisibilityController()
 
@@ -89,7 +90,11 @@ struct ContentView: View {
 
     var body: some View {
         let parsed = FrontmatterParser.parse(document.text)
+        contentScaffold(parsed: parsed)
+    }
 
+    @ViewBuilder
+    private func contentScaffold(parsed: ParsedMarkdown) -> some View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
                 .ignoresSafeArea()
@@ -106,7 +111,7 @@ struct ContentView: View {
                         documentText: document.text,
                         isPresented: $showMetadataInspector,
                         sidebarMode: $sidebarMode,
-                        fileURL: fileURL,
+                        fileURL: activeFileURL,
                         onOpenFile: openFileInCurrentWindow
                     )
                     .frame(width: sidebarWidth)
@@ -118,16 +123,12 @@ struct ContentView: View {
         .onChange(of: windowReaderMode) { _, newMode in
             AccessibilityAnnouncement.modeChanged(to: newMode == .rendered)
         }
+        .onChange(of: fileURL) { _, newURL in
+            activeFileURL = newURL
+            FolderSidebarPreloader.prewarmIfNeeded(fileURL: newURL)
+        }
         .toolbar {
-            ContentToolbar(
-                readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
-                showAppearancePopover: $showAppearancePopover,
-                showMetadataInspector: $showMetadataInspector,
-                sidebarMode: $sidebarMode,
-                documentText: document.text,
-                hasFrontmatter: parsed.frontmatter != nil,
-                fileURL: fileURL
-            )
+            contentToolbar(parsed: parsed)
         }
         .focusedSceneValue(\.editorActions, editorActions)
         .onAppear {
@@ -137,10 +138,16 @@ struct ContentView: View {
             if !document.isEffectivelyEmpty {
                 showStartupWelcome = false
             }
-            // Ensure toolbar is visible initially and wire direct callback so toolbar
-            // updates bypass the SwiftUI render cycle for zero-delay response.
+            if activeFileURL == nil {
+                activeFileURL = fileURL
+            }
+            FolderSidebarPreloader.prewarmIfNeeded(fileURL: activeFileURL)
+            // Initialize toolbar visibility callback used by scroll auto-hide.
             updateToolbarVisibility(true)
             toolbarVisibility.onVisibilityChange = updateToolbarVisibility
+        }
+        .onDisappear {
+            toolbarVisibility.onVisibilityChange = nil
         }
         .popover(isPresented: $showAppearancePopover, arrowEdge: .top) {
             AppearancePopover(
@@ -160,23 +167,31 @@ struct ContentView: View {
         }
     }
 
+    @ToolbarContentBuilder
+    private func contentToolbar(parsed: ParsedMarkdown) -> some ToolbarContent {
+        ContentToolbar(
+            readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
+            showAppearancePopover: $showAppearancePopover,
+            showMetadataInspector: $showMetadataInspector,
+            sidebarMode: $sidebarMode,
+            documentText: document.text,
+            hasFrontmatter: parsed.frontmatter != nil,
+            fileURL: activeFileURL
+        )
+    }
+
     // MARK: - Toolbar Visibility
 
-    /// Updates the toolbar visibility by accessing the underlying NSWindow toolbar.
-    /// Uses smooth animations to prevent content shifting and visual jarring.
+    /// Updates toolbar visibility and suppresses layout-compensation scroll feedback.
     private func updateToolbarVisibility(_ isVisible: Bool) {
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
 
-        // Only update if the visibility state actually changed
         let currentVisibility = window.toolbar?.isVisible ?? true
         guard currentVisibility != isVisible else { return }
 
-        // Use NSAnimationContext for smooth toolbar transitions
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            window.toolbar?.isVisible = isVisible
-        }
+        // Prevent layout compensation events from being interpreted as user scroll.
+        toolbarVisibility.suspendUpdates(for: DesignTokens.Animation.topBar)
+        window.toolbar?.isVisible = isVisible
     }
 
     // MARK: - File Opening
@@ -186,7 +201,7 @@ struct ContentView: View {
         Task { @MainActor in
             do {
                 // Check file size
-                guard url.path != fileURL?.path else {
+                guard url.path != activeFileURL?.path else {
                     // Already open
                     return
                 }
@@ -209,10 +224,21 @@ struct ContentView: View {
                 // Update document content directly
                 document.text = text
                 showStartupWelcome = false
+                activeFileURL = url
 
-                // Update window title via NSDocumentController
-                NSDocumentController.shared.openDocument(withContentsOf: url, display: false) { _, _, _ in
-                    // Document is now associated with this window
+                // Synchronize current window metadata and clear edited state for the newly loaded file.
+                if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+                    window.representedURL = url
+                    window.title = url.lastPathComponent
+                    if let nsDocument = window.windowController?.document {
+                        // Keep NSDocument identity in sync so titlebar/status UI updates to the opened file.
+                        let selector = NSSelectorFromString("setFileURL:")
+                        if nsDocument.responds(to: selector) {
+                            _ = nsDocument.perform(selector, with: url)
+                        }
+                        nsDocument.undoManager?.removeAllActions()
+                        nsDocument.updateChangeCount(.changeCleared)
+                    }
                 }
             } catch {
                 logger.error("Failed to open file: \(error.localizedDescription)")
@@ -238,14 +264,23 @@ struct ContentView: View {
                     document: $document,
                     parsed: parsed,
                     readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
-                    preferences: preferences,
                     colorScheme: colorScheme,
                     reduceMotion: reduceMotion,
-                    onScroll: { offset, contentHeight, visibleHeight in
-                        toolbarVisibility.updateScroll(
-                            offset: offset,
-                            contentHeight: contentHeight,
-                            visibleHeight: visibleHeight
+                    onScrollGestureStart: { startOffset in
+                        toolbarVisibility.beginScrollGesture(startOffset: startOffset)
+                    },
+                    onScrollGestureLive: { delta, currentOffset, canScroll in
+                        toolbarVisibility.updateLiveScroll(
+                            delta: delta,
+                            currentOffset: currentOffset,
+                            canScroll: canScroll
+                        )
+                    },
+                    onScrollGestureEnd: { delta, finalOffset, canScroll in
+                        toolbarVisibility.updateScrollGesture(
+                            delta: delta,
+                            finalOffset: finalOffset,
+                            canScroll: canScroll
                         )
                     }
                 )
@@ -274,10 +309,12 @@ private struct ReaderContentView: View {
     @Binding var document: MarkdownDocument
     let parsed: ParsedMarkdown
     @Binding var readerMode: ReaderMode
-    let preferences: AppPreferences
+    @Environment(\.preferences) private var preferences
     let colorScheme: ColorScheme
     let reduceMotion: Bool
-    let onScroll: (CGFloat, CGFloat, CGFloat) -> Void
+    let onScrollGestureStart: (CGFloat) -> Void
+    let onScrollGestureLive: (CGFloat, CGFloat, Bool) -> Void
+    let onScrollGestureEnd: (CGFloat, CGFloat, Bool) -> Void
 
     var body: some View {
         GeometryReader { geometry in
@@ -325,7 +362,9 @@ private struct ReaderContentView: View {
             contentPadding: preferences.readerContentPadding.points,
             showLineNumbers: preferences.showLineNumbers,
             typographyPreferences: preferences.typographyPreferences,
-            onScroll: onScroll
+            onScrollGestureStart: onScrollGestureStart,
+            onScrollGestureLive: onScrollGestureLive,
+            onScrollGestureEnd: onScrollGestureEnd
         )
         .accessibleAnimation(
             reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
@@ -351,12 +390,20 @@ private struct ReaderContentView: View {
             fontSize: preferences.readerFontSize.points,
             colorScheme: preferences.effectiveColorScheme ?? colorScheme,
             showLineNumbers: preferences.showLineNumbers,
-            onScroll: onScroll
+            contentPadding: preferences.readerContentPadding.points,
+            onScrollGestureStart: onScrollGestureStart,
+            onScrollGestureLive: onScrollGestureLive,
+            onScrollGestureEnd: onScrollGestureEnd
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibleAnimation(
             reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
             value: preferences.readerFontSize,
+            reduceMotion: reduceMotion
+        )
+        .accessibleAnimation(
+            reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
+            value: preferences.readerContentPadding,
             reduceMotion: reduceMotion
         )
         // Raw editor uses full available space without top padding
@@ -491,7 +538,7 @@ private struct InspectorSidebar: View {
     @ViewBuilder
     private var folderContent: some View {
         if let fileURL {
-            FolderSidebarView(fileURL: fileURL, onOpenFile: onOpenFile)
+            FolderSidebarView(fileURL: fileURL, currentFileURL: fileURL, onOpenFile: onOpenFile)
         } else {
             EmptyFolderState()
         }

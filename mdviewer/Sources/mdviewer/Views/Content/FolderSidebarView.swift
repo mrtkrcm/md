@@ -11,17 +11,19 @@ internal import SwiftUI
     internal import AppKit
 #endif
 
-/// Maximum files to show in sidebar
-private let maxFolderItems = 500
-
 /// Cache for folder scan results to avoid repeated expensive scans
 private actor FolderScanCache {
-    private var cache: [URL: (result: FolderScanResult, timestamp: Date)] = [:]
-    private let cacheDuration: TimeInterval = 30 // 30 seconds
+    private struct Entry {
+        let result: FolderScanResult
+        let modificationDate: Date?
+    }
+
+    private var cache: [URL: Entry] = [:]
 
     func get(for url: URL) -> FolderScanResult? {
         guard let cached = cache[url] else { return nil }
-        if Date().timeIntervalSince(cached.timestamp) > cacheDuration {
+        let currentModificationDate = folderModificationDate(at: url)
+        if cached.modificationDate != currentModificationDate {
             cache.removeValue(forKey: url)
             return nil
         }
@@ -29,7 +31,10 @@ private actor FolderScanCache {
     }
 
     func set(_ result: FolderScanResult, for url: URL) {
-        cache[url] = (result, Date())
+        cache[url] = Entry(
+            result: result,
+            modificationDate: folderModificationDate(at: url)
+        )
     }
 
     func invalidate(for url: URL) {
@@ -39,18 +44,54 @@ private actor FolderScanCache {
 
 private let folderScanCache = FolderScanCache()
 
+private func folderModificationDate(at url: URL) -> Date? {
+    let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+    return attributes?[.modificationDate] as? Date
+}
+
+@MainActor
+enum FolderSidebarPreloader {
+    static func prewarmIfNeeded(fileURL: URL?) {
+        guard let fileURL else { return }
+        let folderURL = fileURL.deletingLastPathComponent()
+
+        Task(priority: .utility) {
+            if await folderScanCache.get(for: folderURL) != nil {
+                return
+            }
+            do {
+                let result = try await scanFolderItems(at: folderURL)
+                await folderScanCache.set(result, for: folderURL)
+            } catch {
+                // Best effort prewarm only.
+            }
+        }
+    }
+}
+
 /// ViewModel for managing folder sidebar state and operations
 @MainActor
 private final class FolderViewModel: ObservableObject {
-    @Published private(set) var items: [FolderItem] = []
+    @Published private(set) var rows: [FolderSidebarRow] = []
     @Published private(set) var isLoading = false
-    @Published private(set) var didReachItemLimit = false
+    @Published private(set) var totalItemCount = 0
+    @Published private(set) var hasMoreItems = false
 
-    private let fileURL: URL
     private var currentFilePath: String = ""
+    private var rootFolderURL: URL
+    private var currentFolderURL: URL
+    private var allItems: [FolderItem] = []
+    private var visibleItems: [FolderItem] = []
+    private var loadedCount = 0
+    private var isAppendingPage = false
+    private var progressiveAppendTask: Task<Void, Never>?
+
+    private let pageSize = 200
 
     init(fileURL: URL) {
-        self.fileURL = fileURL
+        let initialFolder = fileURL.deletingLastPathComponent()
+        rootFolderURL = initialFolder
+        currentFolderURL = initialFolder
         currentFilePath = fileURL.path
         loadContents()
     }
@@ -58,39 +99,137 @@ private final class FolderViewModel: ObservableObject {
     func updateFileURL(_ newURL: URL) {
         guard newURL.path != currentFilePath else { return }
         currentFilePath = newURL.path
+        let nextRoot = newURL.deletingLastPathComponent()
+        if nextRoot.path != rootFolderURL.path {
+            rootFolderURL = nextRoot
+            currentFolderURL = nextRoot
+            loadContents()
+            return
+        }
+        rebuildRows()
+    }
+
+    func navigateUp() {
+        guard currentFolderURL.path != rootFolderURL.path else { return }
+        let parent = currentFolderURL.deletingLastPathComponent()
+        guard parent.path.hasPrefix(rootFolderURL.path) else { return }
+        currentFolderURL = parent
         loadContents()
     }
 
+    func navigateInto(_ folderURL: URL) {
+        guard folderURL.path.hasPrefix(rootFolderURL.path) else { return }
+        currentFolderURL = folderURL
+        loadContents()
+    }
+
+    var currentFolderName: String {
+        currentFolderURL.lastPathComponent
+    }
+
+    var visibleItemCount: Int {
+        visibleItems.count
+    }
+
     private func loadContents() {
-        isLoading = true
+        progressiveAppendTask?.cancel()
 
         Task { @MainActor in
-            let folderURL = fileURL.deletingLastPathComponent()
+            let folderURL = currentFolderURL
 
             // Check cache first
             if let cachedResult = await folderScanCache.get(for: folderURL) {
-                items = cachedResult.items
-                didReachItemLimit = cachedResult.didReachLimit
+                applyCachedScanResult(cachedResult)
                 isLoading = false
                 return
             }
 
+            isLoading = true
+
             // Perform scan
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
-                    try await scanFolderItems(at: folderURL, limit: maxFolderItems)
+                    try await scanFolderItems(at: folderURL)
                 }.value
-                items = result.items
-                didReachItemLimit = result.didReachLimit
+                applyScanResult(result)
 
                 // Cache the result
                 await folderScanCache.set(result, for: folderURL)
             } catch {
-                items = []
-                didReachItemLimit = false
+                rows = []
+                allItems = []
+                visibleItems = []
+                loadedCount = 0
+                totalItemCount = 0
+                hasMoreItems = false
             }
             isLoading = false
         }
+    }
+
+    private func applyScanResult(_ result: FolderScanResult) {
+        progressiveAppendTask?.cancel()
+        allItems = result.items
+        visibleItems = []
+        totalItemCount = allItems.count
+        rebuildRows()
+        loadedCount = 0
+        hasMoreItems = !allItems.isEmpty
+        startProgressiveAppend()
+    }
+
+    private func applyCachedScanResult(_ result: FolderScanResult) {
+        progressiveAppendTask?.cancel()
+        allItems = result.items
+        visibleItems = result.items
+        totalItemCount = allItems.count
+        loadedCount = allItems.count
+        hasMoreItems = false
+        rebuildRows()
+    }
+
+    private func appendNextPage() {
+        guard !isAppendingPage else { return }
+        guard loadedCount < allItems.count else {
+            hasMoreItems = false
+            return
+        }
+
+        isAppendingPage = true
+        let nextCount = min(allItems.count, loadedCount + pageSize)
+        let nextItems = Array(allItems[loadedCount ..< nextCount])
+        loadedCount = nextCount
+
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            visibleItems.append(contentsOf: nextItems)
+            rebuildRows()
+        }
+
+        hasMoreItems = loadedCount < allItems.count
+        isAppendingPage = false
+    }
+
+    private func startProgressiveAppend() {
+        progressiveAppendTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled, loadedCount < allItems.count {
+                appendNextPage()
+                if loadedCount < allItems.count {
+                    try? await Task.sleep(for: .milliseconds(12))
+                }
+            }
+        }
+    }
+
+    private func rebuildRows() {
+        var nextRows: [FolderSidebarRow] = []
+        if currentFolderURL.path != rootFolderURL.path {
+            nextRows.append(.parent)
+        }
+        nextRows.append(contentsOf: visibleItems.map(FolderSidebarRow.item))
+        rows = nextRows
     }
 }
 
@@ -98,13 +237,15 @@ private final class FolderViewModel: ObservableObject {
 @MainActor
 struct FolderSidebarView: View {
     let fileURL: URL
+    let currentFileURL: URL?
     let onOpenFile: ((URL) -> Void)?
 
     @Environment(\.openDocument) private var openDocument
     @StateObject private var viewModel: FolderViewModel
 
-    init(fileURL: URL, onOpenFile: ((URL) -> Void)? = nil) {
+    init(fileURL: URL, currentFileURL: URL? = nil, onOpenFile: ((URL) -> Void)? = nil) {
         self.fileURL = fileURL
+        self.currentFileURL = currentFileURL
         self.onOpenFile = onOpenFile
         _viewModel = StateObject(wrappedValue: FolderViewModel(fileURL: fileURL))
     }
@@ -129,7 +270,7 @@ struct FolderSidebarView: View {
                     .font(.system(size: DesignTokens.Typography.bodySmall))
                     .foregroundStyle(.secondary)
 
-                Text(folderName)
+                Text(viewModel.currentFolderName)
                     .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -150,53 +291,14 @@ struct FolderSidebarView: View {
     private var contentView: some View {
         if viewModel.isLoading {
             loadingView
-        } else if viewModel.items.isEmpty {
+        } else if viewModel.rows.isEmpty {
             emptyView
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(viewModel.items) { item in
-                        rowView(for: item)
-                    }
-                }
-            }
-        }
-    }
-
-    private func rowView(for item: FolderItem) -> some View {
-        let isCurrent = item.path == fileURL.path
-
-        return HStack(spacing: 6) {
-            Image(systemName: item.icon)
-                .foregroundStyle(iconColor(for: item, isCurrent: isCurrent))
-                .font(.system(size: 13))
-                .frame(width: 18, alignment: .center)
-
-            Text(item.name)
-                .font(.system(size: 12))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(textColor(isCurrent: isCurrent))
-
-            Spacer(minLength: 4)
-
-            if isCurrent {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Color.accentColor)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
-        .background(isCurrent ? Color.accentColor.opacity(0.1) : Color.clear)
-        .cornerRadius(4)
-        .help(item.name)
-        .onTapGesture {
-            // Only handle taps for files, not directories
-            if !item.isDirectory {
-                handleTap(item)
-            }
+            FolderSidebarTableView(
+                rows: viewModel.rows,
+                currentFilePath: (currentFileURL ?? fileURL).path,
+                onActivateRow: handleRowActivation
+            )
         }
     }
 
@@ -231,36 +333,29 @@ struct FolderSidebarView: View {
 
     // MARK: - Computed
 
-    private var folderName: String {
-        fileURL.deletingLastPathComponent().lastPathComponent
-    }
-
     private var subtitleText: String {
-        if viewModel.didReachItemLimit {
-            return "Showing \(viewModel.items.count) of \(maxFolderItems)+"
+        if viewModel.hasMoreItems {
+            return "Showing \(viewModel.visibleItemCount) of \(viewModel.totalItemCount) items"
         }
-        return "\(viewModel.items.count) item\(viewModel.items.count == 1 ? "" : "s")"
-    }
-
-    // MARK: - Helpers
-
-    private func iconColor(for item: FolderItem, isCurrent: Bool) -> Color {
-        if item.isDirectory { return .accentColor }
-        return isCurrent ? .accentColor : .secondary
-    }
-
-    private func textColor(isCurrent: Bool) -> Color {
-        isCurrent ? .primary : .secondary
+        return "\(viewModel.totalItemCount) item\(viewModel.totalItemCount == 1 ? "" : "s")"
     }
 
     // MARK: - Actions
 
-    private func handleTap(_ item: FolderItem) {
-        if item.isDirectory {
-            NSWorkspace.shared.open(item.url)
-            return
+    private func handleRowActivation(_ row: FolderSidebarRow) {
+        switch row {
+        case .parent:
+            viewModel.navigateUp()
+        case let .item(item):
+            if item.isDirectory {
+                viewModel.navigateInto(item.url)
+            } else {
+                handleTap(item)
+            }
         }
+    }
 
+    private func handleTap(_ item: FolderItem) {
         let isCmd = NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
 
         if isCmd {
@@ -271,7 +366,260 @@ struct FolderSidebarView: View {
     }
 }
 
+#if os(macOS)
+
+    // MARK: - AppKit Folder List
+
+    private struct FolderSidebarTableView: NSViewRepresentable {
+        let rows: [FolderSidebarRow]
+        let currentFilePath: String
+        let onActivateRow: (FolderSidebarRow) -> Void
+
+        func makeCoordinator() -> Coordinator {
+            Coordinator(onActivateRow: onActivateRow)
+        }
+
+        func makeNSView(context: Context) -> NSScrollView {
+            let scrollView = NSScrollView()
+            scrollView.drawsBackground = false
+            scrollView.borderType = .noBorder
+            scrollView.hasVerticalScroller = true
+            scrollView.hasHorizontalScroller = false
+            scrollView.autohidesScrollers = true
+
+            let tableView = NSTableView()
+            tableView.headerView = nil
+            tableView.intercellSpacing = NSSize(width: 0, height: 0)
+            tableView.usesAlternatingRowBackgroundColors = false
+            tableView.allowsColumnSelection = false
+            tableView.allowsMultipleSelection = false
+            tableView.allowsEmptySelection = true
+            tableView.focusRingType = .none
+            tableView.rowHeight = max(DesignTokens.Spacing.extraLarge, DesignTokens.Spacing.extraWide)
+
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("FolderColumn"))
+            column.resizingMask = .autoresizingMask
+            tableView.addTableColumn(column)
+
+            tableView.delegate = context.coordinator
+            tableView.dataSource = context.coordinator
+            context.coordinator.tableView = tableView
+
+            scrollView.documentView = tableView
+            context.coordinator.update(rows: rows, currentFilePath: currentFilePath)
+            return scrollView
+        }
+
+        func updateNSView(_ nsView: NSScrollView, context: Context) {
+            context.coordinator.onActivateRow = onActivateRow
+            context.coordinator.update(rows: rows, currentFilePath: currentFilePath)
+        }
+
+        @MainActor
+        final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+            var rows: [FolderSidebarRow] = []
+            var currentFilePath: String = ""
+            var onActivateRow: (FolderSidebarRow) -> Void
+            weak var tableView: NSTableView?
+            private var applyingSelection = false
+
+            init(onActivateRow: @escaping (FolderSidebarRow) -> Void) {
+                self.onActivateRow = onActivateRow
+            }
+
+            func update(rows: [FolderSidebarRow], currentFilePath: String) {
+                let rowsChanged = self.rows != rows
+                let pathChanged = self.currentFilePath != currentFilePath
+                guard rowsChanged || pathChanged else { return }
+
+                self.rows = rows
+                self.currentFilePath = currentFilePath
+
+                guard let tableView else { return }
+                if rowsChanged {
+                    tableView.reloadData()
+                }
+
+                applyingSelection = true
+                if let currentRow = rows.firstIndex(where: { $0.isCurrentFile(path: currentFilePath) }) {
+                    if tableView.selectedRow != currentRow {
+                        tableView.selectRowIndexes(IndexSet(integer: currentRow), byExtendingSelection: false)
+                    }
+                } else {
+                    tableView.deselectAll(nil)
+                }
+                applyingSelection = false
+            }
+
+            func numberOfRows(in _: NSTableView) -> Int {
+                rows.count
+            }
+
+            func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+                guard row >= 0, row < rows.count else { return false }
+                return rows[row].isSelectable
+            }
+
+            func tableView(_ tableView: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
+                guard row >= 0, row < rows.count else { return nil }
+                let rowItem = rows[row]
+                let isCurrent = rowItem.isCurrentFile(path: currentFilePath)
+                let identifier = FolderSidebarCellView.reuseIdentifier
+                let cell: FolderSidebarCellView
+                if let reused = tableView.makeView(withIdentifier: identifier, owner: nil) as? FolderSidebarCellView {
+                    cell = reused
+                } else {
+                    cell = FolderSidebarCellView()
+                    cell.identifier = identifier
+                }
+                cell.configure(row: rowItem, isCurrent: isCurrent)
+                return cell
+            }
+
+            func tableViewSelectionDidChange(_ notification: Notification) {
+                guard !applyingSelection else { return }
+                guard let tableView = notification.object as? NSTableView else { return }
+                let row = tableView.selectedRow
+                guard row >= 0, row < rows.count else { return }
+                onActivateRow(rows[row])
+            }
+        }
+    }
+
+    private final class FolderSidebarCellView: NSTableCellView {
+        static let reuseIdentifier = NSUserInterfaceItemIdentifier("FolderSidebarCellView")
+
+        private let iconView = NSImageView()
+        private let labelView = NSTextField(labelWithString: "")
+        private let checkView = NSTextField(labelWithString: "✓")
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            setup()
+        }
+
+        required init?(coder: NSCoder) {
+            super.init(coder: coder)
+            setup()
+        }
+
+        private func setup() {
+            iconView.translatesAutoresizingMaskIntoConstraints = false
+            iconView.symbolConfiguration = NSImage.SymbolConfiguration(
+                pointSize: DesignTokens.Typography.bodySmall,
+                weight: .regular
+            )
+            addSubview(iconView)
+
+            labelView.translatesAutoresizingMaskIntoConstraints = false
+            labelView.lineBreakMode = .byTruncatingMiddle
+            labelView.font = .systemFont(ofSize: DesignTokens.Typography.bodySmall)
+            addSubview(labelView)
+
+            checkView.translatesAutoresizingMaskIntoConstraints = false
+            checkView.font = .systemFont(ofSize: DesignTokens.Typography.caption, weight: .bold)
+            checkView.textColor = .controlAccentColor
+            checkView.isHidden = true
+            addSubview(checkView)
+
+            NSLayoutConstraint.activate([
+                iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: DesignTokens.Spacing.relaxed),
+                iconView.widthAnchor.constraint(equalToConstant: 18),
+                iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+                labelView.leadingAnchor.constraint(
+                    equalTo: iconView.trailingAnchor,
+                    constant: DesignTokens.Spacing.compact
+                ),
+                labelView.centerYAnchor.constraint(equalTo: centerYAnchor),
+
+                checkView.leadingAnchor.constraint(
+                    greaterThanOrEqualTo: labelView.trailingAnchor,
+                    constant: DesignTokens.Spacing.tight
+                ),
+                checkView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -DesignTokens.Spacing.relaxed),
+                checkView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ])
+        }
+
+        func configure(row: FolderSidebarRow, isCurrent: Bool) {
+            iconView.image = NSImage(systemSymbolName: row.icon, accessibilityDescription: nil)
+            iconView.contentTintColor = row.isDirectoryLike
+                ? .controlAccentColor
+                : (isCurrent ? .controlAccentColor : .secondaryLabelColor)
+            labelView.stringValue = row.displayName
+            labelView.textColor = row
+                .isParentRow ? .secondaryLabelColor : (isCurrent ? .labelColor : .secondaryLabelColor)
+            labelView.font = isCurrent
+                ? .systemFont(ofSize: DesignTokens.Typography.bodySmall, weight: .medium)
+                : .systemFont(ofSize: DesignTokens.Typography.bodySmall)
+            checkView.isHidden = !isCurrent || row.isParentRow
+        }
+    }
+#endif
+
 // MARK: - Folder Item
+
+private enum FolderSidebarRow: Identifiable, Equatable, Sendable {
+    case parent
+    case item(FolderItem)
+
+    var id: String {
+        switch self {
+        case .parent:
+            "folder-parent-row"
+        case let .item(item):
+            item.id
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .parent:
+            ".."
+        case let .item(item):
+            item.name
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .parent:
+            "arrowshape.turn.up.left.fill"
+        case let .item(item):
+            item.icon
+        }
+    }
+
+    var isParentRow: Bool {
+        if case .parent = self {
+            return true
+        }
+        return false
+    }
+
+    var isDirectoryLike: Bool {
+        switch self {
+        case .parent:
+            true
+        case let .item(item):
+            item.isDirectory
+        }
+    }
+
+    var isSelectable: Bool {
+        true
+    }
+
+    func isCurrentFile(path: String) -> Bool {
+        switch self {
+        case .parent:
+            false
+        case let .item(item):
+            !item.isDirectory && normalizedPath(item.path) == normalizedPath(path)
+        }
+    }
+}
 
 struct FolderItem: Identifiable, Equatable, Sendable {
     let id: String
@@ -284,7 +632,7 @@ struct FolderItem: Identifiable, Equatable, Sendable {
     /// Creates a FolderItem by scanning the URL's resource values.
     init?(url: URL) {
         self.url = url
-        path = url.path
+        path = normalizedPath(url.path)
         id = url.path
         name = url.lastPathComponent
 
@@ -310,7 +658,7 @@ struct FolderItem: Identifiable, Equatable, Sendable {
     /// Creates a FolderItem directly with specified properties (for testing).
     init(url: URL, isDirectory: Bool) {
         self.url = url
-        path = url.path
+        path = normalizedPath(url.path)
         id = url.path
         name = url.lastPathComponent
         self.isDirectory = isDirectory
@@ -324,153 +672,39 @@ struct FolderItem: Identifiable, Equatable, Sendable {
 
 private struct FolderScanResult: Sendable {
     let items: [FolderItem]
-    let didReachLimit: Bool
+}
+
+private func normalizedPath(_ path: String) -> String {
+    URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
 }
 
 private let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "text", "txt"]
 
-private func scanFolderItems(at folderURL: URL, limit: Int) async throws -> FolderScanResult {
+private func scanFolderItems(at folderURL: URL) async throws -> FolderScanResult {
     let fileManager = FileManager.default
-
-    // First, find all folders that contain markdown files
-    var allMarkdownFiles: [URL] = []
-
-    // Use enumerator to scan the entire directory tree
-    guard
-        let enumerator = fileManager.enumerator(
-            at: folderURL,
-            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants],
-            errorHandler: nil
-        )
-    else {
-        return FolderScanResult(items: [], didReachLimit: false)
-    }
-
-    // Collect all markdown files and track which folders contain them
-    // Use resource values from enumerator to avoid additional lookups
-    var folderDepths: [URL: Int] = [:] // Track which folders contain markdown and their depth
-    while let url = enumerator.nextObject() as? URL {
-        let ext = url.pathExtension.lowercased()
-
-        // Only process markdown files
-        guard markdownExtensions.contains(ext) || ext.isEmpty else {
-            continue
-        }
-
-        // Get resource values that were already fetched by enumerator
-        guard
-            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]),
-            let isDir = values.isDirectory
-        else {
-            continue
-        }
-
-        let isPackage = values.isPackage ?? false
-
-        // Skip packages and non-markdown files
-        if isDir, !isPackage {
-            // This is a directory, skip it
-            continue
-        }
-        if !isDir {
-            // This is a markdown file
-            allMarkdownFiles.append(url)
-
-            // Mark all parent directories up to the root folder
-            // Use a more efficient approach by calculating depth once
-            var currentURL = url.deletingLastPathComponent()
-            var depth = 1
-            while currentURL.path.hasPrefix(folderURL.path), currentURL != folderURL {
-                folderDepths[currentURL] = max(folderDepths[currentURL] ?? 0, depth)
-                currentURL = currentURL.deletingLastPathComponent()
-                depth += 1
-            }
-        }
-    }
-
-    // Extract folders that contain markdown, sorted by depth then name
-    let sortedFolders = folderDepths.keys.sorted { lhs, rhs in
-        let lhsDepth = folderDepths[lhs] ?? 0
-        let rhsDepth = folderDepths[rhs] ?? 0
-        if lhsDepth != rhsDepth {
-            return lhsDepth < rhsDepth // shallower folders first
-        }
-        return lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
-    }
-
-    // Build final sorted result incrementally to avoid final sort
-    var resultItems: [FolderItem] = []
-    resultItems.reserveCapacity(min(sortedFolders.count + allMarkdownFiles.count, limit))
-
-    // Add folders first (already sorted) - process concurrently for better performance
-    let folderItems = await withTaskGroup(of: FolderItem?.self) { group in
-        for folderURL in sortedFolders {
-            group.addTask {
-                FolderItem(url: folderURL)
-            }
-        }
-
-        var items: [FolderItem] = []
-        for await item in group {
-            if let item {
-                items.append(item)
-            }
-        }
-        return items
-    }
-
-    // Add folders to result (already properly sorted)
-    for folderItem in folderItems {
-        resultItems.append(folderItem)
-
-        // Check limit
-        if resultItems.count >= limit {
-            return FolderScanResult(
-                items: Array(resultItems.prefix(limit)),
-                didReachLimit: true
-            )
-        }
-    }
-
-    // Add files in sorted order - process concurrently
-    let sortedFiles = allMarkdownFiles.sorted { lhs, rhs in
-        lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
-    }
-
-    let fileItems = await withTaskGroup(of: FolderItem?.self) { group in
-        for url in sortedFiles {
-            group.addTask {
-                FolderItem(url: url)
-            }
-        }
-
-        var items: [FolderItem] = []
-        for await item in group {
-            if let item {
-                items.append(item)
-            }
-        }
-        return items
-    }
-
-    // Add files to result
-    for fileItem in fileItems {
-        resultItems.append(fileItem)
-
-        // Check limit
-        if resultItems.count >= limit {
-            return FolderScanResult(
-                items: Array(resultItems.prefix(limit)),
-                didReachLimit: true
-            )
-        }
-    }
-
-    return FolderScanResult(
-        items: resultItems,
-        didReachLimit: false
+    let urls = try fileManager.contentsOfDirectory(
+        at: folderURL,
+        includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+        options: [.skipsHiddenFiles, .skipsPackageDescendants]
     )
+
+    var items: [FolderItem] = []
+    items.reserveCapacity(urls.count)
+
+    for url in urls {
+        if let item = FolderItem(url: url) {
+            items.append(item)
+        }
+    }
+
+    items.sort { lhs, rhs in
+        if lhs.isDirectory != rhs.isDirectory {
+            return lhs.isDirectory && !rhs.isDirectory
+        }
+        return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+    }
+
+    return FolderScanResult(items: items)
 }
 
 #Preview {

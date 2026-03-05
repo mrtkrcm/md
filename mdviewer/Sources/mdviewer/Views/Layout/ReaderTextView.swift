@@ -22,7 +22,7 @@
     // MARK: - ReaderTextView
 
     /// Custom NSTextView subclass that constrains its text container to a readable
-    /// width and centers the column horizontally within the enclosing scroll view.
+    /// width and aligns it to the leading edge within the enclosing scroll view.
     @MainActor
     final class ReaderTextView: NSTextView, @unchecked Sendable {
         var preferredReadableWidth: CGFloat = 720
@@ -31,6 +31,7 @@
         /// can reflect the user's chosen content padding preference.
         var preferredHorizontalInset: CGFloat = 24
         private var lastAvailableWidth: CGFloat = 0
+        private var deferredHeightRecomputeTask: Task<Void, Never>?
 
         /// Cached heading information for accessibility rotor navigation.
         private var headingInfos: [HeadingInfo] = []
@@ -222,15 +223,13 @@
             // Calculate target width with insets
             let maxContentWidth = availableWidth - (preferredHorizontalInset * 2)
             let targetWidth = min(preferredReadableWidth, maxContentWidth)
-            let hInset = max(preferredHorizontalInset, (availableWidth - targetWidth) / 2)
+            let hInset = preferredHorizontalInset
 
             // Only update if changed significantly (skip redundant layout passes)
-            if
-                !force,
-                abs(textContainer.containerSize.width - targetWidth) < 1.0,
-                abs(textContainerInset.width - hInset) < 1.0,
-                abs(lastAvailableWidth - availableWidth) < 1.0
-            {
+            let widthChanged = abs(textContainer.containerSize.width - targetWidth) >= 1.0
+            let insetChanged = abs(textContainerInset.width - hInset) >= 1.0
+            let availableWidthChanged = abs(lastAvailableWidth - availableWidth) >= 1.0
+            if !force, !widthChanged, !insetChanged, !availableWidthChanged {
                 return
             }
             lastAvailableWidth = availableWidth
@@ -238,8 +237,28 @@
             // Update container and insets
             textContainer.containerSize = NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude)
             textContainerInset = NSSize(width: hInset, height: preferredHorizontalInset)
+            if force {
+                deferredHeightRecomputeTask?.cancel()
+                applyAccurateHeight(for: textContainer, availableWidth: availableWidth)
+                return
+            }
 
-            // Update view frame to match content
+            // Avoid full layout synchronously during interactive resize/toolbar changes.
+            let currentHeight = max(frame.height, bounds.height, 1)
+            setFrameSize(NSSize(width: availableWidth, height: currentHeight))
+            scheduleDeferredHeightRecompute(for: textContainer, availableWidth: availableWidth)
+        }
+
+        private func scheduleDeferredHeightRecompute(for textContainer: NSTextContainer, availableWidth: CGFloat) {
+            deferredHeightRecomputeTask?.cancel()
+            deferredHeightRecomputeTask = Task { @MainActor [weak self, weak textContainer] in
+                try? await Task.sleep(for: .milliseconds(140))
+                guard !Task.isCancelled, let self, let textContainer else { return }
+                applyAccurateHeight(for: textContainer, availableWidth: availableWidth)
+            }
+        }
+
+        private func applyAccurateHeight(for textContainer: NSTextContainer, availableWidth: CGFloat) {
             layoutManager?.ensureLayout(for: textContainer)
             let usedHeight = layoutManager?.usedRect(for: textContainer).height ?? 0
             let totalHeight = usedHeight + (preferredHorizontalInset * 2)

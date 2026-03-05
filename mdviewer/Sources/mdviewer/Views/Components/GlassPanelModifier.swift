@@ -22,10 +22,10 @@ private struct GlassPanelModifier: ViewModifier {
                             .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
                     )
                     .shadow(
-                        color: .black.opacity(0.08),
-                        radius: 16,
+                        color: .black.opacity(DesignTokens.Shadow.opacity),
+                        radius: DesignTokens.Shadow.radius,
                         x: 0,
-                        y: 4
+                        y: DesignTokens.Shadow.yOffset
                     )
             )
     }

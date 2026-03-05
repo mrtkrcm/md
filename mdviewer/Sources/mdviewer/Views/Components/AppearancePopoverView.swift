@@ -8,7 +8,7 @@ internal import SwiftUI
 // MARK: - AppearancePopoverView
 
 /// Settings popover for appearance, reader, and syntax configuration.
-/// Uses native macOS sectioned form layout for clear organization.
+/// Uses native macOS sectioned form layout with visual theme previews.
 struct AppearancePopoverView: View {
     @Binding var selectedTheme: AppTheme
     @Binding var readerFontSize: ReaderFontSize
@@ -22,10 +22,16 @@ struct AppearancePopoverView: View {
     @Binding var showLineNumbers: Bool
     @Binding var typographyPreferences: TypographyPreferences
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         Form {
             Section("Appearance") {
                 appearanceSection
+            }
+
+            Section("Theme") {
+                themeSection
             }
 
             Section("Reader") {
@@ -56,15 +62,23 @@ struct AppearancePopoverView: View {
         .accessibilityLabel("Appearance Mode")
     }
 
+    private var themeSection: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.standard) {
+            ThemePreviewGrid(
+                selectedTheme: $selectedTheme,
+                colorScheme: colorScheme
+            )
+            .padding(.vertical, DesignTokens.Spacing.compact)
+
+            LiveThemePreview(
+                theme: selectedTheme,
+                colorScheme: colorScheme
+            )
+        }
+    }
+
     private var readerSection: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.standard) {
-            Picker("Theme", selection: $selectedTheme) {
-                ForEach(AppTheme.allCases) { theme in
-                    Text(theme.rawValue).tag(theme)
-                }
-            }
-            .accessibilityLabel("Reader Theme")
-
             HStack {
                 Text("Font")
                     .foregroundStyle(.primary)

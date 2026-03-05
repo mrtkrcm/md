@@ -9,38 +9,33 @@ internal import Foundation
 internal import SwiftUI
 
 /// Tracks scroll direction and position to control toolbar visibility.
+/// Provides stable, smooth animations optimized for 120fps displays.
 @MainActor
 final class ToolbarVisibilityController: ObservableObject {
-    /// Current visibility state of the toolbar.
-    @Published private(set) var isVisible: Bool = true
+    /// Current visibility progress (0.0 = fully hidden, 1.0 = fully visible).
+    @Published private(set) var visibilityProgress: CGFloat = 1.0
 
-    /// Scroll offset after which toolbar may hide (in points).
-    let hideThreshold: CGFloat
-    let showThreshold: CGFloat
+    /// Scroll offset after which toolbar begins hiding (in points).
+    let hideThreshold: CGFloat = 30
+
+    /// Distance over which toolbar gradually shrinks (in points).
+    let shrinkRange: CGFloat = 60
 
     /// Ignore tiny scroll deltas from trackpad noise and bounce.
     private let directionNoiseThreshold: CGFloat = 1.0
 
-    /// Called synchronously when visibility changes — bypasses the SwiftUI render cycle.
-    var onVisibilityChange: ((Bool) -> Void)?
+    /// Called when visibility progress changes for smooth animations.
+    var onVisibilityProgressChange: ((CGFloat) -> Void)?
 
-    private let debounceInterval: TimeInterval
+    // Hysteresis: toolbar auto-shows only when within this distance of the top.
+    private let atTopThreshold: CGFloat = 8
+
+    private var lastScrollOffset: CGFloat = 0
     private var suspendScrollHandlingUntil: Date = .distantPast
     private var gestureStartOffset: CGFloat?
     private var lastHideTimestamp: Date?
-    private var compatibilityLastOffset: CGFloat?
-    private var compatibilityAccumulatedScrollUp: CGFloat = 0
 
-    init(
-        hideThreshold: CGFloat = 20,
-        showThreshold: CGFloat = 1,
-        debounceInterval: TimeInterval = 0.05,
-        scrollThrottleInterval _: TimeInterval = 0.0
-    ) {
-        self.hideThreshold = hideThreshold
-        self.showThreshold = showThreshold
-        self.debounceInterval = debounceInterval
-    }
+    init() {}
 
     /// Captures the starting offset for a live scroll gesture.
     func beginScrollGesture(startOffset: CGFloat) {
@@ -48,13 +43,11 @@ final class ToolbarVisibilityController: ObservableObject {
     }
 
     /// Handles live scroll samples during an active gesture.
-    /// Uses instantaneous direction from per-sample delta to make toolbar transitions feel immediate.
+    /// Updates visibility progress based on scroll position for stable 120fps animations.
     func updateLiveScroll(delta: CGFloat, currentOffset: CGFloat, canScroll: Bool) {
         guard canScroll else {
             gestureStartOffset = nil
-            if !isVisible {
-                setVisible(true)
-            }
+            setVisibilityProgress(1.0)
             return
         }
 
@@ -63,72 +56,42 @@ final class ToolbarVisibilityController: ObservableObject {
             return
         }
 
-        guard abs(delta) >= directionNoiseThreshold else { return }
+        lastScrollOffset = currentOffset
 
-        if delta > 0 {
-            if currentOffset > hideThreshold, isVisible {
-                setVisible(false)
-                lastHideTimestamp = now
-            }
-        } else if delta < 0 {
-            if !isVisible, abs(delta) >= showThreshold {
-                setVisible(true)
-            }
+        // Show at top immediately (tight zone for hysteresis)
+        if currentOffset <= atTopThreshold {
+            setVisibilityProgress(1.0)
+            return
+        }
+
+        // Calculate progressive shrinking based on scroll position
+        let shrinkStart = hideThreshold
+        let shrinkEnd = hideThreshold + shrinkRange
+
+        if currentOffset <= shrinkStart {
+            // Fully visible before shrink threshold
+            setVisibilityProgress(1.0)
+        } else if currentOffset >= shrinkEnd {
+            // Fully hidden after shrink range
+            setVisibilityProgress(0.0)
+        } else {
+            // Gradually shrink within the shrink range
+            let progress = 1.0 - ((currentOffset - shrinkStart) / shrinkRange)
+            setVisibilityProgress(max(0.0, min(1.0, progress)))
         }
     }
 
-    /// Legacy offset-based API retained for tests and non-gesture callers.
-    /// Converts absolute offsets to directional deltas and applies hysteresis/debouncing.
+    /// Offset-based API retained for non-gesture callers.
     func updateScroll(offset: CGFloat, contentHeight: CGFloat, visibleHeight: CGFloat) {
         let canScroll = contentHeight > visibleHeight + 1
-        guard canScroll else {
-            compatibilityLastOffset = offset
-            compatibilityAccumulatedScrollUp = 0
-            if !isVisible {
-                setVisible(true)
-            }
-            return
-        }
-
-        let now = Date()
-        if now < suspendScrollHandlingUntil {
-            compatibilityLastOffset = offset
-            return
-        }
-
-        let previousOffset = compatibilityLastOffset ?? 0
-        compatibilityLastOffset = offset
-        let delta = offset - previousOffset
-        guard abs(delta) >= directionNoiseThreshold else { return }
-
-        if delta > 0 {
-            compatibilityAccumulatedScrollUp = 0
-            if offset > hideThreshold, isVisible {
-                setVisible(false)
-                lastHideTimestamp = now
-            }
-            return
-        }
-
-        compatibilityAccumulatedScrollUp += -delta
-        guard !isVisible, compatibilityAccumulatedScrollUp >= showThreshold else { return }
-        let isDebounced = now.timeIntervalSince(lastHideTimestamp ?? .distantPast) >= debounceInterval
-        guard isDebounced else { return }
-        setVisible(true)
-        compatibilityAccumulatedScrollUp = 0
+        updateLiveScroll(delta: offset - lastScrollOffset, currentOffset: offset, canScroll: canScroll)
     }
 
     /// Call this when a live scroll gesture ends.
-    /// Uses gesture delta and current visibility to decide transitions.
-    /// - Parameters:
-    ///   - delta: End offset minus start offset for the gesture.
-    ///   - finalOffset: Final scroll offset after gesture ends.
     func updateScrollGesture(delta: CGFloat, finalOffset: CGFloat, canScroll: Bool) {
         guard canScroll else {
             gestureStartOffset = nil
-            if !isVisible {
-                setVisible(true)
-            }
+            setVisibilityProgress(1.0)
             return
         }
 
@@ -149,11 +112,8 @@ final class ToolbarVisibilityController: ObservableObject {
     }
 
     /// Explicitly show toolbar (e.g., when mouse enters toolbar area).
-    /// Includes a small delay to prevent flickering when mouse moves across boundaries.
     func show() {
-        if !isVisible {
-            setVisible(true)
-        }
+        setVisibilityProgress(1.0)
     }
 
     /// Reset state (e.g., when changing documents).
@@ -161,9 +121,8 @@ final class ToolbarVisibilityController: ObservableObject {
         suspendScrollHandlingUntil = .distantPast
         gestureStartOffset = nil
         lastHideTimestamp = nil
-        compatibilityLastOffset = nil
-        compatibilityAccumulatedScrollUp = 0
-        setVisible(true)
+        lastScrollOffset = 0
+        setVisibilityProgress(1.0)
     }
 
     /// Temporarily ignores scroll updates to ride out layout compensation events.
@@ -174,10 +133,10 @@ final class ToolbarVisibilityController: ObservableObject {
         }
     }
 
-    private func setVisible(_ visible: Bool) {
-        guard isVisible != visible else { return }
-        isVisible = visible
-        onVisibilityChange?(visible)
+    private func setVisibilityProgress(_ progress: CGFloat) {
+        guard abs(visibilityProgress - progress) > 0.01 else { return } // Prevent micro-updates
+        visibilityProgress = progress
+        onVisibilityProgressChange?(progress)
     }
 }
 

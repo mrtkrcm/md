@@ -11,75 +11,176 @@ internal import Foundation
 // MARK: - Typography Applier
 
 /// Applies professional typography styling including fonts, colors, and spacing.
-///
-/// This component configures the visual appearance of rendered Markdown
-/// based on the requested theme, font family, and user typography preferences.
-/// Implements modern typesetting best practices for optimal readability.
 struct TypographyApplier: TypographyApplying {
     // MARK: - Typography Application
 
     func applyTypography(to text: NSMutableAttributedString, request: RenderRequest) {
-        var fullRange = NSRange(location: 0, length: text.length)
-        guard fullRange.length > 0 else { return }
+        let length = text.length
+        guard length > 0 else { return }
+        let fullRange = NSRange(location: 0, length: length)
 
         let palette = NativeThemePalette.cached(theme: request.appTheme, scheme: request.colorScheme)
         let bodyFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
 
-        // Apply base font with user's typographic preferences.
+        // 1. Initial base styling (Fast)
         let enhancedFont = applyTypographicFeatures(to: bodyFont, preferences: request.typographyPreferences)
-        text.addAttribute(.font, value: enhancedFont, range: fullRange)
-        text.addAttribute(.foregroundColor, value: palette.textPrimary, range: fullRange)
+        text.addAttributes([
+            .font: enhancedFont,
+            .foregroundColor: palette.textPrimary,
+            .paragraphStyle: createBaseParagraphStyle(
+                lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
+                paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize),
+                hyphenationFactor: request.typographyPreferences.hyphenation ? request.textSpacing
+                    .hyphenationFactor : 0,
+                alignment: request.typographyPreferences.justification.nsAlignment
+            ),
+        ], range: fullRange)
 
-        // Apply base paragraph style with user preferences.
-        let baseStyle = createBaseParagraphStyle(
-            lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
-            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize),
-            hyphenationFactor: request.typographyPreferences.hyphenation ? request.textSpacing.hyphenationFactor : 0,
-            alignment: request.typographyPreferences.justification.nsAlignment
-        )
-        text.addAttribute(.paragraphStyle, value: baseStyle, range: fullRange)
-
-        // Truncate wide table cells before attribute pass.
+        // 2. Table cell truncation (Mutates string length)
         truncateTableCells(in: text, bodyFont: enhancedFont, request: request)
-        fullRange = NSRange(location: 0, length: text.length)
+        let newLength = text.length
+        let newFullRange = NSRange(location: 0, length: newLength)
 
-        // Apply presentation-intent–aware styling and kerning in combined pass
-        applyPresentationIntentAndKerning(to: text, fullRange: fullRange, request: request, palette: palette)
+        // 3. Combined intent pass (Handles headers, code blocks, blockquotes, etc.)
+        applyPresentationIntentAndKerning(to: text, fullRange: newFullRange, request: request, palette: palette)
 
-        // Apply consistent link styling.
-        applyLinkStyling(to: text, fullRange: fullRange, palette: palette)
-
-        // Apply horizontal rule styles.
-        applyHorizontalRuleStyles(to: text, fullRange: fullRange, palette: palette, request: request)
-
-        // Insert list markers.
-        insertListMarkers(in: text, palette: palette, request: request)
-
-        // Apply task list checkbox styling.
-        applyTaskListStyling(to: text, palette: palette, request: request)
+        // 4. Structural pass (Links, markers, HRs, task lists)
+        applyStructuralStyling(to: text, fullRange: newFullRange, palette: palette, request: request)
     }
 
     // MARK: - Typographic Features
 
-    /// Applies advanced typographic features based on user preferences.
     private func applyTypographicFeatures(to font: NSFont, preferences: TypographyPreferences) -> NSFont {
         guard preferences.ligatures else { return font }
-
         let descriptor = font.fontDescriptor.addingAttributes([
-            .featureSettings: [
-                [
-                    NSFontDescriptor.FeatureKey.typeIdentifier: kCommonLigaturesOnSelector,
-                    NSFontDescriptor.FeatureKey.selectorIdentifier: 1,
-                ],
-            ],
+            .featureSettings: [[
+                NSFontDescriptor.FeatureKey.typeIdentifier: kCommonLigaturesOnSelector,
+                NSFontDescriptor.FeatureKey.selectorIdentifier: 1,
+            ]],
         ])
-
         return NSFont(descriptor: descriptor, size: font.pointSize) ?? font
+    }
+
+    // MARK: - Structural Styling Pass
+
+    /// Combined pass for elements that require specialized scanning or string mutation.
+    private func applyStructuralStyling(
+        to text: NSMutableAttributedString,
+        fullRange: NSRange,
+        palette: NativeThemePalette,
+        request: RenderRequest
+    ) {
+        let nsString = text.string as NSString
+        let rhythm = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
+        let hrSpacing = max(12, rhythm * 0.6)
+        let hrStyle = NSMutableParagraphStyle()
+        hrStyle.paragraphSpacingBefore = hrSpacing
+        hrStyle.paragraphSpacing = hrSpacing
+        let hrFont = NSFont.systemFont(ofSize: 6, weight: .regular)
+
+        var listInsertions: [(location: Int, marker: String, style: NSParagraphStyle?)] = []
+        var hrInsertions: [Int] = []
+
+        // Single pass for links and intents
+        text.enumerateAttribute(.link, in: fullRange, options: []) { value, range, _ in
+            guard value != nil else { return }
+            text.addAttributes([
+                .foregroundColor: palette.link,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+                .underlineColor: palette.formattedLinkUnderlineColor(),
+            ], range: range)
+        }
+
+        text
+            .enumerateAttribute(
+                MarkdownRenderAttribute.presentationIntent,
+                in: fullRange,
+                options: []
+            ) { value, range, _ in
+                guard let intent = value as? PresentationIntent else { return }
+
+                // Discover List Markers
+                var listItemOrdinal: Int?
+                var isOrdered = false
+                var isCodeBlock = false
+                var isThematicBreak = false
+
+                for component in intent.components {
+                    switch component.kind {
+                    case .listItem(let ordinal): listItemOrdinal = ordinal
+                    case .orderedList: isOrdered = true
+                    case .codeBlock: isCodeBlock = true
+                    case .thematicBreak: isThematicBreak = true
+                    default: break
+                    }
+                }
+
+                if let ordinal = listItemOrdinal, !isCodeBlock {
+                    let style = text.attribute(
+                        .paragraphStyle,
+                        at: range.location,
+                        effectiveRange: nil
+                    ) as? NSParagraphStyle
+                    listInsertions.append((range.location, isOrdered ? "\(ordinal).\t" : "•\t", style))
+                }
+
+                // Discover HR positions
+                if isThematicBreak {
+                    text.addAttributes([
+                        MarkdownRenderAttribute.horizontalRule: palette.horizontalRule,
+                        .foregroundColor: NSColor.clear,
+                        .paragraphStyle: hrStyle,
+                        .font: hrFont,
+                    ], range: range)
+
+                    if NSMaxRange(range) < nsString.length, nsString.character(at: NSMaxRange(range)) != 0x0A {
+                        hrInsertions.append(NSMaxRange(range))
+                    }
+                }
+            }
+
+        // Apply string mutations in reverse
+        var mutations: [(location: Int, text: NSAttributedString)] = []
+        let markerFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
+
+        for list in listInsertions {
+            let prevChar = list.location > 0 ? nsString.character(at: list.location - 1) : 0
+            if list.location == 0 || prevChar == 0x0A || prevChar == 0x09 {
+                let markerAttr = NSMutableAttributedString(string: list.marker, attributes: [
+                    .font: markerFont,
+                    .foregroundColor: palette.listMarker,
+                ])
+                if let style = list.style?.mutableCopy() as? NSMutableParagraphStyle {
+                    style.firstLineHeadIndent = 0
+                    markerAttr.addAttribute(
+                        .paragraphStyle,
+                        value: style,
+                        range: NSRange(location: 0, length: markerAttr.length)
+                    )
+                }
+                mutations.append((list.location, markerAttr))
+            }
+        }
+
+        let hrNewline = NSMutableAttributedString(string: "\n", attributes: [
+            .paragraphStyle: hrStyle,
+            .font: hrFont,
+            .foregroundColor: NSColor.clear,
+        ])
+        for loc in hrInsertions {
+            mutations.append((loc, hrNewline))
+        }
+
+        for mutation in mutations.sorted(by: { $0.location > $1.location }) {
+            text.insert(mutation.text, at: mutation.location)
+        }
+
+        // Final task list pass (Regex-based, so separate)
+        applyTaskListStyling(to: text, palette: palette, request: request)
     }
 
     // MARK: - Combined Presentation Intent + Kerning
 
-    /// Combined pass for presentation intent styling and kerning to reduce attribute enumeration.
     private func applyPresentationIntentAndKerning(
         to text: NSMutableAttributedString,
         fullRange: NSRange,
@@ -92,84 +193,108 @@ struct TypographyApplier: TypographyApplying {
 
         text.addAttribute(.kern, value: totalBaseKern, range: fullRange)
 
-        // Single enumeration for both presentation intent styling and kerning adjustments
-        text.enumerateAttribute(
-            MarkdownRenderAttribute.presentationIntent,
-            in: fullRange,
-            options: []
-        ) { value, range, _ in
-            guard let intent = value as? PresentationIntent else { return }
+        text
+            .enumerateAttribute(
+                MarkdownRenderAttribute.presentationIntent,
+                in: fullRange,
+                options: []
+            ) { value, range, _ in
+                guard let intent = value as? PresentationIntent else { return }
 
-            var isCodeBlock = false
-            var isHeading = false
-            var headingLevel = 0
-            var isBlockQuote = false
+                var isCodeBlock = false
+                var isHeading = false
+                var headingLevel = 0
+                var isBlockQuote = false
 
-            for component in intent.components {
-                switch component.kind {
-                case .header(let level):
-                    isHeading = true
-                    headingLevel = level
-                    applyHeadingStyle(to: text, range: range, request: request, level: level, palette: palette)
+                for component in intent.components {
+                    switch component.kind {
+                    case .header(let level):
+                        isHeading = true
+                        headingLevel = level
+                        applyHeadingStyle(to: text, range: range, request: request, level: level, palette: palette)
+                    case .codeBlock:
+                        isCodeBlock = true
+                        applyCodeBlockStyle(to: text, range: range, request: request, palette: palette)
+                    case .blockQuote:
+                        isBlockQuote = true
+                        applyBlockquoteStyle(to: text, range: range, request: request, palette: palette, intent: intent)
+                    case .paragraph:
+                        applyParagraphStyle(to: text, range: range, request: request)
+                    case .unorderedList, .orderedList:
+                        applyListParagraphStyle(to: text, range: range, request: request)
+                    case .tableHeaderRow:
+                        applyTableHeaderStyle(to: text, range: range, request: request, palette: palette)
+                    case .tableRow(let rowIndex):
+                        applyTableRowStyle(
+                            to: text,
+                            range: range,
+                            rowIndex: rowIndex,
+                            request: request,
+                            palette: palette
+                        )
+                    default: break
+                    }
+                }
 
-                case .codeBlock:
-                    isCodeBlock = true
-                    applyCodeBlockStyle(to: text, range: range, request: request, palette: palette)
-
-                case .blockQuote:
-                    isBlockQuote = true
-                    applyBlockquoteStyle(to: text, range: range, request: request, palette: palette, intent: intent)
-
-                case .paragraph:
-                    applyParagraphStyle(to: text, range: range, request: request)
-
-                case .unorderedList, .orderedList:
-                    applyListParagraphStyle(to: text, range: range, request: request)
-
-                case .tableHeaderRow:
-                    applyTableHeaderStyle(to: text, range: range, request: request, palette: palette)
-
-                case .tableRow(let rowIndex):
-                    applyTableRowStyle(to: text, range: range, rowIndex: rowIndex, request: request, palette: palette)
-
-                default:
-                    break
+                if isHeading {
+                    let headingFontSize = fontSizeForHeader(level: headingLevel, baseSize: request.readerFontSize)
+                    let adjustedKern = (request.textSpacing
+                        .kern(for: headingFontSize) +
+                        (headingFontSize * request.textSpacing.opticalSizeAdjustment(for: headingFontSize))) * 0.8
+                    text.addAttribute(.kern, value: adjustedKern, range: range)
+                } else if isCodeBlock {
+                    text.addAttribute(
+                        .kern,
+                        value: request.textSpacing.kern(for: request.codeFontSize) * 0.3,
+                        range: range
+                    )
+                } else if isBlockQuote {
+                    text.addAttribute(.kern, value: totalBaseKern + (request.readerFontSize * 0.003), range: range)
                 }
             }
 
-            // Apply kerning adjustments based on detected types
-            if isHeading {
-                let headingFontSize = fontSizeForHeader(level: headingLevel, baseSize: request.readerFontSize)
-                let headingKern = request.textSpacing.kern(for: headingFontSize)
-                let headingAdjustment = request.textSpacing.opticalSizeAdjustment(for: headingFontSize)
-                let adjustedKern = (headingKern + (headingFontSize * headingAdjustment)) * 0.8
-                text.addAttribute(.kern, value: adjustedKern, range: range)
-            } else if isCodeBlock {
-                let codeKern = request.textSpacing.kern(for: request.codeFontSize) * 0.3
-                text.addAttribute(.kern, value: codeKern, range: range)
-            } else if isBlockQuote {
-                let quoteKern = totalBaseKern + (request.readerFontSize * 0.003)
-                text.addAttribute(.kern, value: quoteKern, range: range)
-            }
-        }
+        // Inline intents
+        text
+            .enumerateAttribute(
+                MarkdownRenderAttribute.inlinePresentationIntent,
+                in: fullRange,
+                options: []
+            ) { value, range, _ in
+                let rawValue = (value as? NSNumber)?.uintValue ?? 0
+                guard rawValue != 0 else { return }
+                let intent = InlinePresentationIntent(rawValue: rawValue)
+                applyInlineStyles(to: text, range: range, intent: intent, palette: palette, request: request)
 
-        // Handle inline presentation intents
-        text.enumerateAttribute(
-            MarkdownRenderAttribute.inlinePresentationIntent,
-            in: fullRange,
-            options: []
-        ) { value, range, _ in
-            let rawValue = (value as? NSNumber)?.uintValue ?? 0
-            guard rawValue != 0 else { return }
-            let intent = InlinePresentationIntent(rawValue: rawValue)
-            applyInlineStyles(to: text, range: range, intent: intent, palette: palette, request: request)
-
-            // Apply inline code kerning adjustment
-            if intent.contains(.code) {
-                let inlineCodeKern = request.textSpacing.kern(for: request.readerFontSize) * 0.3
-                text.addAttribute(.kern, value: inlineCodeKern, range: range)
+                if intent.contains(.code) {
+                    text.addAttribute(
+                        .kern,
+                        value: request.textSpacing.kern(for: request.readerFontSize) * 0.3,
+                        range: range
+                    )
+                }
             }
-        }
+    }
+
+    // MARK: - Component Stylers
+
+    private func applyHeadingStyle(
+        to text: NSMutableAttributedString,
+        range: NSRange,
+        request: RenderRequest,
+        level: Int,
+        palette: NativeThemePalette
+    ) {
+        let weight: NSFont.Weight = (level == 1) ? .heavy : (level == 2 ? .bold : (level == 3 ? .semibold : .medium))
+        let font = request.readerFontFamily.nsFont(
+            size: fontSizeForHeader(level: level, baseSize: request.readerFontSize),
+            weight: weight
+        )
+        text.addAttributes([
+            .font: font,
+            MarkdownRenderAttribute.headingLevel: level,
+            .foregroundColor: palette.formattedHeadingColor(level: level),
+        ], range: range)
+        applyHeadingParagraphStyle(to: text, range: range, request: request, level: level)
     }
 
     private func applyCodeBlockStyle(
@@ -179,13 +304,13 @@ struct TypographyApplier: TypographyApplying {
         palette: NativeThemePalette
     ) {
         let codeFont = request.readerFontFamily.nsFont(size: request.codeFontSize, monospaced: true)
-        text.addAttribute(.font, value: codeFont, range: range)
-        text.addAttribute(.backgroundColor, value: palette.codeBackground, range: range)
-
+        text.addAttributes([
+            .font: codeFont,
+            .backgroundColor: palette.codeBackground,
+        ], range: range)
         if request.showLineNumbers {
             text.addAttribute(MarkdownRenderAttribute.codeBlock, value: true, range: range)
         }
-
         applyCodeBlockParagraphStyle(to: text, range: range, request: request, hasLineNumbers: request.showLineNumbers)
     }
 
@@ -196,23 +321,15 @@ struct TypographyApplier: TypographyApplying {
         palette: NativeThemePalette,
         intent: PresentationIntent
     ) {
-        text.addAttribute(.foregroundColor, value: palette.textSecondary, range: range)
-        text.addAttribute(MarkdownRenderAttribute.blockquoteAccent, value: palette.blockquoteAccent, range: range)
-        text.addAttribute(
-            MarkdownRenderAttribute.blockquoteBackground,
-            value: palette.blockquoteBackground,
-            range: range
-        )
-
-        var blockquoteCount = 0
-        for component in intent.components {
-            if case .blockQuote = component.kind {
-                blockquoteCount += 1
-            }
-        }
-
-        text.addAttribute(MarkdownRenderAttribute.blockquoteDepth, value: max(1, blockquoteCount), range: range)
-        applyBlockquoteParagraphStyle(to: text, range: range, request: request, depth: max(1, blockquoteCount))
+        var depth = 0
+        for c in intent.components { if case .blockQuote = c.kind { depth += 1 } }
+        text.addAttributes([
+            .foregroundColor: palette.textSecondary,
+            MarkdownRenderAttribute.blockquoteAccent: palette.blockquoteAccent,
+            MarkdownRenderAttribute.blockquoteBackground: palette.blockquoteBackground,
+            MarkdownRenderAttribute.blockquoteDepth: max(1, depth),
+        ], range: range)
+        applyBlockquoteParagraphStyle(to: text, range: range, request: request, depth: max(1, depth))
     }
 
     private func applyTableHeaderStyle(
@@ -221,20 +338,13 @@ struct TypographyApplier: TypographyApplying {
         request: RenderRequest,
         palette: NativeThemePalette
     ) {
-        let headerFont = request.readerFontFamily.nsFont(size: request.readerFontSize, weight: .semibold)
-        text.addAttribute(.font, value: headerFont, range: range)
-        text.addAttribute(.foregroundColor, value: palette.heading, range: range)
-
-        let headerBackground = palette.formattedTableHeaderBackground()
-        let tableBorder = palette.formattedTableBorder()
-
-        text.addAttribute(MarkdownRenderAttribute.tableHeaderBackground, value: headerBackground, range: range)
-        text.addAttribute(MarkdownRenderAttribute.tableBorder, value: tableBorder, range: range)
-        text.addAttribute(
-            MarkdownRenderAttribute.tableColumnDividerOpacity,
-            value: palette.tableColumnDividerOpacityMultiplier(),
-            range: range
-        )
+        text.addAttributes([
+            .font: request.readerFontFamily.nsFont(size: request.readerFontSize, weight: .semibold),
+            .foregroundColor: palette.heading,
+            MarkdownRenderAttribute.tableHeaderBackground: palette.formattedTableHeaderBackground(),
+            MarkdownRenderAttribute.tableBorder: palette.formattedTableBorder(),
+            MarkdownRenderAttribute.tableColumnDividerOpacity: palette.tableColumnDividerOpacityMultiplier(),
+        ], range: range)
         applyTableRowParagraphStyle(to: text, range: range, request: request)
     }
 
@@ -245,24 +355,20 @@ struct TypographyApplier: TypographyApplying {
         request: RenderRequest,
         palette: NativeThemePalette
     ) {
-        let rowFont = request.readerFontFamily.nsFont(size: request.readerFontSize)
-        text.addAttribute(.font, value: rowFont, range: range)
-
-        let rowBackground = palette.formattedTableRowBackground()
-        let tableBorder = palette.formattedTableBorder()
         let isAlternating = rowIndex % 2 == 0
-
         if isAlternating {
-            text.addAttribute(MarkdownRenderAttribute.tableRowBackground, value: rowBackground, range: range)
+            text.addAttribute(
+                MarkdownRenderAttribute.tableRowBackground,
+                value: palette.formattedTableRowBackground(),
+                range: range
+            )
         }
-
-        text.addAttribute(MarkdownRenderAttribute.tableRowAlternating, value: isAlternating, range: range)
-        text.addAttribute(MarkdownRenderAttribute.tableBorder, value: tableBorder, range: range)
-        text.addAttribute(
-            MarkdownRenderAttribute.tableColumnDividerOpacity,
-            value: palette.tableColumnDividerOpacityMultiplier(),
-            range: range
-        )
+        text.addAttributes([
+            .font: request.readerFontFamily.nsFont(size: request.readerFontSize),
+            MarkdownRenderAttribute.tableRowAlternating: isAlternating,
+            MarkdownRenderAttribute.tableBorder: palette.formattedTableBorder(),
+            MarkdownRenderAttribute.tableColumnDividerOpacity: palette.tableColumnDividerOpacityMultiplier(),
+        ], range: range)
         applyTableRowParagraphStyle(to: text, range: range, request: request)
     }
 
@@ -281,7 +387,6 @@ struct TypographyApplier: TypographyApplying {
         style.paragraphSpacingBefore = paragraphSpacingBefore
         style.hyphenationFactor = hyphenationFactor
         style.alignment = alignment
-        style.allowsDefaultTighteningForTruncation = false
         style.usesDefaultHyphenation = hyphenationFactor > 0
         return style
     }
@@ -292,62 +397,44 @@ struct TypographyApplier: TypographyApplying {
         request: RenderRequest,
         depth: Int
     ) {
-        let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
         let baseSpacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let nestingFactor = min(1.6, 1.0 + CGFloat(max(0, depth - 1)) * 0.2)
-        let spacing = baseSpacing * 0.62 * nestingFactor
-        let spacingBefore = baseSpacing * 0.42
-        let hyphenationFactor = request.typographyPreferences.hyphenation
-            ? max(0, request.textSpacing.hyphenationFactor - 0.05)
-            : 0
-
         let style = createBaseParagraphStyle(
-            lineSpacing: lineSpacing,
-            paragraphSpacing: spacing,
-            paragraphSpacingBefore: spacingBefore,
-            hyphenationFactor: hyphenationFactor,
+            lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
+            paragraphSpacing: baseSpacing * 0.62 * min(1.6, 1.0 + CGFloat(max(0, depth - 1)) * 0.2),
+            paragraphSpacingBefore: baseSpacing * 0.42,
+            hyphenationFactor: request.typographyPreferences.hyphenation ? max(
+                0,
+                request.textSpacing.hyphenationFactor - 0.05
+            ) : 0,
             alignment: request.typographyPreferences.justification.nsAlignment
         )
-
-        let blockquoteIndent: CGFloat = 12 + CGFloat(max(0, depth - 1)) * 10
-        style.headIndent = blockquoteIndent
-        style.firstLineHeadIndent = blockquoteIndent
-        style.tabStops = [NSTextTab(textAlignment: .left, location: blockquoteIndent, options: [:])]
-
+        let indent: CGFloat = 12 + CGFloat(max(0, depth - 1)) * 10
+        style.headIndent = indent
+        style.firstLineHeadIndent = indent
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
     private func applyParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
-        let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
-        let spacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let hyphenationFactor = request.typographyPreferences.hyphenation
-            ? max(0, request.textSpacing.hyphenationFactor - 0.05)
-            : 0
         let style = createBaseParagraphStyle(
-            lineSpacing: lineSpacing,
-            paragraphSpacing: spacing,
-            hyphenationFactor: hyphenationFactor,
+            lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
+            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize),
+            hyphenationFactor: request.typographyPreferences.hyphenation ? max(
+                0,
+                request.textSpacing.hyphenationFactor - 0.05
+            ) : 0,
             alignment: request.typographyPreferences.justification.nsAlignment
         )
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
     private func applyListParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
-        let lineSpacing = request.textSpacing.lineSpacing(for: request.readerFontSize)
-        let fullSpacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let spacing = fullSpacing * 0.5
         let style = createBaseParagraphStyle(
-            lineSpacing: lineSpacing,
-            paragraphSpacing: spacing,
-            hyphenationFactor: 0,
+            lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
+            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize) * 0.5,
             alignment: request.typographyPreferences.justification.nsAlignment
         )
-
-        let listIndent: CGFloat = 24
-        style.headIndent = listIndent
+        style.headIndent = 24
         style.firstLineHeadIndent = 0
-        style.tabStops = [NSTextTab(textAlignment: .left, location: listIndent, options: [:])]
-
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
@@ -356,54 +443,23 @@ struct TypographyApplier: TypographyApplying {
         range: NSRange,
         request: RenderRequest
     ) {
-        let lineSpacing = max(2, request.textSpacing.lineSpacing(for: request.readerFontSize) * 0.9)
-        let bodySpacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let cellSpacing = max(5, bodySpacing * 0.28)
+        let cellSpacing = max(5, request.textSpacing.paragraphSpacing(for: request.readerFontSize) * 0.28)
         let style = createBaseParagraphStyle(
-            lineSpacing: lineSpacing,
+            lineSpacing: max(2, request.textSpacing.lineSpacing(for: request.readerFontSize) * 0.9),
             paragraphSpacing: cellSpacing,
             paragraphSpacingBefore: cellSpacing * 0.5,
-            hyphenationFactor: 0,
             alignment: request.typographyPreferences.justification.nsAlignment
         )
-
-        let tableInset: CGFloat = 16
-        style.firstLineHeadIndent = tableInset
-        style.headIndent = tableInset
-
-        let usableWidth = request.readableWidth - tableInset * 2
-        let colWidth = max(90, usableWidth * 0.20)
-        style.tabStops = (0 ..< 8).map { i in
-            NSTextTab(textAlignment: .left, location: tableInset + (colWidth * CGFloat(i + 1)), options: [:])
-        }
+        let colWidth = max(90, (request.readableWidth - 32) * 0.20)
+        style.tabStops = (0 ..< 8).map { NSTextTab(
+            textAlignment: .left,
+            location: 16 + (colWidth * CGFloat($0 + 1)),
+            options: [:]
+        ) }
         style.lineBreakMode = .byTruncatingTail
+        style.headIndent = 16
+        style.firstLineHeadIndent = 16
         text.addAttribute(.paragraphStyle, value: style, range: range)
-    }
-
-    // MARK: - Heading Styles
-
-    private func applyHeadingStyle(
-        to text: NSMutableAttributedString,
-        range: NSRange,
-        request: RenderRequest,
-        level: Int,
-        palette: NativeThemePalette
-    ) {
-        let fontSize = fontSizeForHeader(level: level, baseSize: request.readerFontSize)
-
-        let weight: NSFont.Weight
-        switch level {
-        case 1: weight = .heavy
-        case 2: weight = .bold
-        case 3: weight = .semibold
-        default: weight = .medium
-        }
-
-        let font = request.readerFontFamily.nsFont(size: fontSize, weight: weight)
-        text.addAttribute(.font, value: font, range: range)
-        text.addAttribute(MarkdownRenderAttribute.headingLevel, value: level, range: range)
-        text.addAttribute(.foregroundColor, value: palette.formattedHeadingColor(level: level), range: range)
-        applyHeadingParagraphStyle(to: text, range: range, request: request, level: level)
     }
 
     private func applyHeadingParagraphStyle(
@@ -413,49 +469,20 @@ struct TypographyApplier: TypographyApplying {
         level: Int
     ) {
         let headingSize = fontSizeForHeader(level: level, baseSize: request.readerFontSize)
-        let lineSpacing = request.textSpacing.lineSpacing(for: headingSize)
-
-        let spacingMultiplier: CGFloat
-        let spacingBeforeMultiplier: CGFloat
-        switch level {
-        case 1:
-            spacingMultiplier = 0.72
-            spacingBeforeMultiplier = 0.7
-        case 2:
-            spacingMultiplier = 0.62
-            spacingBeforeMultiplier = 0.62
-        case 3:
-            spacingMultiplier = 0.54
-            spacingBeforeMultiplier = 0.54
-        default:
-            spacingMultiplier = 0.46
-            spacingBeforeMultiplier = 0.46
-        }
-
         let baseSpacing = request.textSpacing.paragraphSpacing(for: headingSize)
-        let spacing = baseSpacing * spacingMultiplier
-        let spacingBefore = baseSpacing * spacingBeforeMultiplier
-
-        let style = createBaseParagraphStyle(
-            lineSpacing: lineSpacing,
-            paragraphSpacing: spacing,
-            paragraphSpacingBefore: spacingBefore,
-            hyphenationFactor: 0,
+        let mult: CGFloat = level == 1 ? 0.72 : (level == 2 ? 0.62 : (level == 3 ? 0.54 : 0.46))
+        text.addAttribute(.paragraphStyle, value: createBaseParagraphStyle(
+            lineSpacing: request.textSpacing.lineSpacing(for: headingSize),
+            paragraphSpacing: baseSpacing * mult,
+            paragraphSpacingBefore: baseSpacing * mult,
             alignment: request.typographyPreferences.justification.nsAlignment
-        )
-        text.addAttribute(.paragraphStyle, value: style, range: range)
+        ), range: range)
     }
 
     private func fontSizeForHeader(level: Int, baseSize: CGFloat) -> CGFloat {
-        switch level {
-        case 1: return baseSize * 1.75
-        case 2: return baseSize * 1.5
-        case 3: return baseSize * 1.3
-        case 4: return baseSize * 1.15
-        case 5: return baseSize * 1.1
-        case 6: return baseSize * 1.05
-        default: return baseSize
-        }
+        let mult: CGFloat = level == 1 ? 1.75 :
+            (level == 2 ? 1.5 : (level == 3 ? 1.3 : (level == 4 ? 1.15 : (level == 5 ? 1.1 : 1.05))))
+        return baseSize * mult
     }
 
     private func applyCodeBlockParagraphStyle(
@@ -464,26 +491,17 @@ struct TypographyApplier: TypographyApplying {
         request: RenderRequest,
         hasLineNumbers: Bool
     ) {
-        let lineSpacing = max(2, request.codeFontSize * 0.15)
-        let spacing = request.textSpacing.paragraphSpacing(for: request.codeFontSize) * 0.75
         let style = createBaseParagraphStyle(
-            lineSpacing: lineSpacing,
-            paragraphSpacing: spacing,
-            hyphenationFactor: 0,
-            alignment: .left
+            lineSpacing: max(2, request.codeFontSize * 0.15),
+            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.codeFontSize) * 0.75
         )
-
         if hasLineNumbers {
-            let digitWidth = request.codeFontSize * 0.6
-            let gutterWidth = (digitWidth * 4) + (request.codeFontSize * 0.8)
-            style.headIndent = gutterWidth
-            style.firstLineHeadIndent = gutterWidth
+            let gutter = (request.codeFontSize * 0.6 * 4) + (request.codeFontSize * 0.8)
+            style.headIndent = gutter
+            style.firstLineHeadIndent = gutter
         }
-
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
-
-    // MARK: - Inline Styles
 
     private func applyInlineStyles(
         to text: NSMutableAttributedString,
@@ -492,356 +510,138 @@ struct TypographyApplier: TypographyApplying {
         palette: NativeThemePalette,
         request: RenderRequest
     ) {
-        let wantsBold = intent.contains(.stronglyEmphasized)
-        let wantsItalic = intent.contains(.emphasized)
-        var workingFont = text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
-
+        var font = text.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
         if intent.contains(.code) {
-            let codeFont = request.readerFontFamily.nsFont(size: request.readerFontSize * 0.92, monospaced: true)
-            workingFont = codeFont
-            text.addAttribute(.font, value: codeFont, range: range)
-            text.addAttribute(.backgroundColor, value: palette.inlineCodeBackground, range: range)
-            let baselineOffset = round(request.readerFontSize * 0.06)
-            text.addAttribute(.baselineOffset, value: baselineOffset, range: range)
-        }
-
-        if wantsBold || wantsItalic, let baseFont = workingFont {
-            let emphasized = cachedFontByApplyingTraits(baseFont, bold: wantsBold, italic: wantsItalic)
-            text.addAttribute(.font, value: emphasized, range: range)
-        }
-
-        if intent.contains(.strikethrough) {
-            text.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-            text.addAttribute(.strikethroughColor, value: palette.textTertiary, range: range)
-        }
-    }
-
-    private func applyLinkStyling(
-        to text: NSMutableAttributedString,
-        fullRange: NSRange,
-        palette: NativeThemePalette
-    ) {
-        text.enumerateAttribute(.link, in: fullRange, options: []) { value, range, _ in
-            guard value != nil else { return }
-
-            text.addAttribute(.foregroundColor, value: palette.link, range: range)
-            text.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
-            text.addAttribute(.underlineColor, value: palette.formattedLinkUnderlineColor(), range: range)
-        }
-    }
-
-    // MARK: - Horizontal Rule
-
-    private func applyHorizontalRuleStyles(
-        to text: NSMutableAttributedString,
-        fullRange: NSRange,
-        palette: NativeThemePalette,
-        request: RenderRequest
-    ) {
-        let rhythm = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let spacing = max(12, rhythm * 0.6)
-        let hrStyle = NSMutableParagraphStyle()
-        hrStyle.paragraphSpacingBefore = spacing
-        hrStyle.paragraphSpacing = spacing
-
-        let hrFont = NSFont.systemFont(ofSize: 6, weight: .regular)
-        var insertAfter: [Int] = []
-        insertAfter.reserveCapacity(8)
-
-        // Cache NSString to avoid repeated conversions
-        let nsText = text.string as NSString
-        var i = fullRange.location
-        let end = NSMaxRange(fullRange)
-
-        // Pre-allocate buffer for intent checks
-        var effectiveRange = NSRange(location: 0, length: 0)
-
-        while i < end {
-            effectiveRange.location = i
-            effectiveRange.length = 1
-            let intent = text.attribute(
-                MarkdownRenderAttribute.presentationIntent,
-                at: i,
-                effectiveRange: &effectiveRange
-            ) as? PresentationIntent
-            let rangeEnd = min(effectiveRange.location + effectiveRange.length, end)
-
-            let isThematicBreak = intent?.components.contains {
-                if case .thematicBreak = $0.kind { return true }; return false
-            } ?? false
-
-            if isThematicBreak {
-                let range = NSRange(location: effectiveRange.location, length: rangeEnd - effectiveRange.location)
-                text.addAttribute(MarkdownRenderAttribute.horizontalRule, value: palette.horizontalRule, range: range)
-                text.addAttribute(.foregroundColor, value: NSColor.clear, range: range)
-                text.addAttribute(.paragraphStyle, value: hrStyle, range: range)
-                text.addAttribute(.font, value: hrFont, range: range)
-
-                if rangeEnd < end, nsText.character(at: rangeEnd) != unichar(0x000A) {
-                    insertAfter.append(rangeEnd)
-                }
-            }
-
-            i = max(i + 1, rangeEnd)
-        }
-
-        let hrNewline = NSMutableAttributedString(string: "\n")
-        hrNewline.addAttribute(.paragraphStyle, value: hrStyle, range: NSRange(location: 0, length: 1))
-        hrNewline.addAttribute(.font, value: hrFont, range: NSRange(location: 0, length: 1))
-        hrNewline.addAttribute(.foregroundColor, value: NSColor.clear, range: NSRange(location: 0, length: 1))
-
-        for pos in insertAfter.sorted(by: >) {
-            text.insert(hrNewline, at: pos)
-        }
-    }
-
-    // MARK: - List Markers
-
-    private func insertListMarkers(
-        in text: NSMutableAttributedString,
-        palette: NativeThemePalette,
-        request: RenderRequest
-    ) {
-        let font = request.readerFontFamily.nsFont(size: request.readerFontSize)
-        var insertions: [(location: Int, marker: String)] = []
-        insertions.reserveCapacity(32)
-
-        text.enumerateAttribute(
-            MarkdownRenderAttribute.presentationIntent,
-            in: NSRange(location: 0, length: text.length)
-        ) { value, range, _ in
-            guard let intent = value as? PresentationIntent else { return }
-
-            var listItemOrdinal: Int?
-            var isOrdered = false
-            var isCodeBlock = false
-            for component in intent.components {
-                switch component.kind {
-                case .listItem(let ordinal): listItemOrdinal = ordinal
-                case .orderedList: isOrdered = true
-                case .codeBlock: isCodeBlock = true
-                default: break
-                }
-            }
-            // Code blocks nested inside list items inherit the listItem intent but must
-            // not receive a bullet or ordinal marker — the marker belongs on the list item
-            // paragraph, not on every line of the fenced code block.
-            guard let ordinal = listItemOrdinal, !isCodeBlock else { return }
-            insertions.append((location: range.location, marker: isOrdered ? "\(ordinal).\t" : "•\t"))
-        }
-
-        let nsText = text.string as NSString
-        for insertion in insertions.sorted(by: { $0.location > $1.location }) {
-            // Validate: only insert markers at valid positions:
-            // - position 0 (start of document)
-            // - after newline (0x0A) - normal line start
-            // - after tab (0x09) - for nested list items where BlockSeparatorInjector inserted indentation
-            // This prevents markers from being inserted mid-line if the presentation intent
-            // range doesn't align with visual line boundaries.
-            let prevChar: unichar = insertion.location > 0 ? nsText.character(at: insertion.location - 1) : 0
-            let isValidPosition = insertion.location == 0 || prevChar == 0x0A || prevChar == 0x09
-            guard isValidPosition else { continue }
-
-            // Create the marker with font and color attributes.
-            let markerAttr = NSMutableAttributedString(
-                string: insertion.marker,
-                attributes: [
-                    .font: font,
-                    .foregroundColor: palette.listMarker,
-                ]
+            font = request.readerFontFamily.nsFont(size: request.readerFontSize * 0.92, monospaced: true)
+            text.addAttributes(
+                [
+                    .font: font!,
+                    .backgroundColor: palette.inlineCodeBackground,
+                    .baselineOffset: round(request.readerFontSize * 0.06),
+                ],
+                range: range
             )
-
-            // Apply paragraph style from the list item, but ensure firstLineHeadIndent is 0
-            // so the marker stays at the left margin while content respects headIndent.
-            if
-                insertion.location < text.length,
-                let existingStyle = text.attribute(.paragraphStyle, at: insertion.location, effectiveRange: nil)
-                as? NSParagraphStyle,
-                let mutableStyle = existingStyle.mutableCopy() as? NSMutableParagraphStyle
-            {
-                mutableStyle.firstLineHeadIndent = 0
-                markerAttr.addAttribute(
-                    .paragraphStyle,
-                    value: mutableStyle,
-                    range: NSRange(location: 0, length: markerAttr.length)
-                )
-            }
-
-            text.insert(markerAttr, at: insertion.location)
+        }
+        if intent.contains(.stronglyEmphasized) || intent.contains(.emphasized) {
+            if let f = font { text.addAttribute(
+                .font,
+                value: cachedFontByApplyingTraits(
+                    f,
+                    bold: intent.contains(.stronglyEmphasized),
+                    italic: intent.contains(.emphasized)
+                ),
+                range: range
+            ) }
+        }
+        if intent.contains(.strikethrough) {
+            text.addAttributes(
+                [.strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: palette.textTertiary],
+                range: range
+            )
         }
     }
 
-    // MARK: - Table Cell Truncation
-
-    private func truncateTableCells(
-        in text: NSMutableAttributedString,
-        bodyFont: NSFont,
-        request: RenderRequest
-    ) {
-        let tableInset: CGFloat = 16
-        let usableWidth = request.readableWidth - tableInset * 2
-        let colWidth = max(90, usableWidth * 0.20) - 4
-        let attrs: [NSAttributedString.Key: Any] = [.font: bodyFont]
-
-        // Cache NSString to avoid repeated conversions
+    private func truncateTableCells(in text: NSMutableAttributedString, bodyFont: NSFont, request: RenderRequest) {
+        let colWidth = max(90, (request.readableWidth - 32) * 0.20) - 4
         let nsString = text.string as NSString
-        var mutations: [(substringRange: NSRange, replacement: String)] = []
-        mutations.reserveCapacity(16)
+        var mutations: [(range: NSRange, text: String)] = []
+        let ellipsisWidth = ("…" as NSString).size(withAttributes: [.font: bodyFont]).width
 
-        // Pre-calculate ellipsis width to avoid repeated calculations
-        let ellipsisWidth = ("…" as NSString).size(withAttributes: attrs).width
-
-        nsString.enumerateSubstrings(
-            in: NSRange(location: 0, length: text.length),
-            options: [.byParagraphs]
-        ) { substring, substringRange, _, _ in
-            guard let row = substring, row.contains("\t") else { return }
-
-            let segments = row.components(separatedBy: "\t")
-            guard segments.count > 1 else { return }
-
-            var newSegments: [String] = []
-            newSegments.reserveCapacity(segments.count)
-            var changed = false
-
-            for (idx, segment) in segments.enumerated() {
-                if idx == segments.count - 1 {
-                    newSegments.append(segment)
-                    continue
-                }
-
-                let segmentNSString = segment as NSString
-                let width = segmentNSString.size(withAttributes: attrs).width
-                if width <= colWidth {
-                    newSegments.append(segment)
-                } else {
-                    // Use a more efficient truncation approach
-                    let availableWidth = colWidth - ellipsisWidth
-                    let chars = Array(segment)
-                    var truncatedLength = 0
-
-                    // Estimate character count based on average character width
-                    let avgCharWidth = width / CGFloat(chars.count)
-                    let estimatedLength = Int(availableWidth / avgCharWidth)
-                    truncatedLength = min(estimatedLength, chars.count)
-
-                    // Fine-tune with binary search if needed
-                    while truncatedLength > 0 {
-                        let candidate = String(chars.prefix(truncatedLength))
-                        if (candidate as NSString).size(withAttributes: attrs).width <= availableWidth {
-                            break
-                        }
-                        truncatedLength -= 1
+        nsString
+            .enumerateSubstrings(
+                in: NSRange(location: 0, length: text.length),
+                options: .byParagraphs
+            ) { sub, subR, _, _ in
+                guard let row = sub, row.contains("\t") else { return }
+                let segs = row.components(separatedBy: "\t")
+                var newSegs: [String] = []
+                var changed = false
+                for (i, seg) in segs.enumerated() {
+                    if i == segs.count - 1 { newSegs.append(seg); continue }
+                    let w = (seg as NSString).size(withAttributes: [.font: bodyFont]).width
+                    if w <= colWidth { newSegs.append(seg) } else {
+                        let chars = Array(seg)
+                        var len = Int((colWidth - ellipsisWidth) / (w / CGFloat(chars.count)))
+                        while
+                            len > 0,
+                            (String(chars.prefix(len)) as NSString).size(withAttributes: [.font: bodyFont])
+                                .width > (colWidth - ellipsisWidth) { len -= 1 }
+                        newSegs.append(String(chars.prefix(len)) + "…"); changed = true
                     }
-
-                    let truncated = String(chars.prefix(truncatedLength)) + "…"
-                    newSegments.append(truncated)
-                    changed = true
                 }
+                if changed { mutations.append((subR, newSegs.joined(separator: "\t"))) }
             }
-
-            guard changed else { return }
-            mutations.append((substringRange: substringRange, replacement: newSegments.joined(separator: "\t")))
-        }
-
-        for mutation in mutations.sorted(by: { $0.substringRange.location > $1.substringRange.location }) {
-            text.replaceCharacters(in: mutation.substringRange, with: mutation.replacement)
-        }
+        for m in mutations.sorted(by: { $0.range.location > $1.range.location }) { text.replaceCharacters(
+            in: m.range,
+            with: m.text
+        ) }
     }
 
-    // MARK: - Task List Styling
-
-    private static let taskListRegex: NSRegularExpression = // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: #"\[( |x|X)\]"#, options: [])
-
-    /// Font cache for commonly used variants
-    private nonisolated(unsafe) static let fontCache: NSCache<NSString, NSFont> = {
-        let cache = NSCache<NSString, NSFont>()
-        cache.countLimit = 50 // Limit to prevent unbounded growth
-        return cache
-    }()
-
+    private nonisolated(unsafe) static let fontCache = NSCache<NSString, NSFont>()
     private func cachedFontByApplyingTraits(_ base: NSFont, bold: Bool, italic: Bool) -> NSFont {
-        let cacheKey = "\(base.fontName)-\(base.pointSize)-\(bold ? "B" : "")-\(italic ? "I" : "")" as NSString
-
-        if let cached = Self.fontCache.object(forKey: cacheKey) {
-            return cached
-        }
-
+        let key = "\(base.fontName)-\(base.pointSize)-\(bold)-\(italic)" as NSString
+        if let c = Self.fontCache.object(forKey: key) { return c }
         var traits = base.fontDescriptor.symbolicTraits
         if bold { traits.insert(.bold) }
         if italic { traits.insert(.italic) }
-
-        let descriptor = base.fontDescriptor.withSymbolicTraits(traits)
-        let font = NSFont(descriptor: descriptor, size: base.pointSize) ?? {
-            var fallback = base
-            if bold {
-                fallback = NSFontManager.shared.convert(fallback, toHaveTrait: .boldFontMask)
-            }
-            if italic {
-                fallback = NSFontManager.shared.convert(fallback, toHaveTrait: .italicFontMask)
-            }
-            return fallback
-        }()
-
-        Self.fontCache.setObject(font, forKey: cacheKey)
-        return font
+        let f = NSFont(descriptor: base.fontDescriptor.withSymbolicTraits(traits), size: base.pointSize) ?? base
+        Self.fontCache.setObject(f, forKey: key); return f
     }
 
-    func applyTaskListStyling(
-        to text: NSMutableAttributedString,
-        palette: NativeThemePalette,
-        request: RenderRequest
-    ) {
-        // Cache NSString conversion
+    /// Pre-compiled regex for task list checkbox detection.
+    /// Uses lazy initialization with fatalError fallback since pattern is compile-time constant.
+    private static let taskListRegex: NSRegularExpression = {
+        // Pattern is compile-time constant - safe to force unwrap after validation
+        guard let regex = try? NSRegularExpression(pattern: #"\[( |x|X)\]"#, options: []) else {
+            fatalError("Invalid task list regex pattern - this should never happen")
+        }
+        return regex
+    }()
+
+    /// Applies task list checkbox styling and strikethrough for completed items.
+    func applyTaskListStyling(to text: NSMutableAttributedString, palette: NativeThemePalette, request: RenderRequest) {
         let nsString = text.string as NSString
-        let fullRange = NSRange(location: 0, length: text.length)
-        let markerMatches = Self.taskListRegex.matches(in: text.string, options: [], range: fullRange)
-        guard !markerMatches.isEmpty else { return }
-
-        let markerFont = NSFont.monospacedSystemFont(ofSize: max(11, request.readerFontSize * 0.9), weight: .semibold)
-        let markerKern = max(0, request.textSpacing.kern(for: request.readerFontSize) * 0.7)
-
-        for match in markerMatches {
-            let markerRange = match.range
-            guard markerRange.location != NSNotFound, markerRange.length > 0 else { continue }
-
+        let matches = Self.taskListRegex.matches(
+            in: text.string,
+            options: [],
+            range: NSRange(location: 0, length: text.length)
+        )
+        for m in matches {
             guard
                 let intent = text.attribute(
                     MarkdownRenderAttribute.presentationIntent,
-                    at: markerRange.location,
+                    at: m.range.location,
                     effectiveRange: nil
-                ) as? PresentationIntent
+                ) as? PresentationIntent,
+                intent.components.contains(where: { if case .unorderedList = $0.kind { return true }; return false })
             else { continue }
-            let isListItem = intent.components.contains {
-                if case .unorderedList = $0.kind { return true }
-                return false
+            let checked = nsString.substring(with: m.range).lowercased() == "[x]"
+            text.addAttributes(
+                [
+                    .font: NSFont.monospacedSystemFont(
+                        ofSize: max(11, request.readerFontSize * 0.9),
+                        weight: .semibold
+                    ),
+                    .foregroundColor: checked ? palette.taskListChecked : palette.taskListUnchecked,
+                    MarkdownRenderAttribute.taskListChecked: checked,
+                ],
+                range: m.range
+            )
+            if checked {
+                let line = nsString.lineRange(for: m.range)
+                let end = nsString.character(at: NSMaxRange(line) - 1) == 0x0A ? NSMaxRange(line) - 1 : NSMaxRange(line)
+                text.addAttributes(
+                    [
+                        .foregroundColor: palette.textSecondary,
+                        .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                        .strikethroughColor: palette.textTertiary,
+                    ],
+                    range: NSRange(
+                        location: m.range.location + m.range.length,
+                        length: end - (m.range.location + m.range.length)
+                    )
+                )
             }
-            guard isListItem else { continue }
-
-            let markerText = nsString.substring(with: markerRange)
-            let checked = markerText == "[x]" || markerText == "[X]"
-            let markerColor = checked ? palette.taskListChecked : palette.taskListUnchecked
-
-            text.addAttribute(.font, value: markerFont, range: markerRange)
-            text.addAttribute(.foregroundColor, value: markerColor, range: markerRange)
-            text.addAttribute(.kern, value: markerKern, range: markerRange)
-            text.addAttribute(MarkdownRenderAttribute.taskListChecked, value: checked, range: markerRange)
-
-            guard checked else { continue }
-            let lineRange = nsString.lineRange(for: markerRange)
-            let textStart = markerRange.location + markerRange.length
-            var textEnd = lineRange.location + lineRange.length
-            if textEnd > lineRange.location, nsString.character(at: textEnd - 1) == 0x0A {
-                textEnd -= 1
-            }
-            guard textStart < textEnd else { continue }
-
-            let contentRange = NSRange(location: textStart, length: textEnd - textStart)
-            text.addAttribute(.foregroundColor, value: palette.textSecondary, range: contentRange)
-            text.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: contentRange)
-            text.addAttribute(.strikethroughColor, value: palette.textTertiary, range: contentRange)
-            text.addAttribute(.kern, value: markerKern * 0.8, range: contentRange)
         }
     }
 }

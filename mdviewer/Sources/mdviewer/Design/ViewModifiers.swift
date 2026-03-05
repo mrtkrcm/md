@@ -19,7 +19,7 @@ struct InteractiveModifier: ViewModifier {
             .scaleEffect(isPressed ? 0.97 : (isHovered ? 1.02 : 1.0))
             .opacity(isPressed ? 0.8 : 1.0)
             .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withAnimation(DesignTokens.AnimationPreset.fast) {
                     isHovered = hovering
                 }
             }
@@ -88,9 +88,14 @@ extension View {
 
 // MARK: - Focus Ring Modifier
 
-/// Applies modern focus ring styling
+/// Applies modern focus ring styling with enhanced animations
 struct FocusRingModifier: ViewModifier {
     @FocusState private var isFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var focusColor: Color {
+        colorScheme == .dark ? Color.blue.opacity(0.9) : Color.blue
+    }
 
     func body(content: Content) -> some View {
         content
@@ -98,18 +103,78 @@ struct FocusRingModifier: ViewModifier {
             .overlay(
                 RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.medium)
                     .stroke(
-                        Color.blue.opacity(isFocused ? 1.0 : 0.0),
-                        lineWidth: 2
+                        focusColor,
+                        lineWidth: isFocused ? 2.5 : 0
                     )
-                    .animation(.easeInOut(duration: 0.15), value: isFocused)
+                    .animation(
+                        isFocused
+                            ? DesignTokens.AnimationPreset.spring(response: 0.25, damping: 0.8)
+                            : DesignTokens.AnimationPreset.fast,
+                        value: isFocused
+                    )
+            )
+            .scaleEffect(isFocused ? 1.01 : 1.0)
+            .animation(DesignTokens.AnimationPreset.spring(response: 0.2, damping: 0.85), value: isFocused)
+    }
+}
+
+/// Enhanced focus modifier with glow effect and smoother animations
+struct EnhancedFocusRingModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var isFocused: Bool
+    let cornerRadius: CGFloat
+    let glowIntensity: CGFloat
+
+    private var accentColor: Color {
+        colorScheme == .dark ? Color.blue.opacity(0.8) : Color.blue
+    }
+
+    private var glowColor: Color {
+        colorScheme == .dark ? Color.blue.opacity(0.3) : Color.blue.opacity(0.2)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .focused($isFocused)
+            .overlay(
+                ZStack {
+                    // Outer glow
+                    RoundedRectangle(cornerRadius: cornerRadius + 2)
+                        .stroke(glowColor, lineWidth: isFocused ? 4 : 0)
+                        .blur(radius: isFocused ? 4 : 0)
+
+                    // Inner stroke
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .stroke(
+                            accentColor,
+                            lineWidth: isFocused ? 2 : 0
+                        )
+                }
+                .animation(
+                    isFocused
+                        ? DesignTokens.AnimationPreset.spring(response: 0.3, damping: 0.75)
+                        : DesignTokens.AnimationPreset.fast,
+                    value: isFocused
+                )
             )
     }
 }
 
 extension View {
-    /// Applies accessible focus ring styling
+    /// Applies accessible focus ring styling with modern animations
     func modernFocusRing() -> some View {
         modifier(FocusRingModifier())
+    }
+
+    /// Applies enhanced focus ring with glow effect
+    func enhancedFocus(
+        cornerRadius: CGFloat = DesignTokens.CornerRadius.medium,
+        glowIntensity: CGFloat = 1.0
+    ) -> some View {
+        modifier(EnhancedFocusRingModifier(
+            cornerRadius: cornerRadius,
+            glowIntensity: glowIntensity
+        ))
     }
 }
 
@@ -528,5 +593,217 @@ extension View {
     /// Shows tooltip on hover
     func tooltip(_ text: String) -> some View {
         modifier(TooltipModifier(text: text))
+    }
+}
+
+// MARK: - SF Symbol Effects
+
+/// Applies bounce effect to SF Symbols on value change
+struct SymbolBounceModifier<T: Hashable>: ViewModifier {
+    let value: T
+
+    func body(content: Content) -> some View {
+        content.symbolEffect(.bounce, value: value)
+    }
+}
+
+/// Applies pulse effect to SF Symbols
+struct SymbolPulseModifier: ViewModifier {
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        if isActive {
+            content.symbolEffect(.pulse)
+        } else {
+            content
+        }
+    }
+}
+
+/// Applies rotate effect to SF Symbols on value change
+@available(macOS 15.0, *)
+struct SymbolRotateModifier<T: Hashable>: ViewModifier {
+    let value: T
+    let options: SymbolEffectOptions
+
+    func body(content: Content) -> some View {
+        content.symbolEffect(.rotate, options: options, value: value)
+    }
+}
+
+extension View {
+    /// Applies bounce effect to SF Symbols on value change (macOS 15+)
+    @available(macOS 15.0, *)
+    func symbolBounce<T: Hashable>(on value: T) -> some View {
+        modifier(SymbolBounceModifier(value: value))
+    }
+
+    /// Applies pulse effect to SF Symbols when active (macOS 15+)
+    @available(macOS 15.0, *)
+    func symbolPulse(isActive: Bool) -> some View {
+        modifier(SymbolPulseModifier(isActive: isActive))
+    }
+
+    /// Applies rotate effect to SF Symbols on value change (macOS 15+)
+    @available(macOS 15.0, *)
+    func symbolRotate<T: Hashable>(
+        on value: T,
+        options: SymbolEffectOptions = .nonRepeating
+    ) -> some View {
+        modifier(SymbolRotateModifier(value: value, options: options))
+    }
+}
+
+// MARK: - Content Transitions
+
+extension View {
+    /// Applies opacity content transition for smooth content updates
+    func contentTransitionOpacity() -> some View {
+        contentTransition(.opacity)
+    }
+
+    /// Applies numeric text content transition for counting animations
+    func contentTransitionNumeric(countsDown: Bool = false) -> some View {
+        contentTransition(.numericText(countsDown: countsDown))
+    }
+
+    /// Applies interpolate text content transition for text morphing
+    func contentTransitionInterpolate() -> some View {
+        contentTransition(.interpolate)
+    }
+}
+
+// MARK: - Enhanced Button Animations
+
+/// Applies spring press feedback for more satisfying button interactions
+struct SpringPressModifier: ViewModifier {
+    @State private var isPressed = false
+    let scale: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isPressed ? scale : 1.0)
+            .animation(
+                isPressed
+                    ? DesignTokens.AnimationPreset.fast
+                    : DesignTokens.AnimationPreset.spring(response: 0.35, damping: 0.7),
+                value: isPressed
+            )
+            ._onButtonGesture { pressing in
+                isPressed = pressing
+            } perform: {}
+    }
+}
+
+extension View {
+    /// Applies spring-based press feedback for satisfying button interactions
+    func springPress(scale: CGFloat = 0.95) -> some View {
+        modifier(SpringPressModifier(scale: scale))
+    }
+}
+
+// MARK: - Phase Animator Shimmer
+
+/// Modern shimmer effect using PhaseAnimator
+struct PhaseAnimatorShimmerModifier: ViewModifier {
+    @State private var isAnimating = false
+
+    func body(content: Content) -> some View {
+        content
+            .phaseAnimator([0, 1, 2, 3], trigger: isAnimating) { content, phase in
+                content
+                    .overlay(
+                        LinearGradient(
+                            colors: [.clear, Color.white.opacity(0.4), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .offset(x: calculateOffset(for: phase))
+                    )
+                    .mask(content)
+            }
+            .onAppear {
+                isAnimating = true
+            }
+    }
+
+    private func calculateOffset(for phase: Int) -> CGFloat {
+        switch phase {
+        case 0: return -200
+        case 1: return -50
+        case 2: return 100
+        case 3: return 250
+        default: return -200
+        }
+    }
+}
+
+extension View {
+    /// Applies a modern shimmer loading effect using PhaseAnimator.
+    func modernShimmer() -> some View {
+        modifier(PhaseAnimatorShimmerModifier())
+    }
+}
+
+// MARK: - Scroll-Driven Header Blur
+
+/// Applies a blur effect that increases as content scrolls under the header
+struct ScrollDrivenHeaderBlurModifier: ViewModifier {
+    let scrollOffset: CGFloat
+    let blurStartOffset: CGFloat
+    let maxBlur: CGFloat
+
+    func body(content: Content) -> some View {
+        let normalizedOffset = max(0, min((scrollOffset - blurStartOffset) / 50, 1))
+        let blurAmount = normalizedOffset * maxBlur
+
+        content
+            .background(.ultraThinMaterial)
+            .blur(radius: blurAmount)
+    }
+}
+
+/// View modifier that tracks scroll position and applies header blur effect (macOS 15+)
+@available(macOS 15.0, *)
+struct HeaderBlurContainerModifier: ViewModifier {
+    @State private var scrollOffset: CGFloat = 0
+    let blurStartOffset: CGFloat
+    let maxBlur: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
+            .background(
+                GeometryReader { _ in
+                    Color.clear
+                        .preference(key: ScrollOffsetPreferenceKey.self, value: scrollOffset)
+                }
+            )
+    }
+}
+
+private struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+extension View {
+    /// Applies a scroll-driven blur effect to a header view.
+    func scrollDrivenBlur(
+        scrollOffset: CGFloat,
+        blurStartOffset: CGFloat = 30,
+        maxBlur: CGFloat = 8
+    ) -> some View {
+        modifier(ScrollDrivenHeaderBlurModifier(
+            scrollOffset: scrollOffset,
+            blurStartOffset: blurStartOffset,
+            maxBlur: maxBlur
+        ))
     }
 }

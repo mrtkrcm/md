@@ -76,6 +76,7 @@ private final class FolderViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var totalItemCount = 0
     @Published private(set) var hasMoreItems = false
+    @Published private(set) var errorMessage: String?
 
     private var currentFilePath: String = ""
     private var rootFolderURL: URL
@@ -126,6 +127,8 @@ private final class FolderViewModel: ObservableObject {
 
     private func loadContents() {
         progressiveAppendTask?.cancel()
+        isLoading = true
+        errorMessage = nil
 
         Task { @MainActor in
             let folderURL = currentFolderURL
@@ -155,6 +158,7 @@ private final class FolderViewModel: ObservableObject {
                 loadedCount = 0
                 totalItemCount = 0
                 hasMoreItems = false
+                errorMessage = error.localizedDescription
             }
             isLoading = false
         }
@@ -230,15 +234,14 @@ private final class FolderViewModel: ObservableObject {
 @MainActor
 struct FolderSidebarView: View {
     let fileURL: URL
-    let currentFileURL: URL?
     let onOpenFile: ((URL) -> Void)?
 
     @Environment(\.openDocument) private var openDocument
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var viewModel: FolderViewModel
 
-    init(fileURL: URL, currentFileURL: URL? = nil, onOpenFile: ((URL) -> Void)? = nil) {
+    init(fileURL: URL, onOpenFile: ((URL) -> Void)? = nil) {
         self.fileURL = fileURL
-        self.currentFileURL = currentFileURL
         self.onOpenFile = onOpenFile
         _viewModel = StateObject(wrappedValue: FolderViewModel(fileURL: fileURL))
     }
@@ -248,6 +251,9 @@ struct FolderSidebarView: View {
             headerView
             Divider()
             contentView
+        }
+        .onAppear {
+            viewModel.updateFileURL(fileURL)
         }
         .onChange(of: fileURL) { _, newURL in
             viewModel.updateFileURL(newURL)
@@ -284,12 +290,14 @@ struct FolderSidebarView: View {
     private var contentView: some View {
         if viewModel.isLoading {
             loadingView
+        } else if let errorMessage = viewModel.errorMessage {
+            errorView(message: errorMessage)
         } else if viewModel.rows.isEmpty {
             emptyView
         } else {
             FolderSidebarTableView(
                 rows: viewModel.rows,
-                currentFilePath: (currentFileURL ?? fileURL).path,
+                currentFilePath: fileURL.path,
                 onActivateRow: handleRowActivation
             )
         }
@@ -318,6 +326,26 @@ struct FolderSidebarView: View {
             Text("Loading…")
                 .font(.system(size: DesignTokens.Typography.bodySmall))
                 .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, DesignTokens.Spacing.extraLarge)
+    }
+
+    private func errorView(message: String) -> some View {
+        VStack(spacing: 8) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: DesignTokens.Typography.title))
+                .foregroundStyle(.orange)
+            Text("Error Loading Folder")
+                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.system(size: DesignTokens.Typography.caption))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, DesignTokens.Spacing.standard)
             Spacer()
         }
         .frame(maxWidth: .infinity)
@@ -695,7 +723,7 @@ private func scanFolderItems(at folderURL: URL) async throws -> FolderScanResult
 
     items.sort { lhs, rhs in
         if lhs.isDirectory != rhs.isDirectory {
-            return lhs.isDirectory && !rhs.isDirectory
+            return lhs.isDirectory
         }
         return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
     }

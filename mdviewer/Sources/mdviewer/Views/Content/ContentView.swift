@@ -22,6 +22,7 @@ private let uiPerformanceLog = OSSignposter(subsystem: "mdviewer", category: "UI
 
 /// Sidebar content mode.
 enum SidebarMode: String, CaseIterable {
+    case toc = "toc_view"
     case metadata = "metadata_view"
     case folder = "folder_view"
 }
@@ -46,6 +47,7 @@ struct ContentView: View {
     @State private var sidebarWidth: CGFloat = 260
     @State private var activeFileURL: URL?
     @State private var sidebarRootFileURL: URL?
+    @State private var parsedMarkdown: ParsedMarkdown?
     @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
     @StateObject private var toolbarVisibility = ToolbarVisibilityController()
 
@@ -54,6 +56,11 @@ struct ContentView: View {
     private var windowReaderMode: ReaderMode {
         get { ReaderMode.from(rawValue: windowReaderModeRaw) }
         nonmutating set { windowReaderModeRaw = newValue.rawValue }
+    }
+
+    /// Effective parsed document state, ensures we always have a valid result
+    private var currentParsed: ParsedMarkdown {
+        parsedMarkdown ?? FrontmatterParser.parse(document.text)
     }
 
     // MARK: - Helpers
@@ -83,6 +90,13 @@ struct ContentView: View {
             insertImage: { markdownEditor.insertSyntax(prefix: "![", suffix: "](image-url)") },
             setRenderedMode: { windowReaderMode = .rendered },
             setRawMode: { windowReaderMode = .raw },
+            jumpToLine: { lineIndex in
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("JumpToLine"),
+                    object: nil,
+                    userInfo: ["lineIndex": lineIndex]
+                )
+            },
             showAppearanceSettings: { showAppearancePopover = true }
         )
     }
@@ -90,7 +104,7 @@ struct ContentView: View {
     // MARK: - Body
 
     var body: some View {
-        let parsed = FrontmatterParser.parse(document.text)
+        let parsed = currentParsed
         contentScaffold(parsed: parsed)
     }
 
@@ -105,7 +119,7 @@ struct ContentView: View {
                 mainContent(parsed: parsed)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                // Custom sidebar - replaces .inspector for better performance
+                // Custom sidebar with 120fps-optimized animations
                 if showMetadataInspector {
                     InspectorSidebar(
                         frontmatter: parsed.frontmatter,
@@ -118,10 +132,31 @@ struct ContentView: View {
                     )
                     .frame(width: sidebarWidth)
                     .accessibleTransition(from: .trailing, reduceMotion: reduceMotion)
+                    // 120fps: Layer-backed for smooth compositing
+                    .compositingGroup()
+                    .drawingGroup()
                 }
             }
         }
         .preferredColorScheme(preferences.effectiveColorScheme)
+        .overlay(alignment: .top) {
+            Color.clear
+                .frame(height: DesignTokens.Component.Button.height)
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    if hovering {
+                        NotificationCenter.default.post(name: NSNotification.Name("ToolbarHoverShow"), object: nil)
+                    }
+                }
+                .allowsHitTesting(toolbarVisibility.visibilityProgress < 0.2)
+        }
+        .onChange(of: document.text) { _, newValue in
+            parsedMarkdown = FrontmatterParser.parse(newValue)
+        }
+        .task(id: fileURL) {
+            // Re-parse when switching files to ensure metadata is fresh
+            parsedMarkdown = FrontmatterParser.parse(document.text)
+        }
         .onChange(of: windowReaderMode) { _, newMode in
             AccessibilityAnnouncement.modeChanged(to: newMode == .rendered)
         }
@@ -135,8 +170,12 @@ struct ContentView: View {
         .toolbar {
             contentToolbar(parsed: parsed)
         }
+        .toolbarBackground(.hidden, for: .windowToolbar)
         .focusedSceneValue(\.editorActions, editorActions)
         .onAppear {
+            if parsedMarkdown == nil {
+                parsedMarkdown = FrontmatterParser.parse(document.text)
+            }
             if windowReaderModeRaw.isEmpty {
                 windowReaderModeRaw = preferences.readerMode.rawValue
             }
@@ -150,12 +189,16 @@ struct ContentView: View {
                 sidebarRootFileURL = fileURL
             }
             FolderSidebarPreloader.prewarmIfNeeded(fileURL: activeFileURL)
+
             // Initialize toolbar visibility callback used by scroll auto-hide.
-            updateToolbarVisibility(true)
-            toolbarVisibility.onVisibilityChange = updateToolbarVisibility
+            updateToolbarVisibility(progress: 1.0)
+            toolbarVisibility.onVisibilityProgressChange = updateToolbarVisibility
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ToolbarHoverShow"))) { _ in
+            toolbarVisibility.show()
         }
         .onDisappear {
-            toolbarVisibility.onVisibilityChange = nil
+            toolbarVisibility.onVisibilityProgressChange = nil
         }
         .popover(isPresented: $showAppearancePopover, arrowEdge: .top) {
             AppearancePopover(
@@ -190,16 +233,21 @@ struct ContentView: View {
 
     // MARK: - Toolbar Visibility
 
-    /// Updates toolbar visibility and suppresses layout-compensation scroll feedback.
-    private func updateToolbarVisibility(_ isVisible: Bool) {
+    /// Applies native toolbar visibility with stable, smooth animations.
+    private func updateToolbarVisibility(progress: CGFloat) {
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        guard let toolbar = window.toolbar else { return }
 
-        let currentVisibility = window.toolbar?.isVisible ?? true
-        guard currentVisibility != isVisible else { return }
+        let shouldShow = progress > 0.15
+        guard toolbar.isVisible != shouldShow else { return }
 
-        // Prevent layout compensation events from being interpreted as user scroll.
-        toolbarVisibility.suspendUpdates(for: DesignTokens.Animation.topBar)
-        window.toolbar?.isVisible = isVisible
+        // Stable animation duration for consistent 120fps performance
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = DesignTokens.Animation.topBar
+            context.allowsImplicitAnimation = true
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            toolbar.isVisible = shouldShow
+        }
     }
 
     // MARK: - File Opening
@@ -277,21 +325,11 @@ struct ContentView: View {
                     readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
                     colorScheme: colorScheme,
                     reduceMotion: reduceMotion,
-                    onScrollGestureStart: { startOffset in
-                        toolbarVisibility.beginScrollGesture(startOffset: startOffset)
-                    },
-                    onScrollGestureLive: { delta, currentOffset, canScroll in
-                        toolbarVisibility.updateLiveScroll(
-                            delta: delta,
-                            currentOffset: currentOffset,
-                            canScroll: canScroll
-                        )
-                    },
-                    onScrollGestureEnd: { delta, finalOffset, canScroll in
-                        toolbarVisibility.updateScrollGesture(
-                            delta: delta,
-                            finalOffset: finalOffset,
-                            canScroll: canScroll
+                    onScroll: { offset, contentHeight, visibleHeight in
+                        toolbarVisibility.updateScroll(
+                            offset: offset,
+                            contentHeight: contentHeight,
+                            visibleHeight: visibleHeight
                         )
                     }
                 )
@@ -323,9 +361,10 @@ private struct ReaderContentView: View {
     @Environment(\.preferences) private var preferences
     let colorScheme: ColorScheme
     let reduceMotion: Bool
-    let onScrollGestureStart: (CGFloat) -> Void
-    let onScrollGestureLive: (CGFloat, CGFloat, Bool) -> Void
-    let onScrollGestureEnd: (CGFloat, CGFloat, Bool) -> Void
+    let onScroll: (CGFloat, CGFloat, CGFloat) -> Void
+
+    /// Namespace for matched geometry effects between modes
+    @Namespace private var animationNamespace
 
     var body: some View {
         GeometryReader { geometry in
@@ -334,25 +373,33 @@ private struct ReaderContentView: View {
                     .ignoresSafeArea()
 
                 contentView(geometry: geometry)
+                    .matchedGeometryEffect(id: "contentContainer", in: animationNamespace)
             }
         }
     }
 
     @ViewBuilder
     private func contentView(geometry: GeometryProxy) -> some View {
-        switch readerMode {
-        case .rendered:
-            renderedContent(geometry: geometry)
-                .onAppear {
-                    renderSignposter.emitEvent("RenderedModeAppeared")
-                }
+        Group {
+            switch readerMode {
+            case .rendered:
+                renderedContent(geometry: geometry)
+                    .matchedGeometryEffect(id: "editorContent", in: animationNamespace)
+                    .onAppear {
+                        renderSignposter.emitEvent("RenderedModeAppeared")
+                    }
+                    .transition(.liquidMorph)
 
-        case .raw:
-            rawContent(geometry: geometry)
-                .onAppear {
-                    renderSignposter.emitEvent("RawModeAppeared")
-                }
+            case .raw:
+                rawContent(geometry: geometry)
+                    .matchedGeometryEffect(id: "editorContent", in: animationNamespace)
+                    .onAppear {
+                        renderSignposter.emitEvent("RawModeAppeared")
+                    }
+                    .transition(.liquidMorph)
+            }
         }
+        .animation(reduceMotion ? .linear(duration: 0.01) : DesignTokens.AnimationPreset.medium, value: readerMode)
     }
 
     @ViewBuilder
@@ -373,9 +420,7 @@ private struct ReaderContentView: View {
             contentPadding: preferences.readerContentPadding.points,
             showLineNumbers: preferences.showLineNumbers,
             typographyPreferences: preferences.typographyPreferences,
-            onScrollGestureStart: onScrollGestureStart,
-            onScrollGestureLive: onScrollGestureLive,
-            onScrollGestureEnd: onScrollGestureEnd
+            onScroll: onScroll
         )
         .accessibleAnimation(
             reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
@@ -402,9 +447,7 @@ private struct ReaderContentView: View {
             colorScheme: preferences.effectiveColorScheme ?? colorScheme,
             showLineNumbers: preferences.showLineNumbers,
             contentPadding: preferences.readerContentPadding.points,
-            onScrollGestureStart: onScrollGestureStart,
-            onScrollGestureLive: onScrollGestureLive,
-            onScrollGestureEnd: onScrollGestureEnd
+            onScroll: onScroll
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibleAnimation(
@@ -469,12 +512,15 @@ private struct InspectorSidebar: View {
             // Header with mode picker
             HStack {
                 Picker("", selection: $sidebarMode) {
-                    Label("Folder", systemImage: "folder")
-                        .tag(SidebarMode.folder)
-                        .accessibilityLabel("Folder View")
+                    Label("Outline", systemImage: "list.bullet")
+                        .tag(SidebarMode.toc)
+                        .accessibilityLabel("Table of Contents")
                     Label("Info", systemImage: "info.circle")
                         .tag(SidebarMode.metadata)
                         .accessibilityLabel("Metadata View")
+                    Label("Folder", systemImage: "folder")
+                        .tag(SidebarMode.folder)
+                        .accessibilityLabel("Folder View")
                 }
                 .pickerStyle(.segmented)
                 .fixedSize()
@@ -501,14 +547,42 @@ private struct InspectorSidebar: View {
 
             // Content based on mode
             switch sidebarMode {
+            case .toc:
+                TableOfContentsView(documentText: documentText) { lineIndex in
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("JumpToLine"),
+                        object: nil,
+                        userInfo: ["lineIndex": lineIndex]
+                    )
+                }
             case .folder:
                 folderContent
             case .metadata:
                 metadataContent
             }
         }
-        .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .frame(
+            minWidth: DesignTokens.Component.Sidebar.minWidth,
+            idealWidth: DesignTokens.Component.Sidebar.idealWidth,
+            maxWidth: DesignTokens.Component.Sidebar.maxWidth
+        )
+        .containerRelativeFrame(.horizontal) { length, _ in
+            // Responsive sidebar: 30% of container, clamped between 220-320pt
+            max(
+                DesignTokens.Component.Sidebar.minWidth,
+                min(
+                    DesignTokens.Component.Sidebar.maxWidth,
+                    length * DesignTokens.Component.Sidebar.widthFactor
+                )
+            )
+        }
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(width: DesignTokens.Component.Sidebar.borderLineWidth)
+                .opacity(DesignTokens.Opacity.veryHigh)
+        }
         .onAppear {
             // Pre-compute document stats on sidebar appearance
             if cachedDocumentStats == nil {
@@ -552,7 +626,6 @@ private struct InspectorSidebar: View {
         if let folderRootFileURL {
             FolderSidebarView(
                 fileURL: folderRootFileURL,
-                currentFileURL: currentFileURL,
                 onOpenFile: onOpenFile
             )
         } else {
@@ -662,9 +735,9 @@ private struct DocumentStatsSection: View {
                 .padding(.bottom, DesignTokens.Spacing.standard)
                 .accessibilityAddTraits(.isHeader)
 
-            StatsRow(label: "Words", value: "\(stats.words)")
-            StatsRow(label: "Characters", value: "\(stats.characters)")
-            StatsRow(label: "Lines", value: "\(stats.lines)")
+            StatsRow(label: "Words", value: "\(stats.words)", numericTransition: true)
+            StatsRow(label: "Characters", value: "\(stats.characters)", numericTransition: true)
+            StatsRow(label: "Lines", value: "\(stats.lines)", numericTransition: true)
             StatsRow(
                 label: "Reading Time",
                 value: stats.readingTimeMinutes > 0 ? "\(stats.readingTimeMinutes) min" : "—"
@@ -685,6 +758,14 @@ private struct StatsRow: View {
     let label: String
     let value: String
     var showsDivider: Bool = true
+    var numericTransition: Bool = false
+
+    private var contentTransition: ContentTransition {
+        if numericTransition, #available(macOS 15.0, iOS 17.0, *) {
+            return .numericText(countsDown: false)
+        }
+        return .opacity
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
@@ -699,6 +780,8 @@ private struct StatsRow: View {
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.trailing)
+                        .contentTransition(contentTransition)
+                        .animation(DesignTokens.AnimationPreset.fast, value: value)
                 }
 
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.tight) {
@@ -709,6 +792,8 @@ private struct StatsRow: View {
                         .font(.system(size: DesignTokens.Typography.bodySmall))
                         .foregroundStyle(.primary)
                         .lineLimit(3)
+                        .contentTransition(contentTransition)
+                        .animation(DesignTokens.AnimationPreset.fast, value: value)
                 }
             }
 

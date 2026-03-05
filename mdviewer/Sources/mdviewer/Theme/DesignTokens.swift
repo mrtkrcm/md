@@ -93,15 +93,17 @@ enum DesignTokens {
         static let veryHigh: Double = 0.5
     }
 
-    // MARK: - Shadow
+    // MARK: - Shadow (Legacy)
 
+    /// Subtle depth tokens for non-glass elements.
+    /// Liquid Glass elements should use .glassEffect() instead of manual shadows.
     enum Shadow {
         /// Standard shadow radius (12pt)
-        static let radius: CGFloat = 12
-        /// Standard shadow Y offset (4pt)
-        static let yOffset: CGFloat = 4
-        /// Standard shadow opacity (0.10)
-        static let opacity: Double = 0.10
+        static let radius: CGFloat = 8
+        /// Standard shadow Y offset (2pt)
+        static let yOffset: CGFloat = 2
+        /// Standard shadow opacity (0.06)
+        static let opacity: Double = 0.06
     }
 
     // MARK: - Layout
@@ -220,6 +222,29 @@ enum DesignTokens {
             /// Modal backdrop opacity (0.4)
             static let backdropOpacity: Double = 0.4
         }
+
+        enum Sidebar {
+            /// Sidebar minimum width (220pt)
+            static let minWidth: CGFloat = 220
+            /// Sidebar ideal width (260pt)
+            static let idealWidth: CGFloat = 260
+            /// Sidebar maximum width (320pt)
+            static let maxWidth: CGFloat = 320
+            /// Sidebar responsive width factor (30% of container)
+            static let widthFactor: CGFloat = 0.3
+            /// Sidebar row icon column width (18pt)
+            static let rowIconWidth: CGFloat = 18
+            /// Sidebar row horizontal inset (12pt)
+            static let rowHorizontalInset: CGFloat = 12
+            /// Sidebar row vertical inset (4pt)
+            static let rowVerticalInset: CGFloat = 4
+            /// Sidebar row corner radius (8pt)
+            static let rowCornerRadius: CGFloat = 8
+            /// Sidebar row minimum trailing spacer (4pt)
+            static let rowTrailingSpacer: CGFloat = 4
+            /// Sidebar border line width (0.5pt)
+            static let borderLineWidth: CGFloat = 0.5
+        }
     }
 
     // MARK: - Animation Presets
@@ -246,15 +271,10 @@ enum DesignTokens {
             .spring(response: response, dampingFraction: damping)
         }
 
-        /// Smooth animation with modern easing
-        @available(macOS 15.0, iOS 17.0, *)
-        static func smooth(duration: TimeInterval = 0.25) -> SwiftUI.Animation {
-            .smooth(duration: duration)
+        /// Returns an animation for a specific duration
+        static func forDuration(_ duration: TimeInterval) -> SwiftUI.Animation {
+            .easeInOut(duration: duration)
         }
-
-        /// Bouncy spring animation for playful interactions
-        @available(macOS 15.0, iOS 17.0, *)
-        static let bouncy: SwiftUI.Animation = .bouncy
     }
 
     // MARK: - Transition Presets
@@ -335,27 +355,18 @@ extension View {
         animation(.spring(response: response, dampingFraction: damping), value: value)
     }
 
-    /// Applies a modern smooth animation (macOS 15+/iOS 17+) with fallback.
-    @ViewBuilder
+    /// Applies a modern smooth animation.
     func smoothAnimation<Value: Equatable>(
         _ value: Value,
         duration: TimeInterval = DesignTokens.Animation.normal
     ) -> some View {
-        if #available(macOS 15.0, iOS 17.0, *) {
-            animation(.smooth(duration: duration), value: value)
-        } else {
-            animation(.easeInOut(duration: duration), value: value)
-        }
+        animation(.smooth(duration: duration), value: value)
     }
 
-    /// Applies a bouncy spring animation for playful interactions.
-    @ViewBuilder
-    func bouncyAnimation<Value: Equatable>(_ value: Value) -> some View {
-        if #available(macOS 15.0, iOS 17.0, *) {
-            animation(.bouncy, value: value)
-        } else {
-            animation(.spring(response: 0.35, dampingFraction: 0.7), value: value)
-        }
+    /// Applies a concentric corner radius based on a parent's radius and padding.
+    /// Following 2026 Liquid Design principles for corner concentricity.
+    func liquidCornerRadius(_ parentRadius: CGFloat, padding: CGFloat) -> some View {
+        clipShape(RoundedRectangle(cornerRadius: max(0, parentRadius - padding), style: .continuous))
     }
 }
 

@@ -119,7 +119,7 @@
 
                 let baseSpacing = spacing.paragraphSpacing(for: headingSize)
                 switch level {
-                case 1: return (baseSpacing * 0.72, baseSpacing * 0.7)
+                case 1: return (baseSpacing * 0.72, baseSpacing * 0.72)
                 case 2: return (baseSpacing * 0.62, baseSpacing * 0.62)
                 case 3: return (baseSpacing * 0.54, baseSpacing * 0.54)
                 default: return (baseSpacing * 0.46, baseSpacing * 0.46)

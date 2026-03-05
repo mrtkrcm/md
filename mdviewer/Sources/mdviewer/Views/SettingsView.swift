@@ -10,6 +10,18 @@ internal import SwiftUI
 /// All controls have full VoiceOver accessibility support.
 struct SettingsView: View {
     @Environment(\.preferences) private var preferences
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var effectiveColorScheme: ColorScheme {
+        switch preferences.appearanceMode {
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        case .auto:
+            return colorScheme
+        }
+    }
 
     var body: some View {
         Form {
@@ -22,14 +34,14 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
                 .padding(.vertical, DesignTokens.Spacing.tight)
                 .accessibilityLabel("Appearance Mode")
+            }
 
-                Picker("Theme", selection: binding(\.theme)) {
-                    ForEach(AppTheme.allCases) { theme in
-                        Text(theme.rawValue).tag(theme)
-                    }
-                }
-                .padding(.vertical, DesignTokens.Spacing.tight)
-                .accessibilityLabel("Reader Theme")
+            Section("Theme") {
+                ThemePreviewGrid(
+                    selectedTheme: binding(\.theme),
+                    colorScheme: effectiveColorScheme
+                )
+                .padding(.vertical, DesignTokens.Spacing.compact)
             }
 
             Section("Typography") {
@@ -144,7 +156,11 @@ struct SettingsView: View {
     private func binding<T>(_ keyPath: ReferenceWritableKeyPath<AppPreferences, T>) -> Binding<T> {
         Binding(
             get: { preferences[keyPath: keyPath] },
-            set: { preferences[keyPath: keyPath] = $0 }
+            set: { newValue in
+                withAnimation(DesignTokens.AnimationPreset.fast) {
+                    preferences[keyPath: keyPath] = newValue
+                }
+            }
         )
     }
 }

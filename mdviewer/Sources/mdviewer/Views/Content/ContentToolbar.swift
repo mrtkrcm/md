@@ -15,7 +15,7 @@ internal import SwiftUI
 private let toolbarSignposter = OSSignposter(subsystem: "mdviewer", category: "Toolbar")
 
 /// Toolbar content providing mode switching and primary document actions.
-/// Uses native macOS toolbar components without custom styling.
+/// Uses native macOS toolbar components with SF Symbol effects for liquid design.
 struct ContentToolbar: ToolbarContent {
     @Binding var readerMode: ReaderMode
     @Binding var showAppearancePopover: Bool
@@ -26,7 +26,7 @@ struct ContentToolbar: ToolbarContent {
     let fileURL: URL?
 
     var body: some ToolbarContent {
-        // Centered mode switcher - native NSSegmentedControl style
+        // Centered mode switcher - native NSSegmentedControl style with symbol effects
         ToolbarItem(id: "mode", placement: .principal) {
             Picker("Mode", selection: $readerMode) {
                 Image(systemName: "doc.text.image")
@@ -34,11 +34,13 @@ struct ContentToolbar: ToolbarContent {
                     .tag(ReaderMode.rendered)
                     .accessibilityLabel("Rendered Mode")
                     .accessibilityHint("Show formatted markdown preview")
+                    .symbolBounce(on: readerMode == .rendered)
                 Image(systemName: "doc.plaintext")
                     .help("Raw")
                     .tag(ReaderMode.raw)
                     .accessibilityLabel("Raw Mode")
                     .accessibilityHint("Show raw markdown source")
+                    .symbolBounce(on: readerMode == .raw)
             }
             .pickerStyle(.segmented)
             .frame(width: 80)
@@ -46,7 +48,7 @@ struct ContentToolbar: ToolbarContent {
             .accessibilityValue(readerMode == .rendered ? "Rendered" : "Raw")
         }
 
-        // Trailing action items - native macOS toolbar buttons
+        // Trailing action items - native macOS toolbar buttons with symbol effects
         ToolbarItem(id: "inspector", placement: .automatic) {
             Button {
                 toolbarSignposter.emitEvent("InspectorToggleTapped")
@@ -60,6 +62,7 @@ struct ContentToolbar: ToolbarContent {
                 showMetadataInspector.toggle()
             } label: {
                 Image(systemName: "sidebar.right")
+                    .symbolBounce(on: showMetadataInspector)
             }
             .help(sidebarHelpText)
             .disabled(!canShowSidebar)
@@ -74,6 +77,7 @@ struct ContentToolbar: ToolbarContent {
                 showAppearancePopover = true
             } label: {
                 Image(systemName: "paintbrush")
+                    .symbolBounce(on: showAppearancePopover)
             }
             .help("Appearance Settings")
             .accessibilityLabel("Appearance Settings")

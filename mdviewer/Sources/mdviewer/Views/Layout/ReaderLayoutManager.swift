@@ -9,13 +9,7 @@
     // MARK: - ReaderLayoutManager
 
     /// Custom layout manager that draws block-level decorations behind text:
-    ///
-    /// • **Code blocks**: a single rounded-rect background covering all lines.
-    /// • **Blockquotes**: a left-border accent bar + tinted background covering all lines.
-    ///
-    /// Both are drawn *before* glyph rendering so text sits on top.  No `NSTextBlock` is
-    /// used — that API's `drawBackground` is never invoked reliably in SwiftUI-hosted
-    /// TK1 views on macOS 14+.
+    /// Supports 120fps scrolling through decoration caching and optimized scanning.
     final class ReaderLayoutManager: NSLayoutManager {
         private static let codeCornerRadius: CGFloat = 6
         private static let codeVPad: CGFloat = 8
@@ -28,9 +22,20 @@
         private static let lineNumberGutterPadding: CGFloat = 12
         private static let lineNumberMinWidth: CGFloat = 32
 
+        // MARK: - Cache
+
+        private struct CachedDecoration {
+            let spans: DecorationSpans
+            let usedRects: [Int: CGRect] // Key: hash of span
+            let textHash: Int
+            let containerWidth: CGFloat
+        }
+
+        private var decorationCache: CachedDecoration?
+
         // MARK: - Decoration Span Types
 
-        private enum SpanKind {
+        private enum SpanKind: Hashable {
             case code(bg: NSColor)
             case blockquote(bg: NSColor, accent: NSColor, depth: Int)
             case tableHeader(bg: NSColor)
@@ -38,17 +43,23 @@
             case horizontalRule(color: NSColor)
         }
 
-        private struct DecorationSpan {
+        private struct DecorationSpan: Hashable {
             var charStart: Int
             var charEnd: Int
             var kind: SpanKind
+        }
+
+        private struct DecorationSpans {
+            var code: [DecorationSpan] = []
+            var bq: [DecorationSpan] = []
+            var table: [DecorationSpan] = []
+            var hr: [DecorationSpan] = []
         }
 
         // MARK: - Drawing
 
         override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
             // Call super first for selection highlight and standard per-char backgrounds
-            // (inline code pills, etc.).  We draw our custom decorations on top of that.
             super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
 
             guard
@@ -57,27 +68,58 @@
                 let ctx = NSGraphicsContext.current?.cgContext
             else { return }
 
-            let charRange = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
             let totalLen = ts.length
             guard totalLen > 0 else { return }
 
-            let spans = collectDecorationSpans(in: ts, charRange: charRange, totalLen: totalLen)
             let containerWidth = container.containerSize.width
+            let textHash = ts.string.hashValue
+
+            // ── Validate and Update Cache ────────────────────────────────────────
+            let spans: DecorationSpans
+            var usedRects: [Int: CGRect]
+
+            if
+                let cached = decorationCache,
+                cached.textHash == textHash,
+                abs(cached.containerWidth - containerWidth) < 0.1
+            {
+                spans = cached.spans
+                usedRects = cached.usedRects
+            } else {
+                // Full scan when text or layout changes
+                let fullRange = NSRange(location: 0, length: totalLen)
+                spans = collectDecorationSpans(in: ts, charRange: fullRange, totalLen: totalLen)
+                usedRects = [:]
+                decorationCache = CachedDecoration(
+                    spans: spans,
+                    usedRects: usedRects,
+                    textHash: textHash,
+                    containerWidth: containerWidth
+                )
+            }
+
+            // Only draw spans that intersect with the current glyph range
+            let charRange = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
 
             // ── Draw code block backgrounds and line numbers ─────────────────────
             for span in spans.code {
+                guard span.charEnd > charRange.location, span.charStart < NSMaxRange(charRange) else { continue }
                 guard case .code(let bg) = span.kind else { continue }
-                let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+
+                let spanHash = span.hashValue
+                let rect = usedRects[spanHash] ?? {
+                    let r = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+                    usedRects[spanHash] = r
+                    return r
+                }()
                 guard !rect.isNull else { continue }
 
-                // Check if this code block has line numbers enabled
                 let hasLineNumbers = ts.attribute(
                     MarkdownRenderAttribute.codeBlock,
                     at: span.charStart,
                     effectiveRange: nil
                 ) != nil
 
-                // Calculate gutter width for line numbers
                 let gutterWidth: CGFloat
                 if hasLineNumbers {
                     gutterWidth = calculateLineNumberGutterWidth(text: ts, range: span.charStart ..< span.charEnd)
@@ -101,7 +143,6 @@
                 ))
                 ctx.fillPath()
 
-                // Draw line numbers if enabled
                 if hasLineNumbers {
                     drawLineNumbers(
                         for: span,
@@ -118,11 +159,17 @@
 
             // ── Draw blockquote backgrounds + left accent bar ─────────────────────
             for span in spans.bq {
+                guard span.charEnd > charRange.location, span.charStart < NSMaxRange(charRange) else { continue }
                 guard case .blockquote(let bg, let accent, let depth) = span.kind else { continue }
-                let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+
+                let spanHash = span.hashValue
+                let rect = usedRects[spanHash] ?? {
+                    let r = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+                    usedRects[spanHash] = r
+                    return r
+                }()
                 guard !rect.isNull else { continue }
 
-                // Indent increases with nesting depth
                 let leftInset = CGFloat(depth - 1) * 16 + origin.x
                 let drawRect = CGRect(
                     x: leftInset,
@@ -132,12 +179,9 @@
                 )
 
                 ctx.saveGState()
-
-                // Tinted background.
                 bg.setFill()
                 ctx.fill(drawRect)
 
-                // Left accent bar.
                 let barRect = CGRect(
                     x: drawRect.minX,
                     y: drawRect.minY,
@@ -146,14 +190,21 @@
                 )
                 accent.setFill()
                 ctx.fill(barRect)
-
                 ctx.restoreGState()
             }
 
             // ── Draw table surfaces and separators ───────────────────────────────
             for (spanIndex, span) in spans.table.enumerated() {
-                let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+                guard span.charEnd > charRange.location, span.charStart < NSMaxRange(charRange) else { continue }
+
+                let spanHash = span.hashValue
+                let rect = usedRects[spanHash] ?? {
+                    let r = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+                    usedRects[spanHash] = r
+                    return r
+                }()
                 guard !rect.isNull else { continue }
+
                 let isLastTableSpan = spanIndex == spans.table.count - 1
 
                 let paragraph = ts.attribute(
@@ -167,11 +218,6 @@
                     if char == "\t" { partialResult += 1 }
                 }
 
-                // Always span the full readable container. Capping by lastTab + slack
-                // left the last column only `tableWidthSlack` (36pt) wide, causing content
-                // to overflow past the right border on any table with substantial last-column
-                // text. The tab stops control where each column *starts*; the row rect must
-                // extend to the container edge so the last column has room to wrap normally.
                 let tableWidth = max(Self.tableMinWidth, containerWidth - 16)
 
                 let rowRect = CGRect(
@@ -203,14 +249,10 @@
 
                 if let borderColor {
                     ctx.setLineWidth(0.5)
-
-                    // Pass 1 — outer frame lines at full border opacity.
                     borderColor.setStroke()
                     ctx.beginPath()
-                    // Top horizontal edge (every row)
                     ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.minY))
                     ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.minY))
-                    // Bottom horizontal edge: after header row, and always on the last span
                     let drawsBottomEdge: Bool
                     if case .tableHeader = span.kind {
                         drawsBottomEdge = true
@@ -221,30 +263,20 @@
                         ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.maxY))
                         ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.maxY))
                     }
-                    // Outer vertical edges
                     ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.minY))
                     ctx.addLine(to: CGPoint(x: rowRect.minX, y: rowRect.maxY))
                     ctx.move(to: CGPoint(x: rowRect.maxX, y: rowRect.minY))
                     ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.maxY))
                     ctx.strokePath()
 
-                    // Pass 2 — interior column dividers at reduced opacity.
-                    // Column guides are secondary structure: dimming them lets the outer
-                    // border read as the dominant visual container.
                     if let paragraph, tabCount > 0 {
-                        let rawMultiplier: CGFloat
-                        if span.charStart >= 0, span.charStart < ts.length {
-                            rawMultiplier = ts.attribute(
-                                MarkdownRenderAttribute.tableColumnDividerOpacity,
-                                at: span.charStart,
-                                effectiveRange: nil
-                            ) as? CGFloat ?? 0.45
-                        } else {
-                            rawMultiplier = 0.45
-                        }
-                        // Clamp to a safe range — an out-of-bounds stored value must not
-                        // produce a negative alpha or overflow the NSColor constructor.
+                        let rawMultiplier = ts.attribute(
+                            MarkdownRenderAttribute.tableColumnDividerOpacity,
+                            at: span.charStart,
+                            effectiveRange: nil
+                        ) as? CGFloat ?? 0.45
                         let dividerMultiplier = max(0.0, min(1.0, rawMultiplier))
+
                         borderColor.withAlphaComponent(borderColor.alphaComponent * dividerMultiplier).setStroke()
                         ctx.beginPath()
                         for tabStop in paragraph.tabStops.prefix(tabCount) {
@@ -256,21 +288,23 @@
                         ctx.strokePath()
                     }
                 }
-
                 ctx.restoreGState()
             }
 
             // ── Draw horizontal rules ─────────────────────────────────────────────
             for span in spans.hr {
+                guard span.charEnd > charRange.location, span.charStart < NSMaxRange(charRange) else { continue }
                 guard case .horizontalRule(let color) = span.kind else { continue }
-                let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+
+                let spanHash = span.hashValue
+                let rect = usedRects[spanHash] ?? {
+                    let r = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+                    usedRects[spanHash] = r
+                    return r
+                }()
                 guard !rect.isNull else { continue }
 
-                // Center the hairline vertically in the line fragment.
                 let lineY = floor(rect.midY) + 0.5
-
-                // Inset horizontally to align with the readable column, matching
-                // the text container inset used by ReaderTextView.
                 let hInset = origin.x + 4
                 let lineWidth = max(0, containerWidth - 8)
                 guard lineWidth > 0 else { continue }
@@ -284,19 +318,17 @@
                 ctx.strokePath()
                 ctx.restoreGState()
             }
+
+            decorationCache = CachedDecoration(
+                spans: spans,
+                usedRects: usedRects,
+                textHash: textHash,
+                containerWidth: containerWidth
+            )
         }
 
         // MARK: - Span Collection
 
-        private struct DecorationSpans {
-            var code: [DecorationSpan] = []
-            var bq: [DecorationSpan] = []
-            var table: [DecorationSpan] = []
-            var hr: [DecorationSpan] = []
-        }
-
-        /// Scans the visible character range and groups characters by their decoration kind.
-        /// Extracted from `drawBackground` to keep that method within cyclomatic complexity limits.
         private func collectDecorationSpans(
             in ts: NSTextStorage,
             charRange: NSRange,
@@ -304,173 +336,122 @@
         ) -> DecorationSpans {
             var spans = DecorationSpans()
 
-            let scanStart = max(0, charRange.location)
-            let scanEnd = min(charRange.location + charRange.length, totalLen)
-            var i = scanStart
+            ts.enumerateAttribute(
+                MarkdownRenderAttribute.presentationIntent,
+                in: charRange,
+                options: []
+            ) { value, range, _ in
+                guard let intent = value as? PresentationIntent else { return }
 
-            while i < scanEnd {
-                var effectiveRange = NSRange(location: i, length: 1)
-                let intent = ts.attribute(
-                    MarkdownRenderAttribute.presentationIntent,
-                    at: i,
-                    effectiveRange: &effectiveRange
-                ) as? PresentationIntent
-                let end = min(effectiveRange.location + effectiveRange.length, totalLen)
-                guard end > i else { break }
-
-                let isCode = intent?.components.contains {
+                let isCode = intent.components.contains {
                     if case .codeBlock = $0.kind { return true }; return false
-                } ?? false
+                }
 
-                let bqDepth = ts.attribute(
-                    MarkdownRenderAttribute.blockquoteDepth, at: i, effectiveRange: nil
-                ) as? Int ?? 0
-                let tableHeaderBG = ts.attribute(
-                    MarkdownRenderAttribute.tableHeaderBackground, at: i, effectiveRange: nil
-                ) as? NSColor
-                let tableRowBG = ts.attribute(
-                    MarkdownRenderAttribute.tableRowBackground, at: i, effectiveRange: nil
-                ) as? NSColor
-                let tableRowAlternating = ts.attribute(
-                    MarkdownRenderAttribute.tableRowAlternating, at: i, effectiveRange: nil
-                ) as? Bool ?? false
+                if isCode {
+                    if let bg = ts.attribute(.backgroundColor, at: range.location, effectiveRange: nil) as? NSColor {
+                        spans.code.append(DecorationSpan(
+                            charStart: range.location,
+                            charEnd: NSMaxRange(range),
+                            kind: .code(bg: bg)
+                        ))
+                    }
+                }
 
-                appendCodeSpan(
-                    isCode: isCode, bg: ts.attribute(.backgroundColor, at: i, effectiveRange: nil) as? NSColor,
-                    effectiveStart: effectiveRange.location, end: end, to: &spans.code, at: i
-                )
-                appendBQSpan(
-                    depth: bqDepth, ts: ts, at: i, effectiveStart: effectiveRange.location,
-                    end: end, to: &spans.bq
-                )
-                appendHRSpan(
-                    ts: ts, at: i, effectiveStart: effectiveRange.location, end: end, to: &spans.hr
-                )
-                appendTableSpan(
-                    headerBG: tableHeaderBG, rowBG: tableRowBG, alternating: tableRowAlternating,
-                    ts: ts, at: i, effectiveStart: effectiveRange.location, end: end, to: &spans.table
-                )
+                var blockquoteCount = 0
+                for component in intent.components {
+                    if case .blockQuote = component.kind {
+                        blockquoteCount += 1
+                    }
+                }
 
-                i = end
+                if blockquoteCount > 0 {
+                    if
+                        let bg = ts.attribute(
+                            MarkdownRenderAttribute.blockquoteBackground,
+                            at: range.location,
+                            effectiveRange: nil
+                        ) as? NSColor,
+                        let accent = ts.attribute(
+                            MarkdownRenderAttribute.blockquoteAccent,
+                            at: range.location,
+                            effectiveRange: nil
+                        ) as? NSColor
+                    {
+                        spans.bq.append(DecorationSpan(
+                            charStart: range.location,
+                            charEnd: NSMaxRange(range),
+                            kind: .blockquote(bg: bg, accent: accent, depth: blockquoteCount)
+                        ))
+                    }
+                }
+
+                for component in intent.components {
+                    switch component.kind {
+                    case .tableHeaderRow:
+                        if
+                            let bg = ts.attribute(
+                                MarkdownRenderAttribute.tableHeaderBackground,
+                                at: range.location,
+                                effectiveRange: nil
+                            ) as? NSColor
+                        {
+                            spans.table.append(DecorationSpan(
+                                charStart: range.location,
+                                charEnd: NSMaxRange(range),
+                                kind: .tableHeader(bg: bg)
+                            ))
+                        }
+                    case .tableRow:
+                        let bg = ts.attribute(
+                            MarkdownRenderAttribute.tableRowBackground,
+                            at: range.location,
+                            effectiveRange: nil
+                        ) as? NSColor ?? .clear
+                        let alternating = ts.attribute(
+                            MarkdownRenderAttribute.tableRowAlternating,
+                            at: range.location,
+                            effectiveRange: nil
+                        ) as? Bool ?? false
+                        spans.table.append(DecorationSpan(
+                            charStart: range.location,
+                            charEnd: NSMaxRange(range),
+                            kind: .tableRow(alternating: alternating, bg: bg)
+                        ))
+                    default:
+                        break
+                    }
+                }
+
+                let isHR = intent.components.contains {
+                    if case .thematicBreak = $0.kind { return true }; return false
+                }
+                if isHR {
+                    if
+                        let color = ts.attribute(
+                            MarkdownRenderAttribute.horizontalRule,
+                            at: range.location,
+                            effectiveRange: nil
+                        ) as? NSColor
+                    {
+                        spans.hr.append(DecorationSpan(
+                            charStart: range.location,
+                            charEnd: NSMaxRange(range),
+                            kind: .horizontalRule(color: color)
+                        ))
+                    }
+                }
             }
+
             return spans
-        }
-
-        private func appendCodeSpan(
-            isCode: Bool,
-            bg: NSColor?,
-            effectiveStart: Int,
-            end: Int,
-            to spans: inout [DecorationSpan],
-            at i: Int
-        ) {
-            guard isCode, let bg else { return }
-            if let last = spans.last, last.charEnd >= i {
-                spans[spans.count - 1].charEnd = max(spans[spans.count - 1].charEnd, end)
-            } else {
-                spans.append(DecorationSpan(charStart: effectiveStart, charEnd: end, kind: .code(bg: bg)))
-            }
-        }
-
-        private func appendBQSpan(
-            depth: Int,
-            ts: NSTextStorage,
-            at i: Int,
-            effectiveStart: Int,
-            end: Int,
-            to spans: inout [DecorationSpan]
-        ) {
-            guard
-                depth > 0,
-                let bg = ts.attribute(
-                    MarkdownRenderAttribute.blockquoteBackground,
-                    at: i,
-                    effectiveRange: nil
-                ) as? NSColor,
-                let accent = ts.attribute(
-                    MarkdownRenderAttribute.blockquoteAccent,
-                    at: i,
-                    effectiveRange: nil
-                ) as? NSColor
-            else { return }
-            if let last = spans.last, last.charEnd >= i {
-                spans[spans.count - 1].charEnd = max(spans[spans.count - 1].charEnd, end)
-            } else {
-                spans.append(DecorationSpan(
-                    charStart: effectiveStart,
-                    charEnd: end,
-                    kind: .blockquote(bg: bg, accent: accent, depth: depth)
-                ))
-            }
-        }
-
-        private func appendHRSpan(
-            ts: NSTextStorage,
-            at i: Int,
-            effectiveStart: Int,
-            end: Int,
-            to spans: inout [DecorationSpan]
-        ) {
-            guard
-                let color = ts.attribute(
-                    MarkdownRenderAttribute.horizontalRule,
-                    at: i,
-                    effectiveRange: nil
-                ) as? NSColor
-            else { return }
-            if let last = spans.last, last.charEnd >= i {
-                spans[spans.count - 1].charEnd = max(spans[spans.count - 1].charEnd, end)
-            } else {
-                spans.append(DecorationSpan(
-                    charStart: effectiveStart,
-                    charEnd: end,
-                    kind: .horizontalRule(color: color)
-                ))
-            }
-        }
-
-        private func appendTableSpan(
-            headerBG: NSColor?,
-            rowBG: NSColor?,
-            alternating: Bool,
-            ts: NSTextStorage,
-            at i: Int,
-            effectiveStart: Int,
-            end: Int,
-            to spans: inout [DecorationSpan]
-        ) {
-            if let headerBG {
-                if let last = spans.last, last.charEnd >= i, case .tableHeader = last.kind {
-                    spans[spans.count - 1].charEnd = max(spans[spans.count - 1].charEnd, end)
-                } else {
-                    spans.append(DecorationSpan(
-                        charStart: effectiveStart,
-                        charEnd: end,
-                        kind: .tableHeader(bg: headerBG)
-                    ))
-                }
-            } else if
-                rowBG != nil || ts
-                    .attribute(MarkdownRenderAttribute.tableBorder, at: i, effectiveRange: nil) != nil
-            {
-                let bg = rowBG ?? .clear
-                if let last = spans.last, last.charEnd >= i, case .tableRow = last.kind {
-                    spans[spans.count - 1].charEnd = max(spans[spans.count - 1].charEnd, end)
-                } else {
-                    spans.append(DecorationSpan(
-                        charStart: effectiveStart,
-                        charEnd: end,
-                        kind: .tableRow(alternating: alternating, bg: bg)
-                    ))
-                }
-            }
         }
 
         // MARK: - Helpers
 
         private func unionUsedRect(charStart: Int, charEnd: Int, origin: NSPoint) -> CGRect {
+            let length = charEnd - charStart
+            guard length > 0 else { return .null }
             let glRange = glyphRange(
-                forCharacterRange: NSRange(location: charStart, length: charEnd - charStart),
+                forCharacterRange: NSRange(location: charStart, length: length),
                 actualCharacterRange: nil
             )
             var result = CGRect.null
@@ -487,7 +468,6 @@
         }
 
         private func calculateLineNumberGutterWidth(text: NSTextStorage, range: Range<Int>) -> CGFloat {
-            // Bounds check
             let safeRange = range.clamped(to: 0 ..< max(1, text.length))
             guard !safeRange.isEmpty else { return Self.lineNumberMinWidth }
 
@@ -502,18 +482,15 @@
 
         private func countLines(in text: NSTextStorage, range: NSRange) -> Int {
             let nsString = text.string as NSString
-            // Clamp range to valid bounds
             let safeLocation = max(0, min(range.location, nsString.length))
             let safeLength = max(0, min(range.length, nsString.length - safeLocation))
             guard safeLength > 0 else { return 1 }
 
-            // Single-pass newline count — avoids allocating an array of split components
             let safeEnd = safeLocation + safeLength
             var count = 1
             for i in safeLocation ..< safeEnd {
                 if nsString.character(at: i) == 0x0A { count += 1 }
             }
-            // Adjust for trailing newline (it doesn't start a visible line)
             if safeLength > 0, nsString.character(at: safeEnd - 1) == 0x0A {
                 count -= 1
             }
@@ -544,22 +521,15 @@
 
             guard let font = getCodeFont(in: text, at: span.charStart) else { return }
             let fontSize = font.pointSize
-
-            // Use a fixed semantic colour for line numbers — never derive from the text
-            // foreground at charStart, which may carry a syntax-highlight keyword colour
-            // (e.g. pink for `final`, `class`) and would bleed into the gutter.
             let lineNumberColor = NSColor.tertiaryLabelColor
 
-            // Draw line numbers for each line fragment
             var lineNumber = 1
             enumerateLineFragments(forGlyphRange: glyphRange) { [weak self] _, usedRect, _, glyphRangeForLine, _ in
                 guard let self else { return }
 
-                // Check if this line fragment starts a new line (not a soft wrap)
                 let charRangeForLine = characterRange(forGlyphRange: glyphRangeForLine, actualGlyphRange: nil)
                 let lineStart = charRangeForLine.location
 
-                // Only draw line number for the first fragment of each line
                 let isFirstFragment = (lineStart == span.charStart) ||
                     (lineStart > 0 && lineStart - 1 < text.length && (text.string as NSString)
                         .character(at: lineStart - 1) == 0x0A)
@@ -572,7 +542,6 @@
                     ]
 
                     let stringSize = numberString.size(withAttributes: attributes)
-                    // Pixel-snap to avoid blurry text on non-Retina displays
                     let gutterCenter: CGFloat = (gutterWidth - stringSize.width - Self.lineNumberGutterPadding / 2) / 2
                     let x = floor(origin.x + Self.lineNumberGutterPadding / 2 + gutterCenter)
                     let verticalCenter: CGFloat = (usedRect.height - stringSize.height) / 2

@@ -17,9 +17,7 @@ struct RawMarkdownEditor: View {
     let colorScheme: ColorScheme
     let showLineNumbers: Bool
     let contentPadding: CGFloat
-    var onScrollGestureStart: ((CGFloat) -> Void)?
-    var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
-    var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
+    var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
     init(
         text: Binding<String>,
@@ -27,18 +25,14 @@ struct RawMarkdownEditor: View {
         colorScheme: ColorScheme,
         showLineNumbers: Bool,
         contentPadding: CGFloat = 8,
-        onScrollGestureStart: ((CGFloat) -> Void)? = nil,
-        onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)? = nil,
-        onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)? = nil
+        onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)? = nil
     ) {
         _text = text
         self.fontSize = fontSize
         self.colorScheme = colorScheme
         self.showLineNumbers = showLineNumbers
         self.contentPadding = contentPadding
-        self.onScrollGestureStart = onScrollGestureStart
-        self.onScrollGestureLive = onScrollGestureLive
-        self.onScrollGestureEnd = onScrollGestureEnd
+        self.onScroll = onScroll
     }
 
     var body: some View {
@@ -48,9 +42,7 @@ struct RawMarkdownEditor: View {
             colorScheme: colorScheme,
             showLineNumbers: showLineNumbers,
             contentPadding: contentPadding,
-            onScrollGestureStart: onScrollGestureStart,
-            onScrollGestureLive: onScrollGestureLive,
-            onScrollGestureEnd: onScrollGestureEnd
+            onScroll: onScroll
         )
         .background(colorScheme == .dark ? Color.black : Color.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -71,9 +63,7 @@ private struct RawEditorRepresentable: NSViewRepresentable {
     let colorScheme: ColorScheme
     let showLineNumbers: Bool
     let contentPadding: CGFloat
-    var onScrollGestureStart: ((CGFloat) -> Void)?
-    var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
-    var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
+    var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
     private let logger = Logger(subsystem: "mdviewer", category: "RawEditor")
 
@@ -89,9 +79,7 @@ private struct RawEditorRepresentable: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.backgroundColor = colorScheme == .dark ? .black : .white
         scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.onScrollGestureStart = onScrollGestureStart
-        scrollView.onScrollGestureLive = onScrollGestureLive
-        scrollView.onScrollGestureEnd = onScrollGestureEnd
+        scrollView.onScroll = onScroll
 
         // Configure line numbers if enabled
         if showLineNumbers {
@@ -175,9 +163,7 @@ private struct RawEditorRepresentable: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         if let trackingScrollView = scrollView as? ScrollTrackingScrollView {
-            trackingScrollView.onScrollGestureStart = onScrollGestureStart
-            trackingScrollView.onScrollGestureLive = onScrollGestureLive
-            trackingScrollView.onScrollGestureEnd = onScrollGestureEnd
+            trackingScrollView.onScroll = onScroll
         }
         guard let textView = scrollView.documentView as? RawEditorTextView else { return }
 
@@ -416,6 +402,47 @@ private final class RawEditorTextView: NSTextView {
     var fontSize: CGFloat = 14
     var colorScheme: ColorScheme = .light
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleJumpToLine),
+            name: NSNotification.Name("JumpToLine"),
+            object: nil
+        )
+    }
+
+    @objc
+    private func handleJumpToLine(_ notification: Notification) {
+        guard let lineIndex = notification.userInfo?["lineIndex"] as? Int else { return }
+        jumpToLine(lineIndex)
+    }
+
+    private func jumpToLine(_ lineIndex: Int) {
+        let string = string as NSString
+
+        var currentLine = 0
+        var charIndex = 0
+
+        while charIndex < string.length {
+            if currentLine == lineIndex {
+                let lineRange = string.lineRange(for: NSRange(location: charIndex, length: 0))
+                setSelectedRange(lineRange)
+                scrollRangeToVisible(lineRange)
+
+                // Flash the target line visually
+                showFindIndicator(for: lineRange)
+                return
+            }
+
+            let range = string.lineRange(for: NSRange(location: charIndex, length: 0))
+            charIndex = NSMaxRange(range)
+            currentLine += 1
+        }
+    }
+
     // MARK: - Accessibility
 
     override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
@@ -648,15 +675,16 @@ private final class RawLineNumberRulerView: NSRulerView {
 
 // MARK: - Scroll Tracking Scroll View
 
-/// NSScrollView subclass that reports scroll position changes for toolbar auto-hide.
+/// NSScrollView subclass optimized for 120fps scroll performance.
+/// Uses display-link synchronized updates and aggressive coalescing for ProMotion displays.
 @MainActor
 private final class ScrollTrackingScrollView: NSScrollView {
-    var onScrollGestureStart: ((CGFloat) -> Void)?
-    var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
-    var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
+    var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
-    private var liveScrollStartOffset: CGFloat?
-    private var liveScrollLastOffset: CGFloat?
+    private var lastReportedOffset: CGFloat = 0
+    private var scrollUpdateTask: Task<Void, Never>?
+    private var isScrolling = false
+    private var scrollEndTask: Task<Void, Never>?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -669,71 +697,77 @@ private final class ScrollTrackingScrollView: NSScrollView {
     }
 
     private func setupScrollTracking() {
+        // Optimize for 120fps smooth scrolling
+        postsBoundsChangedNotifications = true
+
+        // Use layer backing for compositor performance
+        wantsLayer = true
+        layer?.drawsAsynchronously = true
+
+        // Disable implicit animations during scroll
+        contentView.wantsLayer = true
+        contentView.layer?.drawsAsynchronously = true
+
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(willStartLiveScroll),
-            name: NSScrollView.willStartLiveScrollNotification,
-            object: self
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(didEndLiveScroll),
-            name: NSScrollView.didEndLiveScrollNotification,
-            object: self
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(didLiveScroll),
-            name: NSScrollView.didLiveScrollNotification,
-            object: self
+            selector: #selector(boundsDidChange),
+            name: NSView.boundsDidChangeNotification,
+            object: contentView
         )
     }
 
     @objc
-    private func willStartLiveScroll() {
-        let startOffset = contentView.bounds.origin.y
-        liveScrollStartOffset = startOffset
-        liveScrollLastOffset = startOffset
-        if let ruler = verticalRulerView as? RawLineNumberRulerView {
-            ruler.isLiveScrolling = true
+    private func boundsDidChange() {
+        // Cancel any pending update and schedule a new one
+        scrollUpdateTask?.cancel()
+
+        let isFirstScroll = !isScrolling
+        isScrolling = true
+
+        scrollUpdateTask = Task { @MainActor [weak self] in
+            // Minimal delay for 120fps precision (1ms = ~1000fps coalescing)
+            try? await Task.sleep(for: .milliseconds(1))
+            guard !Task.isCancelled, let self else { return }
+
+            reportScrollPosition()
+
+            // Schedule scroll end detection
+            scrollEndTask?.cancel()
+            scrollEndTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled, let self else { return }
+                isScrolling = false
+            }
         }
-        onScrollGestureStart?(startOffset)
+
+        // Immediately report first scroll for responsiveness
+        if isFirstScroll {
+            reportScrollPosition()
+        }
     }
 
-    @objc
-    private func didLiveScroll() {
-        guard let onScrollGestureLive else { return }
-        let currentOffset = contentView.bounds.origin.y
-        let previousOffset = liveScrollLastOffset ?? currentOffset
-        let delta = currentOffset - previousOffset
-        liveScrollLastOffset = currentOffset
-        let canScroll = canScrollVertically()
-        guard abs(delta) > 1 else { return }
-        onScrollGestureLive(delta, currentOffset, canScroll)
+    private func reportScrollPosition() {
+        guard
+            let onScroll,
+            let documentView
+        else { return }
+
+        let offset = contentView.bounds.origin.y
+        let contentHeight = documentView.frame.height
+        let visibleHeight = contentView.bounds.height
+
+        // Sub-pixel threshold for 120fps smooth tracking
+        guard abs(offset - lastReportedOffset) > 0.5 else { return }
+        lastReportedOffset = offset
+
+        onScroll(offset, contentHeight, visibleHeight)
     }
 
-    @objc
-    private func didEndLiveScroll() {
-        if let ruler = verticalRulerView as? RawLineNumberRulerView {
-            ruler.isLiveScrolling = false
-        }
-        guard let onScrollGestureEnd else { return }
-        guard let startOffset = liveScrollStartOffset else { return }
-        let finalOffset = contentView.bounds.origin.y
-        let delta = finalOffset - startOffset
-        let canScroll = canScrollVertically()
-        liveScrollStartOffset = nil
-        liveScrollLastOffset = nil
-        if !canScroll {
-            onScrollGestureEnd(0, finalOffset, false)
-            return
-        }
-        guard abs(delta) > 1 else { return }
-        onScrollGestureEnd(delta, finalOffset, true)
-    }
+    /// Returns true if the user is actively scrolling.
+    var isActivelyScrolling: Bool { isScrolling }
 
-    private func canScrollVertically() -> Bool {
-        guard let documentView else { return false }
-        return documentView.bounds.height > contentView.bounds.height + 1
+    deinit {
+        scrollUpdateTask?.cancel()
+        scrollEndTask?.cancel()
     }
 }

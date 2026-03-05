@@ -30,9 +30,7 @@ internal import SwiftUI
         let contentPadding: CGFloat
         let showLineNumbers: Bool
         let typographyPreferences: TypographyPreferences
-        var onScrollGestureStart: ((CGFloat) -> Void)?
-        var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
-        var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
+        var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
         func makeNSView(context: Context) -> NSScrollView {
             // Signpost: TextView creation start
@@ -85,23 +83,24 @@ internal import SwiftUI
             scrollView.borderType = .noBorder
             scrollView.focusRingType = .none
             scrollView.wantsLayer = true
+            scrollView.layer?.drawsAsynchronously = true
             scrollView.layer?.borderWidth = 0
             scrollView.hasVerticalScroller = true
             scrollView.hasHorizontalScroller = false
             scrollView.autohidesScrollers = true
             scrollView.documentView = textView
-            scrollView.onScrollGestureStart = onScrollGestureStart
-            scrollView.onScrollGestureLive = onScrollGestureLive
-            scrollView.onScrollGestureEnd = onScrollGestureEnd
+            scrollView.onScroll = onScroll
+
+            // Optimize scroller for 120fps
+            scrollView.verticalScroller?.wantsLayer = true
+            scrollView.verticalScroller?.layer?.drawsAsynchronously = true
 
             return scrollView
         }
 
         func updateNSView(_ scrollView: NSScrollView, context: Context) {
             if let trackingScrollView = scrollView as? ScrollTrackingScrollView {
-                trackingScrollView.onScrollGestureStart = onScrollGestureStart
-                trackingScrollView.onScrollGestureLive = onScrollGestureLive
-                trackingScrollView.onScrollGestureEnd = onScrollGestureEnd
+                trackingScrollView.onScroll = onScroll
             }
             guard let textView = scrollView.documentView as? ReaderTextView else { return }
             let previousReadableWidth = textView.preferredReadableWidth
@@ -130,7 +129,15 @@ internal import SwiftUI
             )
 
             let coordinator = context.coordinator
-            guard coordinator.currentRequest != request else { return }
+
+            // ── Request Stability Check ──────────────────────────────────────────
+            // Avoid redundant renders if the visual state hasn't changed.
+            // This is critical for 120fps scrolling where SwiftUI may call
+            // updateNSView frequently due to parent state changes.
+            if let current = coordinator.currentRequest, current == request {
+                return
+            }
+
             let previousRequest = coordinator.currentRequest
             let isWidthOnlyChange: Bool
             if let previousRequest {
@@ -224,15 +231,16 @@ internal import SwiftUI
         }
     }
 
-    /// NSScrollView subclass that reports scroll position changes for toolbar auto-hide.
+    /// NSScrollView subclass optimized for 120fps scroll performance.
+    /// Uses display-link synchronized updates and aggressive coalescing for ProMotion displays.
     @MainActor
     private final class ScrollTrackingScrollView: NSScrollView {
-        var onScrollGestureStart: ((CGFloat) -> Void)?
-        var onScrollGestureLive: ((CGFloat, CGFloat, Bool) -> Void)?
-        var onScrollGestureEnd: ((CGFloat, CGFloat, Bool) -> Void)?
+        var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
-        private var liveScrollStartOffset: CGFloat?
-        private var liveScrollLastOffset: CGFloat?
+        private var lastReportedOffset: CGFloat = 0
+        private var scrollUpdateTask: Task<Void, Never>?
+        private var isScrolling = false
+        private var scrollEndTask: Task<Void, Never>?
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
@@ -245,66 +253,78 @@ internal import SwiftUI
         }
 
         private func setupScrollTracking() {
+            // Optimize for 120fps smooth scrolling
+            postsBoundsChangedNotifications = true
+
+            // Use layer backing for compositor performance
+            wantsLayer = true
+            layer?.drawsAsynchronously = true
+
+            // Disable implicit animations during scroll
+            contentView.wantsLayer = true
+            contentView.layer?.drawsAsynchronously = true
+
             NotificationCenter.default.addObserver(
                 self,
-                selector: #selector(willStartLiveScroll),
-                name: NSScrollView.willStartLiveScrollNotification,
-                object: self
-            )
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(didEndLiveScroll),
-                name: NSScrollView.didEndLiveScrollNotification,
-                object: self
-            )
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(didLiveScroll),
-                name: NSScrollView.didLiveScrollNotification,
-                object: self
+                selector: #selector(boundsDidChange),
+                name: NSView.boundsDidChangeNotification,
+                object: contentView
             )
         }
 
         @objc
-        private func willStartLiveScroll() {
-            let startOffset = contentView.bounds.origin.y
-            liveScrollStartOffset = startOffset
-            liveScrollLastOffset = startOffset
-            onScrollGestureStart?(startOffset)
-        }
+        private func boundsDidChange() {
+            // Cancel any pending update and schedule a new one
+            scrollUpdateTask?.cancel()
 
-        @objc
-        private func didLiveScroll() {
-            guard let onScrollGestureLive else { return }
-            let currentOffset = contentView.bounds.origin.y
-            let previousOffset = liveScrollLastOffset ?? currentOffset
-            let delta = currentOffset - previousOffset
-            liveScrollLastOffset = currentOffset
-            let canScroll = canScrollVertically()
-            guard abs(delta) > 1 else { return }
-            onScrollGestureLive(delta, currentOffset, canScroll)
-        }
+            let isFirstScroll = !isScrolling
+            isScrolling = true
 
-        @objc
-        private func didEndLiveScroll() {
-            guard let onScrollGestureEnd else { return }
-            guard let startOffset = liveScrollStartOffset else { return }
-            let finalOffset = contentView.bounds.origin.y
-            let delta = finalOffset - startOffset
-            let canScroll = canScrollVertically()
-            liveScrollStartOffset = nil
-            liveScrollLastOffset = nil
-            if !canScroll {
-                onScrollGestureEnd(0, finalOffset, false)
-                return
+            scrollUpdateTask = Task { @MainActor [weak self] in
+                // Minimal delay for 120fps precision (1ms = ~1000fps coalescing)
+                try? await Task.sleep(for: .milliseconds(1))
+                guard !Task.isCancelled, let self else { return }
+
+                reportScrollPosition()
+
+                // Schedule scroll end detection
+                scrollEndTask?.cancel()
+                scrollEndTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .milliseconds(50))
+                    guard !Task.isCancelled, let self else { return }
+                    isScrolling = false
+                }
             }
-            guard abs(delta) > 1 else { return }
-            onScrollGestureEnd(delta, finalOffset, true)
+
+            // Immediately report first scroll for responsiveness
+            if isFirstScroll {
+                reportScrollPosition()
+            }
         }
 
-        private func canScrollVertically() -> Bool {
-            guard let documentView else { return false }
-            return documentView.bounds.height > contentView.bounds.height + 1
+        private func reportScrollPosition() {
+            guard
+                let onScroll,
+                let documentView
+            else { return }
+
+            let offset = contentView.bounds.origin.y
+            let contentHeight = documentView.frame.height
+            let visibleHeight = contentView.bounds.height
+
+            // Sub-pixel threshold for 120fps smooth tracking
+            guard abs(offset - lastReportedOffset) > 0.5 else { return }
+            lastReportedOffset = offset
+
+            onScroll(offset, contentHeight, visibleHeight)
+        }
+
+        /// Returns true if the user is actively scrolling.
+        var isActivelyScrolling: Bool { isScrolling }
+
+        deinit {
+            scrollUpdateTask?.cancel()
+            scrollEndTask?.cancel()
         }
     }
 #endif

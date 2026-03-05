@@ -19,10 +19,61 @@
         }
     }
 
+    // MARK: - Accessibility Elements
+
+    /// Represents a heading in the document for semantic VoiceOver navigation.
+    final class AccessibilityHeading: NSAccessibilityElement {
+        let info: HeadingInfo
+        weak var parentView: ReaderTextView?
+
+        init(info: HeadingInfo, parent: ReaderTextView) {
+            self.info = info
+            parentView = parent
+            super.init()
+        }
+
+        override func accessibilityLabel() -> String? { info.text }
+        override func accessibilityRole() -> NSAccessibility.Role? { .staticText }
+        override func accessibilitySubrole() -> NSAccessibility.Subrole? { .init(rawValue: "Heading") }
+
+        override nonisolated func accessibilityFrame() -> NSRect {
+            let targetView = parentView
+            let headingRange = info.range
+            return MainActor.assumeIsolated {
+                guard
+                    let targetView, let lm = targetView.layoutManager,
+                    let tc = targetView.textContainer else { return .zero }
+                let glyphRange = lm.glyphRange(forCharacterRange: headingRange, actualCharacterRange: nil)
+                let rect = lm.boundingRect(forGlyphRange: glyphRange, in: tc)
+                let viewRect = NSRect(
+                    x: rect.origin.x + targetView.textContainerInset.width,
+                    y: rect.origin.y + targetView.textContainerInset.height,
+                    width: rect.width,
+                    height: rect.height
+                )
+                return targetView.window?.convertToScreen(targetView.convert(viewRect, to: nil)) ?? .zero
+            }
+        }
+
+        override nonisolated func accessibilityParent() -> Any? {
+            parentView
+        }
+
+        override nonisolated func accessibilityPerformPress() -> Bool {
+            let targetView = parentView
+            let headingRange = info.range
+            return MainActor.assumeIsolated {
+                targetView?.setSelectedRange(headingRange)
+                targetView?.scrollRangeToVisible(headingRange)
+                return true
+            }
+        }
+    }
+
     // MARK: - ReaderTextView
 
     /// Custom NSTextView subclass that constrains its text container to a readable
-    /// width and aligns it to the leading edge within the enclosing scroll view.
+    /// width and centers the column horizontally within the enclosing scroll view.
     @MainActor
     final class ReaderTextView: NSTextView, @unchecked Sendable {
         var preferredReadableWidth: CGFloat = 720
@@ -39,6 +90,9 @@
         /// Current heading index for rotor navigation.
         private var currentHeadingIndex: Int = 0
 
+        /// Cached accessibility elements for headings
+        private var accessibilityHeadings: [AccessibilityHeading] = []
+
         /// Triggered when the view is added to the window hierarchy — the scroll view
         /// is guaranteed to exist here, so we can do the initial geometry pass.
         override func viewDidMoveToWindow() {
@@ -46,6 +100,13 @@
             guard window != nil else { return }
             recomputeGeometry(force: true)
             updateHeadingCache()
+
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleJumpToLine),
+                name: NSNotification.Name("JumpToLine"),
+                object: nil
+            )
         }
 
         override func layout() {
@@ -57,6 +118,36 @@
         func updateContainerGeometry() {
             recomputeGeometry(force: true)
             updateHeadingCache()
+        }
+
+        @objc
+        private func handleJumpToLine(_ notification: Notification) {
+            guard let lineIndex = notification.userInfo?["lineIndex"] as? Int else { return }
+            jumpToLine(lineIndex)
+        }
+
+        private func jumpToLine(_ lineIndex: Int) {
+            guard let storage = textStorage else { return }
+            let string = storage.string as NSString
+
+            var currentLine = 0
+            var charIndex = 0
+
+            while charIndex < string.length {
+                if currentLine == lineIndex {
+                    let lineRange = string.lineRange(for: NSRange(location: charIndex, length: 0))
+                    setSelectedRange(lineRange)
+                    scrollRangeToVisible(lineRange)
+
+                    // Flash the target line visually
+                    showFindIndicator(for: lineRange)
+                    return
+                }
+
+                let range = string.lineRange(for: NSRange(location: charIndex, length: 0))
+                charIndex = NSMaxRange(range)
+                currentLine += 1
+            }
         }
 
         // MARK: - Heading Cache
@@ -90,7 +181,16 @@
             }
 
             headingInfos = newHeadings.sorted { $0.range.location < $1.range.location }
+            accessibilityHeadings = headingInfos.map { AccessibilityHeading(info: $0, parent: self) }
             currentHeadingIndex = 0
+        }
+
+        // MARK: - Accessibility Hierarchy
+
+        override func accessibilityChildren() -> [Any]? {
+            var children = super.accessibilityChildren() ?? []
+            children.append(contentsOf: accessibilityHeadings)
+            return children
         }
 
         // MARK: - Accessibility Rotor Support
@@ -223,11 +323,13 @@
             // Calculate target width with insets
             let maxContentWidth = availableWidth - (preferredHorizontalInset * 2)
             let targetWidth = min(preferredReadableWidth, maxContentWidth)
-            let hInset = preferredHorizontalInset
+
+            // Calculate centering padding if we have extra space
+            let hPadding = max(preferredHorizontalInset, (availableWidth - targetWidth) / 2)
 
             // Only update if changed significantly (skip redundant layout passes)
             let widthChanged = abs(textContainer.containerSize.width - targetWidth) >= 1.0
-            let insetChanged = abs(textContainerInset.width - hInset) >= 1.0
+            let insetChanged = abs(textContainerInset.width - hPadding) >= 1.0
             let availableWidthChanged = abs(lastAvailableWidth - availableWidth) >= 1.0
             if !force, !widthChanged, !insetChanged, !availableWidthChanged {
                 return
@@ -236,7 +338,7 @@
 
             // Update container and insets
             textContainer.containerSize = NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude)
-            textContainerInset = NSSize(width: hInset, height: preferredHorizontalInset)
+            textContainerInset = NSSize(width: hPadding, height: preferredHorizontalInset)
             if force {
                 deferredHeightRecomputeTask?.cancel()
                 applyAccurateHeight(for: textContainer, availableWidth: availableWidth)

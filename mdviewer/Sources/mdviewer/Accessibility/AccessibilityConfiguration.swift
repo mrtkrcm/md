@@ -24,7 +24,7 @@ enum AccessibilityConfiguration {
         if reduceMotion {
             return .opacity
         }
-        return .move(edge: edge).combined(with: .opacity)
+        return .springSlide(from: edge)
     }
 
     /// Returns appropriate spring animation or instant transition

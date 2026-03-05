@@ -4,7 +4,7 @@ Native macOS markdown viewer built with SwiftUI and AppKit-backed rendering.
 
 ## Requirements
 
-- macOS 14+
+- macOS 15+ (Liquid Design & ProMotion optimizations)
 - Swift 6.0+
 - [Just](https://github.com/casey/just) command runner (`brew install just`)
 
@@ -69,6 +69,8 @@ Open a file from terminal:
 ## Features
 
 ### Viewing
+- **Interactive Table of Contents** - Navigate long documents via the sidebar outline
+- **120fps Smooth Scrolling** - Optimized rendering pipeline for ProMotion displays
 - 10 themes (Basic, GitHub, DocC, Solarized, Gruvbox, Dracula, Monokai, Nord, One Dark, Tokyo Night)
 - Light/dark mode for all themes
 - 3 spacing presets (compact, balanced, relaxed)
@@ -78,7 +80,7 @@ Open a file from terminal:
 - Document type support: `.md`, `.markdown`, `.mdown`, `.mkd`
 
 ### Accessibility ✨
-- **Full VoiceOver support** - All UI elements labeled and navigable
+- **Semantic Element Hierarchy** - Headings, lists, and tables exposed natively to VoiceOver
 - **Heading navigation** - Navigate documents by H1-H6 via VoiceOver rotor
 - **Loading announcements** - "Loading document..." for files >50KB
 - **Large file warnings** - Configurable threshold (500KB - 10MB, or disable)
@@ -87,6 +89,8 @@ Open a file from terminal:
 - **Keyboard navigation** - Full keyboard access to all features
 
 ### Design System
+- **2026 Liquid Design Language** - Modern lensing, refraction, and corner concentricity
+- **Morphing Transitions** - Fluid geometry-aware view changes
 - Semantic tokens, component tokens, animation/transition presets
 - Glass panel effects and liquid design language
 - Fluid animations with reduced motion fallbacks
@@ -131,4 +135,4 @@ mdviewer/Sources/mdviewer/
 - Ad-hoc codesigned for local use
 - Atomic installs (zero-downtime replace via staging directory)
 - Version derived from git tags automatically
-- 424 tests with >95% code coverage
+- 491 tests with >95% code coverage

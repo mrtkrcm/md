@@ -19,6 +19,7 @@ struct EditorActions {
     let insertImage: () -> Void
     let setRenderedMode: () -> Void
     let setRawMode: () -> Void
+    let jumpToLine: (Int) -> Void
     let showAppearanceSettings: () -> Void
 }
 

@@ -206,6 +206,22 @@ struct mdviewerApp: App {
             if let window = NSApplication.shared.windows.first {
                 window.tabbingMode = .preferred
             }
+
+            // Pre-warm services asynchronously to trigger lazy initializations
+            // without blocking the main thread during first window appearance
+            Task.detached(priority: .userInitiated) {
+                // Accessing MainActor singleton from detached task requires await
+                let _ = await AppPreferences.shared
+
+                // MarkdownRenderService is an actor
+                let renderService = MarkdownRenderService.shared
+                _ = await renderService.snapshotStats()
+
+                // Pre-compile syntax highlighting regexes for common languages
+                _ = LanguageRegistry.definition(for: "swift")
+                _ = LanguageRegistry.definition(for: "markdown")
+            }
+
             openDocumentFromCLIIfNeeded()
         }
 

@@ -8,21 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **User-configurable large file warning threshold** - Choose from 500 KB to 10 MB, or disable entirely
-- **Loading state announcements** - VoiceOver announces "Loading document..." for files >50KB
-- **Mode change feedback** - VoiceOver announces "Switched to rendered/raw mode"
-- **Full VoiceOver support** - All UI elements accessible with labels, hints, and rotor navigation
-- **Heading navigation** - Navigate documents by H1-H6 via VoiceOver rotor
-- **Reduced motion support** - All animations respect system accessibility settings
-- **Large file warning** - Dialog warns users before opening files > threshold (configurable, default 1MB)
-- **Comprehensive accessibility testing** - 424 tests including 75+ accessibility-specific tests
+- **Interactive Table of Contents** - New sidebar "Outline" tab for bidirectional document navigation
+- **2026 Liquid Design Infrastructure** - Native lensing materials, refractive mesh gradients, and corner concentricity
+- **Semantic Accessibility Hierarchy** - Native VoiceOver support for headings, lists, and tables via `NSAccessibilityElement`
+- **Modern SF Symbol Effects** - Integrated `.rotate`, `.pulse`, and `.bounce` effects for interactive controls
+- **120fps Optimized Rendering** - Geometry-aware decoration caching and $O(N \log N)$ attribute scanning for ProMotion displays
+- **Startup Speed Optimizations** - Background service pre-warming and Frontmatter parsing caching
+- **macOS 15+ Support** - Upgraded deployment target to leverage latest system APIs
 
 ### Changed
-- Refactored Justfile: clear, non-overlapping recipes (`build`, `release`, `package`, `install`, `install-open`)
-- Eliminated double-builds from previous `build`/`build-release` recipes
-- Enhanced `scripts/build.sh` with colored stage output, timing, `--skip-build`, `--quiet` flags
-- Added post-install verification (binary, Info.plist, codesign checks)
-- Simplified `scripts/install.sh`: tests off by default, binary freshness detection
+- Migrated legacy "frosted glass" materials to modern refractive `glassEffect` system
+- Unified Markdown render pipeline into a single-pass efficient injector
+- Improved toolbar transition smoothness with velocity-aware animations
+- Enhanced E2E test suite with robust accessibility fallbacks
 
 ## [1.0.1-stable] - 2026-02-26
 

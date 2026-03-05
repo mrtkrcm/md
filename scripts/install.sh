@@ -50,4 +50,4 @@ if [ "$SKIP_BUILD" = true ]; then
   FLAGS+=(--skip-build)
 fi
 
-exec bash "$ROOT_DIR/scripts/build.sh" "${FLAGS[@]}" "${EXTRA_ARGS[@]}"
+exec bash "$ROOT_DIR/scripts/build.sh" "${FLAGS[@]}" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}

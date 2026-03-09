@@ -1,5 +1,5 @@
 {
-  "originHash" : "b5b5e95d4e98e911a7def43956f777014c0e357329d6c88954187eeae6be132d",
+  "originHash" : "8abdc9edeff16e0216d0ff4bc470f893b73680b514762728a7969faa3bf62235",
   "pins" : [
     {
       "identity" : "beautiful-mermaid-swift",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/nicklockwood/SwiftFormat",
       "state" : {
-        "revision" : "22a472ced4c621a0e41b982a6f32dec868d09392",
-        "version" : "0.59.1"
+        "revision" : "c8e50ff2cfc2eab46246c072a9ae25ab656c6ec3",
+        "version" : "0.60.1"
       }
     }
   ],

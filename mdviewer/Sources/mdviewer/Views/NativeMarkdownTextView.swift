@@ -190,8 +190,14 @@ internal import SwiftUI
 
                 // Preserve scroll position across re-renders
                 let scrollPoint = textView.enclosingScrollView?.documentVisibleRect.origin
+
+                // Suppress implicit Core Animation layer-tree mutations triggered by
+                // setAttributedString / layout so they don't produce dropped frames.
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
                 textView.textStorage?.setAttributedString(rendered.attributedString)
                 textView.updateContainerGeometry()
+                CATransaction.commit()
 
                 // Update accessibility value with document info
                 let charCount = rendered.attributedString.length

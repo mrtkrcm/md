@@ -65,7 +65,7 @@
 
         func testFolderSidebarViewInitialization() {
             let fileURL = URL(fileURLWithPath: "/test/file.md")
-            let view = FolderSidebarView(fileURL: fileURL)
+            let view = FolderSidebarView(currentFileURL: fileURL)
 
             XCTAssertNotNil(view)
         }
@@ -74,7 +74,7 @@
             let fileURL = URL(fileURLWithPath: "/test/file.md")
             var callbackCalled = false
 
-            let view = FolderSidebarView(fileURL: fileURL) { _ in
+            let view = FolderSidebarView(currentFileURL: fileURL) { _ in
                 callbackCalled = true
             }
 

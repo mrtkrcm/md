@@ -178,6 +178,19 @@ report:
     cd mdviewer && swift test --parallel --xunit-output test-report.xml
     @echo "Test report: mdviewer/test-report.xml"
 
+# ===== Test Data Generation =====
+
+# Generate test markdown files for sidebar lazy-loading tests (2000 files)
+# Usage: just generate-test-files       # generate 2000 files (default)
+#        just generate-test-files 500   # generate 500 files
+generate-test-files count="2000":
+    @scripts/generate-test-files.sh {{count}}
+
+# Clean generated test files
+clean-test-files:
+    @rm -rf Tests/generated/
+    @echo "Removed generated test files. Run 'just generate-test-files' to recreate."
+
 # ===== Utility Commands =====
 
 # Show Swift version

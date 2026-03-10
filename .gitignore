@@ -9,3 +9,6 @@ mdviewer/.swiftpm/
 .pi/
 # Visual test screenshots are tracked so gemini CLI (workspace-sandboxed) can read them.
 # Individual PNG files are kept small; CI can regenerate them via just visual-test.
+
+# Generated test files — use `just generate-test-files` to recreate
+Tests/generated/

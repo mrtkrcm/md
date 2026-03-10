@@ -92,7 +92,7 @@
                 ```swift
                 let value = \"if let\"
                 // return should stay a comment color
-                if let x = foo() { print(x) }
+                if let x = foo() { debugLog(x) }
                 ```
                 """
 
@@ -497,7 +497,7 @@
 
                 for index in 0 ..< lines {
                     body.append("let value\(index) = \(index)")
-                    body.append("if value\(index) > 10 { print(\"item \\(value\(index))\") }")
+                    body.append("if value\(index) > 10 { debugLog(\"item \\(value\(index))\") }")
                     body.append("// comment \(index)")
                 }
 

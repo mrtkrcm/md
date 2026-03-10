@@ -82,6 +82,8 @@
         /// can reflect the user's chosen content padding preference.
         var preferredHorizontalInset: CGFloat = 24
         private var lastAvailableWidth: CGFloat = 0
+        private var lastAppliedContainerWidth: CGFloat = 0
+        private var lastAppliedInsetWidth: CGFloat = 0
         private var deferredHeightRecomputeTask: Task<Void, Never>?
 
         /// Cached heading information for accessibility rotor navigation.
@@ -99,7 +101,7 @@
             super.viewDidMoveToWindow()
             guard window != nil else { return }
             recomputeGeometry(force: true)
-            updateHeadingCache()
+            scheduleHeadingCacheUpdate()
 
             NotificationCenter.default.addObserver(
                 self,
@@ -115,9 +117,45 @@
         }
 
         /// Called after content changes — always recomputes layout and frame.
+        /// Heading cache is rebuilt asynchronously on a utility thread to keep
+        /// the main-thread frame budget free for layout/rendering.
         func updateContainerGeometry() {
             recomputeGeometry(force: true)
-            updateHeadingCache()
+            scheduleHeadingCacheUpdate()
+        }
+
+        /// Schedules heading cache rebuild off the main thread.
+        private func scheduleHeadingCacheUpdate() {
+            guard let storage = textStorage, storage.length > 0 else {
+                headingInfos = []
+                accessibilityHeadings = []
+                return
+            }
+
+            // Snapshot the immutable attributed string for background scanning.
+            nonisolated(unsafe) let snapshot = NSAttributedString(attributedString: storage)
+            let headingKey = MarkdownRenderAttribute.headingLevel
+
+            Task.detached(priority: .utility) { [weak self] in
+                var newHeadings: [HeadingInfo] = []
+                let fullRange = NSRange(location: 0, length: snapshot.length)
+
+                snapshot.enumerateAttribute(headingKey, in: fullRange, options: []) { value, range, _ in
+                    guard let level = value as? Int else { return }
+                    let text = snapshot.attributedSubstring(from: range).string
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    newHeadings.append(HeadingInfo(range: range, level: level, text: text))
+                }
+
+                let sorted = newHeadings.sorted { $0.range.location < $1.range.location }
+
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    headingInfos = sorted
+                    accessibilityHeadings = sorted.map { AccessibilityHeading(info: $0, parent: self) }
+                    currentHeadingIndex = 0
+                }
+            }
         }
 
         @objc
@@ -148,41 +186,6 @@
                 charIndex = NSMaxRange(range)
                 currentLine += 1
             }
-        }
-
-        // MARK: - Heading Cache
-
-        /// Scans the attributed text for headings and caches their ranges.
-        private func updateHeadingCache() {
-            guard let storage = textStorage else {
-                headingInfos = []
-                return
-            }
-
-            var newHeadings: [HeadingInfo] = []
-            let fullRange = NSRange(location: 0, length: storage.length)
-
-            storage.enumerateAttribute(
-                MarkdownRenderAttribute.headingLevel,
-                in: fullRange,
-                options: []
-            ) { value, range, _ in
-                guard let level = value as? Int else { return }
-
-                // Extract heading text
-                let headingText = storage.attributedSubstring(from: range).string
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-
-                newHeadings.append(HeadingInfo(
-                    range: range,
-                    level: level,
-                    text: headingText
-                ))
-            }
-
-            headingInfos = newHeadings.sorted { $0.range.location < $1.range.location }
-            accessibilityHeadings = headingInfos.map { AccessibilityHeading(info: $0, parent: self) }
-            currentHeadingIndex = 0
         }
 
         // MARK: - Accessibility Hierarchy
@@ -327,14 +330,18 @@
             // Calculate centering padding if we have extra space
             let hPadding = max(preferredHorizontalInset, (availableWidth - targetWidth) / 2)
 
-            // Only update if changed significantly (skip redundant layout passes)
-            let widthChanged = abs(textContainer.containerSize.width - targetWidth) >= 1.0
-            let insetChanged = abs(textContainerInset.width - hPadding) >= 1.0
-            let availableWidthChanged = abs(lastAvailableWidth - availableWidth) >= 1.0
+            // Compare against our own stored values — not AppKit's reported values —
+            // to avoid a layout invalidation loop caused by AppKit rounding
+            // container sizes internally (the floating-point equality hazard).
+            let widthChanged = abs(lastAppliedContainerWidth - targetWidth) >= 0.5
+            let insetChanged = abs(lastAppliedInsetWidth - hPadding) >= 0.5
+            let availableWidthChanged = abs(lastAvailableWidth - availableWidth) >= 0.5
             if !force, !widthChanged, !insetChanged, !availableWidthChanged {
                 return
             }
             lastAvailableWidth = availableWidth
+            lastAppliedContainerWidth = targetWidth
+            lastAppliedInsetWidth = hPadding
 
             // Update container and insets
             textContainer.containerSize = NSSize(width: targetWidth, height: CGFloat.greatestFiniteMagnitude)

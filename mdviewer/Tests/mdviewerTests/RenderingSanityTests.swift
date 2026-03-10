@@ -84,7 +84,7 @@
                 ```swift
                 let a = 1
                 let b = 2
-                print(a + b)
+                debugLog(a + b)
                 ```
                 """
 
@@ -93,7 +93,7 @@
 
                 XCTAssertTrue(output.contains("let a = 1"))
                 XCTAssertTrue(output.contains("let b = 2"))
-                XCTAssertTrue(output.contains("print(a + b)"))
+                XCTAssertTrue(output.contains("debugLog(a + b)"))
                 XCTAssertGreaterThanOrEqual(
                     output.filter { $0 == "\n" }.count,
                     2,

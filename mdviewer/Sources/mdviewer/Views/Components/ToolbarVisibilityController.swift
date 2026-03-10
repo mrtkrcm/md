@@ -9,45 +9,36 @@ internal import Foundation
 internal import SwiftUI
 
 /// Tracks scroll direction and position to control toolbar visibility.
-/// Provides stable, smooth animations optimized for 120fps displays.
+/// NOT an ObservableObject — visibility progress is communicated exclusively
+/// via the callback to avoid SwiftUI body re-evaluation on every scroll frame.
 @MainActor
-final class ToolbarVisibilityController: ObservableObject {
-    /// Current visibility progress (0.0 = fully hidden, 1.0 = fully visible).
-    @Published private(set) var visibilityProgress: CGFloat = 1.0
+final class ToolbarVisibilityController {
+    /// Current visibility state: true = visible, false = hidden.
+    private(set) var isVisible: Bool = true
 
-    /// Scroll offset after which toolbar begins hiding (in points).
-    let hideThreshold: CGFloat = 30
+    /// Continuous visibility value retained for tests and callers that
+    /// animate based on toolbar progress.
+    private(set) var visibilityProgress: CGFloat = 1
 
-    /// Distance over which toolbar gradually shrinks (in points).
-    let shrinkRange: CGFloat = 60
+    /// Called exactly once when visibility state flips.
+    var onVisibilityChange: ((Bool) -> Void)?
 
-    /// Ignore tiny scroll deltas from trackpad noise and bounce.
-    private let directionNoiseThreshold: CGFloat = 1.0
-
-    /// Called when visibility progress changes for smooth animations.
+    /// Called when visibility progress changes by a meaningful amount.
     var onVisibilityProgressChange: ((CGFloat) -> Void)?
 
-    // Hysteresis: toolbar auto-shows only when within this distance of the top.
-    private let atTopThreshold: CGFloat = 8
+    let hideThreshold: CGFloat = 30
+    private let microUpdateThreshold: CGFloat = 0.01
 
     private var lastScrollOffset: CGFloat = 0
     private var suspendScrollHandlingUntil: Date = .distantPast
-    private var gestureStartOffset: CGFloat?
-    private var lastHideTimestamp: Date?
 
     init() {}
 
-    /// Captures the starting offset for a live scroll gesture.
-    func beginScrollGesture(startOffset: CGFloat) {
-        gestureStartOffset = startOffset
-    }
-
     /// Handles live scroll samples during an active gesture.
-    /// Updates visibility progress based on scroll position for stable 120fps animations.
-    func updateLiveScroll(delta: CGFloat, currentOffset: CGFloat, canScroll: Bool) {
+    func updateLiveScroll(currentOffset: CGFloat, canScroll: Bool) {
         guard canScroll else {
-            gestureStartOffset = nil
-            setVisibilityProgress(1.0)
+            setVisibilityProgress(1)
+            setVisibility(true)
             return
         }
 
@@ -57,72 +48,31 @@ final class ToolbarVisibilityController: ObservableObject {
         }
 
         lastScrollOffset = currentOffset
+        setVisibilityProgress(progress(for: currentOffset))
 
-        // Show at top immediately (tight zone for hysteresis)
-        if currentOffset <= atTopThreshold {
-            setVisibilityProgress(1.0)
-            return
-        }
-
-        // Calculate progressive shrinking based on scroll position
-        let shrinkStart = hideThreshold
-        let shrinkEnd = hideThreshold + shrinkRange
-
-        if currentOffset <= shrinkStart {
-            // Fully visible before shrink threshold
-            setVisibilityProgress(1.0)
-        } else if currentOffset >= shrinkEnd {
-            // Fully hidden after shrink range
-            setVisibilityProgress(0.0)
-        } else {
-            // Gradually shrink within the shrink range
-            let progress = 1.0 - ((currentOffset - shrinkStart) / shrinkRange)
-            setVisibilityProgress(max(0.0, min(1.0, progress)))
-        }
+        // Simple threshold check: show if above threshold, hide if below
+        let shouldBeVisible = currentOffset <= hideThreshold
+        setVisibility(shouldBeVisible)
     }
 
     /// Offset-based API retained for non-gesture callers.
     func updateScroll(offset: CGFloat, contentHeight: CGFloat, visibleHeight: CGFloat) {
         let canScroll = contentHeight > visibleHeight + 1
-        updateLiveScroll(delta: offset - lastScrollOffset, currentOffset: offset, canScroll: canScroll)
-    }
-
-    /// Call this when a live scroll gesture ends.
-    func updateScrollGesture(delta: CGFloat, finalOffset: CGFloat, canScroll: Bool) {
-        guard canScroll else {
-            gestureStartOffset = nil
-            setVisibilityProgress(1.0)
-            return
-        }
-
-        let now = Date()
-        if now < suspendScrollHandlingUntil {
-            return
-        }
-
-        let resolvedDelta: CGFloat
-        if let gestureStartOffset {
-            resolvedDelta = finalOffset - gestureStartOffset
-            self.gestureStartOffset = nil
-        } else {
-            resolvedDelta = delta
-        }
-
-        updateLiveScroll(delta: resolvedDelta, currentOffset: finalOffset, canScroll: canScroll)
+        updateLiveScroll(currentOffset: offset, canScroll: canScroll)
     }
 
     /// Explicitly show toolbar (e.g., when mouse enters toolbar area).
     func show() {
-        setVisibilityProgress(1.0)
+        setVisibilityProgress(1)
+        setVisibility(true)
     }
 
     /// Reset state (e.g., when changing documents).
     func reset() {
         suspendScrollHandlingUntil = .distantPast
-        gestureStartOffset = nil
-        lastHideTimestamp = nil
         lastScrollOffset = 0
-        setVisibilityProgress(1.0)
+        setVisibilityProgress(1)
+        setVisibility(true)
     }
 
     /// Temporarily ignores scroll updates to ride out layout compensation events.
@@ -133,10 +83,31 @@ final class ToolbarVisibilityController: ObservableObject {
         }
     }
 
+    private func setVisibility(_ visible: Bool) {
+        guard isVisible != visible else { return }
+        isVisible = visible
+        onVisibilityChange?(visible)
+    }
+
     private func setVisibilityProgress(_ progress: CGFloat) {
-        guard abs(visibilityProgress - progress) > 0.01 else { return } // Prevent micro-updates
-        visibilityProgress = progress
-        onVisibilityProgressChange?(progress)
+        let clampedProgress = min(max(progress, 0), 1)
+        guard abs(visibilityProgress - clampedProgress) >= microUpdateThreshold else { return }
+        visibilityProgress = clampedProgress
+        onVisibilityProgressChange?(clampedProgress)
+    }
+
+    private func progress(for offset: CGFloat) -> CGFloat {
+        let collapseRange = hideThreshold * 2
+        let collapseEnd = hideThreshold + collapseRange
+
+        if offset <= hideThreshold {
+            return 1
+        }
+        if offset >= collapseEnd {
+            return 0
+        }
+
+        return (collapseEnd - offset) / collapseRange
     }
 }
 

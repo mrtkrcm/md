@@ -59,7 +59,9 @@ struct ContentToolbar: ToolbarContent {
                         sidebarMode = .folder
                     }
                 }
-                showMetadataInspector.toggle()
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    showMetadataInspector.toggle()
+                }
             } label: {
                 Image(systemName: "sidebar.right")
                     .symbolBounce(on: showMetadataInspector)

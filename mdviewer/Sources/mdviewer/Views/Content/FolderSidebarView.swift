@@ -69,38 +69,31 @@ enum FolderSidebarPreloader {
     }
 }
 
-/// ViewModel for managing folder sidebar state and operations
+/// ViewModel for managing folder sidebar state and operations.
+/// Loads all items in a single pass — 2000 filename strings are trivial for
+/// the CPU and avoiding progressive append eliminates repeated reloadData()
+/// calls that were the primary source of scroll stutter.
 @MainActor
 private final class FolderViewModel: ObservableObject {
     @Published private(set) var rows: [FolderSidebarRow] = []
     @Published private(set) var isLoading = false
-    @Published private(set) var totalItemCount = 0
-    @Published private(set) var hasMoreItems = false
     @Published private(set) var errorMessage: String?
 
-    private var currentFilePath: String = ""
+    /// Monotonic counter bumped on every rows mutation. The NSTableView
+    /// coordinator compares this instead of doing O(n) array equality on
+    /// every SwiftUI updateNSView pass (which fires on unrelated state
+    /// changes like toolbar visibility).
+    private(set) var rowsGeneration: Int = 0
+
     private var rootFolderURL: URL
     private var currentFolderURL: URL
     private var allItems: [FolderItem] = []
-    private var visibleItems: [FolderItem] = []
-    private var loadedCount = 0
-    private var isAppendingPage = false
-    private var progressiveAppendTask: Task<Void, Never>?
-
-    private let pageSize = 200
 
     init(fileURL: URL) {
         let initialFolder = fileURL.deletingLastPathComponent()
         rootFolderURL = initialFolder
         currentFolderURL = initialFolder
-        currentFilePath = fileURL.path
         loadContents()
-    }
-
-    func updateFileURL(_ newURL: URL) {
-        guard newURL.path != currentFilePath else { return }
-        currentFilePath = newURL.path
-        rebuildRows()
     }
 
     func navigateUp() {
@@ -121,12 +114,11 @@ private final class FolderViewModel: ObservableObject {
         currentFolderURL.lastPathComponent
     }
 
-    var visibleItemCount: Int {
-        visibleItems.count
+    var totalItemCount: Int {
+        allItems.count
     }
 
     private func loadContents() {
-        progressiveAppendTask?.cancel()
         isLoading = true
         errorMessage = nil
 
@@ -135,89 +127,29 @@ private final class FolderViewModel: ObservableObject {
 
             // Check cache first
             if let cachedResult = await folderScanCache.get(for: folderURL) {
-                applyCachedScanResult(cachedResult)
+                applyResult(cachedResult)
                 isLoading = false
                 return
             }
 
-            isLoading = true
-
-            // Perform scan
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
                     try await scanFolderItems(at: folderURL)
                 }.value
-                applyScanResult(result)
-
-                // Cache the result
+                applyResult(result)
                 await folderScanCache.set(result, for: folderURL)
             } catch {
-                rows = []
                 allItems = []
-                visibleItems = []
-                loadedCount = 0
-                totalItemCount = 0
-                hasMoreItems = false
+                rebuildRows()
                 errorMessage = error.localizedDescription
             }
             isLoading = false
         }
     }
 
-    private func applyScanResult(_ result: FolderScanResult) {
-        progressiveAppendTask?.cancel()
+    private func applyResult(_ result: FolderScanResult) {
         allItems = result.items
-        visibleItems = []
-        totalItemCount = allItems.count
         rebuildRows()
-        loadedCount = 0
-        hasMoreItems = !allItems.isEmpty
-        startProgressiveAppend()
-    }
-
-    private func applyCachedScanResult(_ result: FolderScanResult) {
-        progressiveAppendTask?.cancel()
-        allItems = result.items
-        visibleItems = result.items
-        totalItemCount = allItems.count
-        loadedCount = allItems.count
-        hasMoreItems = false
-        rebuildRows()
-    }
-
-    private func appendNextPage() {
-        guard !isAppendingPage else { return }
-        guard loadedCount < allItems.count else {
-            hasMoreItems = false
-            return
-        }
-
-        isAppendingPage = true
-        let nextCount = min(allItems.count, loadedCount + pageSize)
-        let nextItems = Array(allItems[loadedCount ..< nextCount])
-        loadedCount = nextCount
-
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            visibleItems.append(contentsOf: nextItems)
-            rebuildRows()
-        }
-
-        hasMoreItems = loadedCount < allItems.count
-        isAppendingPage = false
-    }
-
-    private func startProgressiveAppend() {
-        progressiveAppendTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            while !Task.isCancelled, loadedCount < allItems.count {
-                appendNextPage()
-                if loadedCount < allItems.count {
-                    try? await Task.sleep(for: .milliseconds(12))
-                }
-            }
-        }
     }
 
     private func rebuildRows() {
@@ -225,7 +157,8 @@ private final class FolderViewModel: ObservableObject {
         if currentFolderURL.path != rootFolderURL.path {
             nextRows.append(.parent)
         }
-        nextRows.append(contentsOf: visibleItems.map(FolderSidebarRow.item))
+        nextRows.append(contentsOf: allItems.map(FolderSidebarRow.item))
+        rowsGeneration += 1
         rows = nextRows
     }
 }
@@ -233,17 +166,21 @@ private final class FolderViewModel: ObservableObject {
 /// Sidebar showing folder contents
 @MainActor
 struct FolderSidebarView: View {
-    let fileURL: URL
+    let currentFileURL: URL
+    let rootFileURL: URL?
     let onOpenFile: ((URL) -> Void)?
 
     @Environment(\.openDocument) private var openDocument
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var viewModel: FolderViewModel
 
-    init(fileURL: URL, onOpenFile: ((URL) -> Void)? = nil) {
-        self.fileURL = fileURL
+    init(currentFileURL: URL, rootFileURL: URL? = nil, onOpenFile: ((URL) -> Void)? = nil) {
+        self.currentFileURL = currentFileURL
+        self.rootFileURL = rootFileURL
         self.onOpenFile = onOpenFile
-        _viewModel = StateObject(wrappedValue: FolderViewModel(fileURL: fileURL))
+        _viewModel = StateObject(
+            wrappedValue: FolderViewModel(fileURL: rootFileURL ?? currentFileURL)
+        )
     }
 
     var body: some View {
@@ -251,12 +188,6 @@ struct FolderSidebarView: View {
             headerView
             Divider()
             contentView
-        }
-        .onAppear {
-            viewModel.updateFileURL(fileURL)
-        }
-        .onChange(of: fileURL) { _, newURL in
-            viewModel.updateFileURL(newURL)
         }
     }
 
@@ -297,7 +228,8 @@ struct FolderSidebarView: View {
         } else {
             FolderSidebarTableView(
                 rows: viewModel.rows,
-                currentFilePath: fileURL.path,
+                rowsGeneration: viewModel.rowsGeneration,
+                currentFilePath: currentFileURL.path,
                 onActivateRow: handleRowActivation
             )
         }
@@ -355,10 +287,8 @@ struct FolderSidebarView: View {
     // MARK: - Computed
 
     private var subtitleText: String {
-        if viewModel.hasMoreItems {
-            return "Showing \(viewModel.visibleItemCount) of \(viewModel.totalItemCount) items"
-        }
-        return "\(viewModel.totalItemCount) item\(viewModel.totalItemCount == 1 ? "" : "s")"
+        let count = viewModel.totalItemCount
+        return "\(count) item\(count == 1 ? "" : "s")"
     }
 
     // MARK: - Actions
@@ -393,6 +323,7 @@ struct FolderSidebarView: View {
 
     private struct FolderSidebarTableView: NSViewRepresentable {
         let rows: [FolderSidebarRow]
+        let rowsGeneration: Int
         let currentFilePath: String
         let onActivateRow: (FolderSidebarRow) -> Void
 
@@ -416,6 +347,7 @@ struct FolderSidebarView: View {
             tableView.allowsMultipleSelection = false
             tableView.allowsEmptySelection = true
             tableView.focusRingType = .none
+            tableView.selectionHighlightStyle = .none
             tableView.rowHeight = max(DesignTokens.Spacing.extraLarge, DesignTokens.Spacing.extraWide)
 
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("FolderColumn"))
@@ -427,13 +359,13 @@ struct FolderSidebarView: View {
             context.coordinator.tableView = tableView
 
             scrollView.documentView = tableView
-            context.coordinator.update(rows: rows, currentFilePath: currentFilePath)
+            context.coordinator.update(rows: rows, generation: rowsGeneration, currentFilePath: currentFilePath)
             return scrollView
         }
 
         func updateNSView(_ nsView: NSScrollView, context: Context) {
             context.coordinator.onActivateRow = onActivateRow
-            context.coordinator.update(rows: rows, currentFilePath: currentFilePath)
+            context.coordinator.update(rows: rows, generation: rowsGeneration, currentFilePath: currentFilePath)
         }
 
         @MainActor
@@ -443,29 +375,43 @@ struct FolderSidebarView: View {
             var onActivateRow: (FolderSidebarRow) -> Void
             weak var tableView: NSTableView?
             private var applyingSelection = false
+            private var lastGeneration: Int = -1
 
             init(onActivateRow: @escaping (FolderSidebarRow) -> Void) {
                 self.onActivateRow = onActivateRow
             }
 
-            func update(rows: [FolderSidebarRow], currentFilePath: String) {
-                let rowsChanged = self.rows != rows
+            func update(rows: [FolderSidebarRow], generation: Int, currentFilePath: String) {
+                let rowsChanged = generation != lastGeneration
                 let pathChanged = self.currentFilePath != currentFilePath
                 guard rowsChanged || pathChanged else { return }
 
+                lastGeneration = generation
                 self.rows = rows
                 self.currentFilePath = currentFilePath
 
                 guard let tableView else { return }
-                if rowsChanged {
-                    tableView.reloadData()
-                } else if pathChanged {
-                    // Refresh custom tick/text coloring that depends on currentFilePath.
-                    tableView.reloadData()
-                }
 
+                // Defer table updates to avoid thrashing during live SwiftUI layout cycles.
+                // Especially important when the window is active and receiving input events.
+                DispatchQueue.main.async {
+                    if rowsChanged {
+                        tableView.reloadData()
+                    }
+                    if pathChanged {
+                        self.refreshVisibleRows(in: tableView)
+                    }
+                    self.syncSelection(to: currentFilePath)
+                }
+            }
+
+            private func syncSelection(to path: String) {
+                guard let tableView else { return }
+
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
                 applyingSelection = true
-                if let currentRow = rows.firstIndex(where: { $0.isCurrentFile(path: currentFilePath) }) {
+                if let currentRow = rows.firstIndex(where: { $0.isCurrentFile(path: path) }) {
                     if tableView.selectedRow != currentRow {
                         tableView.selectRowIndexes(IndexSet(integer: currentRow), byExtendingSelection: false)
                     }
@@ -473,6 +419,27 @@ struct FolderSidebarView: View {
                     tableView.deselectAll(nil)
                 }
                 applyingSelection = false
+                CATransaction.commit()
+            }
+
+            private func refreshVisibleRows(in tableView: NSTableView) {
+                let visibleRows = tableView.rows(in: tableView.visibleRect)
+                guard visibleRows.length > 0 else { return }
+
+                let upperBound = min(rows.count, visibleRows.location + visibleRows.length)
+                guard visibleRows.location < upperBound else { return }
+
+                for rowIndex in visibleRows.location ..< upperBound {
+                    guard
+                        let cell = tableView.view(
+                            atColumn: 0,
+                            row: rowIndex,
+                            makeIfNecessary: false
+                        ) as? FolderSidebarCellView
+                    else { continue }
+                    let row = rows[rowIndex]
+                    cell.configure(row: row, isCurrent: row.isCurrentFile(path: currentFilePath))
+                }
             }
 
             func numberOfRows(in _: NSTableView) -> Int {
@@ -513,9 +480,31 @@ struct FolderSidebarView: View {
     private final class FolderSidebarCellView: NSTableCellView {
         static let reuseIdentifier = NSUserInterfaceItemIdentifier("FolderSidebarCellView")
 
-        private let iconView = NSImageView()
-        private let labelView = NSTextField(labelWithString: "")
-        private let checkView = NSTextField(labelWithString: "✓")
+        /// Precomputed static row height — eliminates per-scroll CoreText
+        /// intrinsicContentSize queries that dominate the frame budget.
+        private static let staticRowHeight = max(DesignTokens.Spacing.extraLarge, DesignTokens.Spacing.extraWide)
+        private static let iconSize: CGFloat = 18
+        private static let paragraphStyle: NSParagraphStyle = {
+            let style = NSMutableParagraphStyle()
+            style.lineBreakMode = .byTruncatingMiddle
+            return style
+        }()
+
+        private static let symbolConfiguration = NSImage.SymbolConfiguration(
+            pointSize: DesignTokens.Typography.bodySmall,
+            weight: .regular
+        )
+        private static let checkmarkAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: DesignTokens.Typography.caption, weight: .bold),
+            .foregroundColor: NSColor.controlAccentColor,
+        ]
+        private static let imageCache = NSCache<NSString, NSImage>()
+
+        // Skip-if-unchanged tracking to avoid redundant property sets during cell reuse.
+        private var currentIcon: String?
+        private var currentIsCurrent: Bool?
+        private var currentDisplayName: String?
+        private var currentRow: FolderSidebarRow?
 
         override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
@@ -527,57 +516,149 @@ struct FolderSidebarView: View {
             setup()
         }
 
+        /// Static intrinsic size prevents CoreText layout queries on every cell reuse.
+        override var intrinsicContentSize: NSSize {
+            NSSize(width: NSView.noIntrinsicMetric, height: Self.staticRowHeight)
+        }
+
         private func setup() {
-            iconView.translatesAutoresizingMaskIntoConstraints = false
-            iconView.symbolConfiguration = NSImage.SymbolConfiguration(
-                pointSize: DesignTokens.Typography.bodySmall,
-                weight: .regular
-            )
-            addSubview(iconView)
+            wantsLayer = true
+            layer?.drawsAsynchronously = true
+            layerContentsRedrawPolicy = .onSetNeedsDisplay
 
-            labelView.translatesAutoresizingMaskIntoConstraints = false
-            labelView.lineBreakMode = .byTruncatingMiddle
-            labelView.font = .systemFont(ofSize: DesignTokens.Typography.bodySmall)
-            addSubview(labelView)
-
-            checkView.translatesAutoresizingMaskIntoConstraints = false
-            checkView.font = .systemFont(ofSize: DesignTokens.Typography.caption, weight: .bold)
-            checkView.textColor = .controlAccentColor
-            checkView.isHidden = true
-            addSubview(checkView)
-
-            NSLayoutConstraint.activate([
-                iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: DesignTokens.Spacing.relaxed),
-                iconView.widthAnchor.constraint(equalToConstant: 18),
-                iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
-
-                labelView.leadingAnchor.constraint(
-                    equalTo: iconView.trailingAnchor,
-                    constant: DesignTokens.Spacing.compact
-                ),
-                labelView.centerYAnchor.constraint(equalTo: centerYAnchor),
-
-                checkView.leadingAnchor.constraint(
-                    greaterThanOrEqualTo: labelView.trailingAnchor,
-                    constant: DesignTokens.Spacing.tight
-                ),
-                checkView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -DesignTokens.Spacing.relaxed),
-                checkView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            ])
+            // Flatten row content into a single drawn view to reduce
+            // cursor-rect and hit-testing overhead in key windows.
         }
 
         func configure(row: FolderSidebarRow, isCurrent: Bool) {
-            iconView.image = NSImage(systemSymbolName: row.icon, accessibilityDescription: nil)
-            iconView.contentTintColor = row.isDirectoryLike
-                ? .controlAccentColor
-                : (isCurrent ? .controlAccentColor : .secondaryLabelColor)
-            labelView.stringValue = row.displayName
-            labelView.textColor = row
-                .isParentRow ? .secondaryLabelColor : (isCurrent ? .labelColor : .secondaryLabelColor)
-            labelView.font = isCurrent
-                ? .systemFont(ofSize: DesignTokens.Typography.bodySmall, weight: .medium)
-                : .systemFont(ofSize: DesignTokens.Typography.bodySmall)
-            checkView.isHidden = !isCurrent || row.isParentRow
+            let icon = row.icon
+            let name = row.displayName
+            // Skip redundant property updates during cell reuse — avoids
+            // invalidateIntrinsicContentSize and CoreText shaping per row.
+            guard icon != currentIcon || isCurrent != currentIsCurrent || name != currentDisplayName else { return }
+            currentIcon = icon
+            currentIsCurrent = isCurrent
+            currentDisplayName = name
+            currentRow = row
+            needsDisplay = true
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            super.draw(dirtyRect)
+
+            guard let currentRow, let currentDisplayName else { return }
+
+            let bounds = bounds
+            let iconRect = NSRect(
+                x: DesignTokens.Spacing.relaxed,
+                y: floor((bounds.height - Self.iconSize) / 2),
+                width: Self.iconSize,
+                height: Self.iconSize
+            )
+
+            let isCurrent = currentIsCurrent ?? false
+            if isCurrent {
+                currentBackgroundPath(in: bounds).fill()
+            }
+            let showsCheckmark = isCurrent && !currentRow.isParentRow
+            let checkmarkSize = showsCheckmark
+                ? ("✓" as NSString).size(withAttributes: Self.checkmarkAttributes)
+                : .zero
+            let trailingInset = DesignTokens.Spacing.wide
+            let labelLeading = iconRect.maxX + DesignTokens.Spacing.compact
+            let labelTrailing = showsCheckmark
+                ? trailingInset + checkmarkSize.width + DesignTokens.Spacing.tight
+                : trailingInset
+            let labelRect = NSRect(
+                x: labelLeading,
+                y: 0,
+                width: max(0, bounds.width - labelLeading - labelTrailing),
+                height: bounds.height
+            )
+
+            let iconColor = iconColor(for: currentRow, isCurrent: isCurrent)
+            if let iconImage = Self.cachedSymbolImage(named: currentRow.icon, color: iconColor) {
+                iconImage.draw(
+                    in: iconRect,
+                    from: .zero,
+                    operation: .sourceOver,
+                    fraction: 1
+                )
+            }
+
+            currentDisplayName.draw(
+                with: labelRect,
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: textAttributes(for: currentRow, isCurrent: isCurrent)
+            )
+
+            guard showsCheckmark else { return }
+
+            let checkRect = NSRect(
+                x: bounds.width - trailingInset - checkmarkSize.width,
+                y: floor((bounds.height - checkmarkSize.height) / 2),
+                width: checkmarkSize.width,
+                height: checkmarkSize.height
+            )
+            ("✓" as NSString).draw(in: checkRect, withAttributes: Self.checkmarkAttributes)
+        }
+
+        private func textAttributes(
+            for row: FolderSidebarRow,
+            isCurrent: Bool
+        ) -> [NSAttributedString.Key: Any] {
+            [
+                .font: isCurrent
+                    ? NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall, weight: .medium)
+                    : NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall),
+                .foregroundColor: textColor(for: row, isCurrent: isCurrent),
+                .paragraphStyle: Self.paragraphStyle,
+            ]
+        }
+
+        private func textColor(for row: FolderSidebarRow, isCurrent: Bool) -> NSColor {
+            if row.isParentRow {
+                return .secondaryLabelColor
+            }
+            return isCurrent ? .labelColor : .secondaryLabelColor
+        }
+
+        private func iconColor(for row: FolderSidebarRow, isCurrent: Bool) -> NSColor {
+            row.isDirectoryLike ? .controlAccentColor : (isCurrent ? .controlAccentColor : .secondaryLabelColor)
+        }
+
+        private func currentBackgroundPath(in bounds: NSRect) -> NSBezierPath {
+            NSColor.selectedContentBackgroundColor
+                .withAlphaComponent(DesignTokens.Opacity.medium)
+                .setFill()
+            return NSBezierPath(
+                roundedRect: bounds.insetBy(
+                    dx: DesignTokens.Spacing.standard,
+                    dy: DesignTokens.Spacing.tight / 2
+                ),
+                xRadius: DesignTokens.CornerRadius.small,
+                yRadius: DesignTokens.CornerRadius.small
+            )
+        }
+
+        private static func cachedSymbolImage(named name: String, color: NSColor) -> NSImage? {
+            let cacheKey = "\(name)-\(color.description)" as NSString
+            if let cached = imageCache.object(forKey: cacheKey) {
+                return cached
+            }
+
+            guard
+                let baseImage = NSImage(systemSymbolName: name, accessibilityDescription: nil),
+                let image = baseImage.withSymbolConfiguration(
+                    symbolConfiguration.applying(
+                        NSImage.SymbolConfiguration(hierarchicalColor: color)
+                    )
+                )
+            else {
+                return nil
+            }
+            imageCache.setObject(image, forKey: cacheKey)
+            return image
         }
     }
 #endif
@@ -698,8 +779,27 @@ private struct FolderScanResult: Sendable {
     let items: [FolderItem]
 }
 
+/// Thread-safe cache for resolved file paths. Path normalization (symlink
+/// resolution + standardization) is measurably expensive when called per-row
+/// during table view updates; caching eliminates redundant syscalls.
+private final class NormalizedPathCache: @unchecked Sendable {
+    private var cache: [String: String] = [:]
+    private let lock = NSLock()
+
+    func resolve(_ path: String) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = cache[path] { return cached }
+        let resolved = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+        cache[path] = resolved
+        return resolved
+    }
+}
+
+private let normalizedPathCache = NormalizedPathCache()
+
 private func normalizedPath(_ path: String) -> String {
-    URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+    normalizedPathCache.resolve(path)
 }
 
 private let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "text", "txt"]
@@ -732,6 +832,6 @@ private func scanFolderItems(at folderURL: URL) async throws -> FolderScanResult
 }
 
 #Preview {
-    FolderSidebarView(fileURL: URL(fileURLWithPath: "/Users/user/Documents/file.md"))
+    FolderSidebarView(currentFileURL: URL(fileURLWithPath: "/Users/user/Documents/file.md"))
         .frame(width: 250, height: 400)
 }

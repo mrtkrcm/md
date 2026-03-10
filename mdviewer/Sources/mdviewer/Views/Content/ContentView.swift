@@ -45,11 +45,12 @@ struct ContentView: View {
     @State private var sidebarMode: SidebarMode = .folder
     @State private var showAppearancePopover = false
     @State private var sidebarWidth: CGFloat = 260
+    @State private var parseDebounceTask: Task<Void, Never>?
     @State private var activeFileURL: URL?
     @State private var sidebarRootFileURL: URL?
     @State private var parsedMarkdown: ParsedMarkdown?
     @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
-    @StateObject private var toolbarVisibility = ToolbarVisibilityController()
+    @State private var toolbarVisibility = ToolbarVisibilityController()
 
     private let logger = Logger(subsystem: "mdviewer", category: "ui")
 
@@ -110,32 +111,31 @@ struct ContentView: View {
 
     @ViewBuilder
     private func contentScaffold(parsed: ParsedMarkdown) -> some View {
-        ZStack {
+        ZStack(alignment: .trailing) {
             Color(nsColor: .windowBackgroundColor)
                 .ignoresSafeArea()
 
-            HStack(spacing: 0) {
-                // Main content
-                mainContent(parsed: parsed)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Main content with padding matching the sidebar width when visible
+            mainContent(parsed: parsed)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.trailing, showMetadataInspector ? sidebarWidth : 0)
+                // Temporarily disable implicit animations on the layout frame to prevent
+                // continuous wrapping/unwrapping text relayouts while the sidebar slides.
+                .animation(nil, value: showMetadataInspector)
 
-                // Custom sidebar with 120fps-optimized animations
-                if showMetadataInspector {
-                    InspectorSidebar(
-                        frontmatter: parsed.frontmatter,
-                        documentText: document.text,
-                        isPresented: $showMetadataInspector,
-                        sidebarMode: $sidebarMode,
-                        currentFileURL: activeFileURL,
-                        folderRootFileURL: sidebarRootFileURL,
-                        onOpenFile: openFileInCurrentWindow
-                    )
-                    .frame(width: sidebarWidth)
-                    .accessibleTransition(from: .trailing, reduceMotion: reduceMotion)
-                    // 120fps: Layer-backed for smooth compositing
-                    .compositingGroup()
-                    .drawingGroup()
-                }
+            // Custom sidebar isolated in ZStack overlay
+            if showMetadataInspector {
+                InspectorSidebar(
+                    frontmatter: parsed.frontmatter,
+                    documentText: document.text,
+                    isPresented: $showMetadataInspector,
+                    sidebarMode: $sidebarMode,
+                    currentFileURL: activeFileURL,
+                    folderRootFileURL: sidebarRootFileURL,
+                    onOpenFile: openFileInCurrentWindow
+                )
+                .frame(width: sidebarWidth)
+                .accessibleTransition(from: .trailing, reduceMotion: reduceMotion)
             }
         }
         .preferredColorScheme(preferences.effectiveColorScheme)
@@ -148,10 +148,16 @@ struct ContentView: View {
                         NotificationCenter.default.post(name: NSNotification.Name("ToolbarHoverShow"), object: nil)
                     }
                 }
-                .allowsHitTesting(toolbarVisibility.visibilityProgress < 0.2)
         }
         .onChange(of: document.text) { _, newValue in
-            parsedMarkdown = FrontmatterParser.parse(newValue)
+            // Debounce frontmatter parsing during rapid edits to avoid
+            // blocking the main thread every keystroke.
+            parseDebounceTask?.cancel()
+            parseDebounceTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
+                parsedMarkdown = FrontmatterParser.parse(newValue)
+            }
         }
         .task(id: fileURL) {
             // Re-parse when switching files to ensure metadata is fresh
@@ -191,14 +197,14 @@ struct ContentView: View {
             FolderSidebarPreloader.prewarmIfNeeded(fileURL: activeFileURL)
 
             // Initialize toolbar visibility callback used by scroll auto-hide.
-            updateToolbarVisibility(progress: 1.0)
-            toolbarVisibility.onVisibilityProgressChange = updateToolbarVisibility
+            updateToolbarVisibility(visible: true)
+            toolbarVisibility.onVisibilityChange = updateToolbarVisibility
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ToolbarHoverShow"))) { _ in
             toolbarVisibility.show()
         }
         .onDisappear {
-            toolbarVisibility.onVisibilityProgressChange = nil
+            toolbarVisibility.onVisibilityChange = nil
         }
         .popover(isPresented: $showAppearancePopover, arrowEdge: .top) {
             AppearancePopover(
@@ -234,19 +240,18 @@ struct ContentView: View {
     // MARK: - Toolbar Visibility
 
     /// Applies native toolbar visibility with stable, smooth animations.
-    private func updateToolbarVisibility(progress: CGFloat) {
+    private func updateToolbarVisibility(visible: Bool) {
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
         guard let toolbar = window.toolbar else { return }
 
-        let shouldShow = progress > 0.15
-        guard toolbar.isVisible != shouldShow else { return }
+        guard toolbar.isVisible != visible else { return }
 
         // Stable animation duration for consistent 120fps performance
         NSAnimationContext.runAnimationGroup { context in
             context.duration = DesignTokens.Animation.topBar
             context.allowsImplicitAnimation = true
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            toolbar.isVisible = shouldShow
+            toolbar.isVisible = visible
         }
     }
 
@@ -254,54 +259,63 @@ struct ContentView: View {
 
     /// Opens a file in the current window by replacing document content.
     private func openFileInCurrentWindow(url: URL) {
-        Task { @MainActor in
+        guard url.path != activeFileURL?.path else {
+            // Already open
+            return
+        }
+
+        Task {
             do {
-                // Check file size
-                guard url.path != activeFileURL?.path else {
-                    // Already open
-                    return
-                }
+                // Perform file size check, I/O, and string decoding off the main thread
+                let fileText = try await Task.detached(priority: .userInitiated) {
+                    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                    let fileSize = attributes[.size] as? Int64 ?? 0
 
-                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-                let fileSize = attributes[.size] as? Int64 ?? 0
+                    guard fileSize <= MarkdownDocument.maxReadableFileSizeBytes else {
+                        throw CocoaError(.fileReadTooLarge)
+                    }
 
-                guard fileSize <= MarkdownDocument.maxReadableFileSizeBytes else {
-                    openErrorMessage = "File is too large to open (\(fileSize) bytes)."
-                    return
-                }
+                    let data = try Data(contentsOf: url)
+                    guard let text = MarkdownDocument.decode(data: data) else {
+                        throw CocoaError(.fileReadUnknown)
+                    }
 
-                // Read file content
-                let data = try Data(contentsOf: url)
-                guard let text = MarkdownDocument.decode(data: data) else {
-                    openErrorMessage = "Unable to decode file content."
-                    return
-                }
+                    return text
+                }.value
 
-                // Update document content directly
-                document.text = text
-                showStartupWelcome = false
-                activeFileURL = url
-                if sidebarRootFileURL == nil {
-                    sidebarRootFileURL = url
-                }
+                // Update UI state on the main thread
+                await MainActor.run {
+                    document.text = fileText
+                    showStartupWelcome = false
+                    activeFileURL = url
+                    if sidebarRootFileURL == nil {
+                        sidebarRootFileURL = url
+                    }
 
-                // Synchronize current window metadata and clear edited state for the newly loaded file.
-                if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-                    window.representedURL = url
-                    window.title = url.lastPathComponent
-                    if let nsDocument = window.windowController?.document {
-                        // Keep NSDocument identity in sync so titlebar/status UI updates to the opened file.
-                        let selector = NSSelectorFromString("setFileURL:")
-                        if nsDocument.responds(to: selector) {
-                            _ = nsDocument.perform(selector, with: url)
+                    // Synchronize current window metadata and clear edited state for the newly loaded file.
+                    if let window = NSApp.keyWindow ?? NSApp.mainWindow {
+                        window.representedURL = url
+                        window.title = url.lastPathComponent
+                        if let nsDocument = window.windowController?.document {
+                            // Keep NSDocument identity in sync so titlebar/status UI updates to the opened file.
+                            let selector = NSSelectorFromString("setFileURL:")
+                            if nsDocument.responds(to: selector) {
+                                _ = nsDocument.perform(selector, with: url)
+                            }
+                            nsDocument.undoManager?.removeAllActions()
+                            nsDocument.updateChangeCount(.changeCleared)
                         }
-                        nsDocument.undoManager?.removeAllActions()
-                        nsDocument.updateChangeCount(.changeCleared)
                     }
                 }
+            } catch let error as CocoaError where error.code == .fileReadTooLarge {
+                await MainActor.run { openErrorMessage = "File is too large to open." }
+            } catch let error as CocoaError where error.code == .fileReadUnknown {
+                await MainActor.run { openErrorMessage = "Unable to decode file content." }
             } catch {
-                logger.error("Failed to open file: \(error.localizedDescription)")
-                openErrorMessage = error.localizedDescription
+                await MainActor.run {
+                    logger.error("Failed to open file: \(error.localizedDescription)")
+                    openErrorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -540,26 +554,31 @@ private struct InspectorSidebar: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHint("Close the inspector panel")
             }
+            .zIndex(1)
             .padding(.horizontal, DesignTokens.Spacing.extraWide)
             .padding(.vertical, DesignTokens.Spacing.relaxed)
 
             Divider()
 
             // Content based on mode
-            switch sidebarMode {
-            case .toc:
-                TableOfContentsView(documentText: documentText) { lineIndex in
-                    NotificationCenter.default.post(
-                        name: NSNotification.Name("JumpToLine"),
-                        object: nil,
-                        userInfo: ["lineIndex": lineIndex]
-                    )
+            Group {
+                switch sidebarMode {
+                case .toc:
+                    TableOfContentsView(documentURL: currentFileURL) { lineIndex in
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("JumpToLine"),
+                            object: nil,
+                            userInfo: ["lineIndex": lineIndex]
+                        )
+                    }
+                case .folder:
+                    folderContent
+                case .metadata:
+                    metadataContent
                 }
-            case .folder:
-                folderContent
-            case .metadata:
-                metadataContent
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .clipped()
         }
         .frame(
             minWidth: DesignTokens.Component.Sidebar.minWidth,
@@ -576,26 +595,30 @@ private struct InspectorSidebar: View {
                 )
             )
         }
-        .background(.ultraThinMaterial)
+        .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(Color(nsColor: .separatorColor))
                 .frame(width: DesignTokens.Component.Sidebar.borderLineWidth)
                 .opacity(DesignTokens.Opacity.veryHigh)
         }
-        .onAppear {
-            // Pre-compute document stats on sidebar appearance
-            if cachedDocumentStats == nil {
-                cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: currentFileURL)
-            }
+        .task(id: documentText) {
+            await computeStats(text: documentText, url: currentFileURL)
         }
-        .onChange(of: documentText) { _, _ in
-            // Update stats when document changes
-            cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: currentFileURL)
+        .task(id: currentFileURL) {
+            await computeStats(text: documentText, url: currentFileURL)
         }
-        .onChange(of: currentFileURL) { _, _ in
-            // Update stats when file URL changes
-            cachedDocumentStats = DocumentStats(documentText: documentText, fileURL: currentFileURL)
+    }
+
+    private func computeStats(text: String, url: URL?) async {
+        // Run intensive text processing and disk I/O off the main thread
+        let stats = await Task.detached(priority: .utility) {
+            DocumentStats(documentText: text, fileURL: url)
+        }.value
+
+        // Update main thread state once calculation finishes
+        await MainActor.run {
+            cachedDocumentStats = stats
         }
     }
 
@@ -623,9 +646,10 @@ private struct InspectorSidebar: View {
 
     @ViewBuilder
     private var folderContent: some View {
-        if let folderRootFileURL {
+        if let currentFileURL {
             FolderSidebarView(
-                fileURL: folderRootFileURL,
+                currentFileURL: currentFileURL,
+                rootFileURL: folderRootFileURL,
                 onOpenFile: onOpenFile
             )
         } else {
@@ -680,7 +704,7 @@ private struct EmptyMetadataState: View {
     }
 }
 
-private struct DocumentStats {
+private struct DocumentStats: Sendable {
     let words: Int
     let characters: Int
     let lines: Int
@@ -852,7 +876,7 @@ private struct EmptyFolderState: View {
 
     ```swift
     let greeting = "Hello"
-    print(greeting)
+    debugLog(greeting)
     ```
     """)), fileURL: nil)
         .environment(\.preferences, AppPreferences.shared)

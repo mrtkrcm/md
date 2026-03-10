@@ -26,9 +26,9 @@ fi
 # Change to mdviewer directory
 cd "${MDVIEWER_DIR}"
 
-# If specific files provided, check only those
 if [ $# -gt 0 ]; then
     echo "Checking ${#} files..."
+
     FILES_TO_CHECK=()
     for file in "$@"; do
         if [[ "$file" == *.swift ]]; then
@@ -41,7 +41,6 @@ if [ $# -gt 0 ]; then
         exit 0
     fi
 
-    # Run SwiftFormat in lint mode on specific files
     if swift run swiftformat --lint "${FILES_TO_CHECK[@]}" 2>/dev/null; then
         echo -e "${GREEN}✓ All files properly formatted${NC}"
         exit 0
@@ -50,18 +49,19 @@ if [ $# -gt 0 ]; then
         echo "Run 'just format-fix' to fix formatting issues"
         exit 1
     fi
+fi
+
+# Match the format-fix scope so build artifacts and vendored packages
+# inside DerivedData do not fail the project formatting gate.
+if swift package plugin --allow-writing-to-package-directory swiftformat \
+    --target mdviewer \
+    --target mdviewerTests \
+    --lint
+then
+    echo -e "${GREEN}✓ All files properly formatted${NC}"
+    exit 0
 else
-    # Run SwiftFormat in lint mode on entire project
-    if swift run swiftformat --lint . 2>/dev/null; then
-        echo -e "${GREEN}✓ All files properly formatted${NC}"
-        exit 0
-    else
-        echo -e "${RED}✗ Some files need formatting${NC}"
-        echo ""
-        echo "Files needing formatting:"
-        swift run swiftformat --lint . 2>&1 | grep "would have been formatted" || true
-        echo ""
-        echo "Run 'just format-fix' to fix formatting issues"
-        exit 1
-    fi
+    echo -e "${RED}✗ Some files need formatting${NC}"
+    echo "Run 'just format-fix' to fix formatting issues"
+    exit 1
 fi

@@ -92,6 +92,7 @@ Iteration rule:
 - Use the smallest relevant test command first (`swift test --filter <TestName>`, `just test-unit`, `just test-visual`, etc.).
 - If a specific test fails, rerun only that test after each fix until it passes.
 - Do not rerun `just test` or `just quality` after every small change.
+- When implementing or changing a feature for interactive verification, run `just install-open` after each iteration unless the user explicitly says not to.
 - Run the full `just quality` gate only once, immediately before commit.
 
 Watch for regressions:

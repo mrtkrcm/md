@@ -204,7 +204,7 @@ struct mdviewerApp: App {
             NSWindow.allowsAutomaticWindowTabbing = true
             // Configure default window to support tabbing
             if let window = NSApplication.shared.windows.first {
-                window.tabbingMode = .preferred
+                configureWindow(window)
             }
 
             // Pre-warm services asynchronously to trigger lazy initializations
@@ -226,8 +226,7 @@ struct mdviewerApp: App {
         }
 
         func application(_ application: NSApplication, didCreateWindow window: NSWindow) {
-            // Enable tabbing for all new windows
-            window.tabbingMode = .preferred
+            configureWindow(window)
         }
 
         func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -334,6 +333,12 @@ struct mdviewerApp: App {
             }
 
             return URL(fileURLWithPath: resolvedPath)
+        }
+
+        private func configureWindow(_ window: NSWindow) {
+            window.tabbingMode = .preferred
+            window.titlebarAppearsTransparent = true
+            window.styleMask.insert(.fullSizeContentView)
         }
     }
 #endif

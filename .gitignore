@@ -12,3 +12,9 @@ mdviewer/.swiftpm/
 
 # Generated test files — use `just generate-test-files` to recreate
 Tests/generated/
+
+# Local scratch files
+tmp/
+
+# Local release builds
+release/

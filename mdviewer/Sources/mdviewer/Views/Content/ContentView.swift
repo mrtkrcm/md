@@ -50,7 +50,6 @@ struct ContentView: View {
     @State private var sidebarRootFileURL: URL?
     @State private var parsedMarkdown: ParsedMarkdown?
     @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
-    @State private var toolbarVisibility = ToolbarVisibilityController()
 
     private let logger = Logger(subsystem: "mdviewer", category: "ui")
 
@@ -118,6 +117,7 @@ struct ContentView: View {
             // Main content with padding matching the sidebar width when visible
             mainContent(parsed: parsed)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: .top)
                 .padding(.trailing, showMetadataInspector ? sidebarWidth : 0)
                 // Temporarily disable implicit animations on the layout frame to prevent
                 // continuous wrapping/unwrapping text relayouts while the sidebar slides.
@@ -143,24 +143,6 @@ struct ContentView: View {
             .animation(nil, value: showMetadataInspector)
         }
         .preferredColorScheme(preferences.effectiveColorScheme)
-        .overlay(alignment: .top) {
-            HStack(spacing: 0) {
-                Color.clear
-                    .frame(maxWidth: .infinity)
-                    .frame(height: DesignTokens.Component.Button.height)
-                    .contentShape(Rectangle())
-                    .onHover { hovering in
-                        if hovering {
-                            NotificationCenter.default.post(name: NSNotification.Name("ToolbarHoverShow"), object: nil)
-                        }
-                    }
-                if showMetadataInspector {
-                    Color.clear
-                        .frame(width: sidebarWidth)
-                        .allowsHitTesting(false)
-                }
-            }
-        }
         .onChange(of: document.text) { _, newValue in
             // Debounce frontmatter parsing during rapid edits to avoid
             // blocking the main thread every keystroke.
@@ -188,7 +170,6 @@ struct ContentView: View {
         .toolbar {
             contentToolbar(parsed: parsed)
         }
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .focusedSceneValue(\.editorActions, editorActions)
         .onAppear {
             if parsedMarkdown == nil {
@@ -207,16 +188,6 @@ struct ContentView: View {
                 sidebarRootFileURL = fileURL
             }
             FolderSidebarPreloader.prewarmIfNeeded(fileURL: activeFileURL)
-
-            // Initialize toolbar visibility callback used by scroll auto-hide.
-            updateToolbarVisibility(visible: true)
-            toolbarVisibility.onVisibilityChange = updateToolbarVisibility
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ToolbarHoverShow"))) { _ in
-            toolbarVisibility.show()
-        }
-        .onDisappear {
-            toolbarVisibility.onVisibilityChange = nil
         }
         .popover(isPresented: $showAppearancePopover, arrowEdge: .top) {
             AppearancePopover(
@@ -247,24 +218,6 @@ struct ContentView: View {
             hasFrontmatter: parsed.frontmatter != nil,
             fileURL: activeFileURL
         )
-    }
-
-    // MARK: - Toolbar Visibility
-
-    /// Applies native toolbar visibility with stable, smooth animations.
-    private func updateToolbarVisibility(visible: Bool) {
-        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-        guard let toolbar = window.toolbar else { return }
-
-        guard toolbar.isVisible != visible else { return }
-
-        // Stable animation duration for consistent 120fps performance
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = DesignTokens.Animation.topBar
-            context.allowsImplicitAnimation = true
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            toolbar.isVisible = visible
-        }
     }
 
     // MARK: - File Opening
@@ -351,13 +304,7 @@ struct ContentView: View {
                     readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
                     colorScheme: colorScheme,
                     reduceMotion: reduceMotion,
-                    onScroll: { offset, contentHeight, visibleHeight in
-                        toolbarVisibility.updateScroll(
-                            offset: offset,
-                            contentHeight: contentHeight,
-                            visibleHeight: visibleHeight
-                        )
-                    }
+                    onScroll: { _, _, _ in }
                 )
                 .transition(.opacity)
             }

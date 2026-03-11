@@ -339,42 +339,32 @@ struct FolderSidebarView: View {
             scrollView.hasHorizontalScroller = false
             scrollView.autohidesScrollers = true
 
-            let tableView = NSTableView()
-            tableView.headerView = nil
-            tableView.intercellSpacing = NSSize(width: 0, height: 0)
-            tableView.usesAlternatingRowBackgroundColors = false
-            tableView.allowsColumnSelection = false
-            tableView.allowsMultipleSelection = false
-            tableView.allowsEmptySelection = true
-            tableView.focusRingType = .none
-            tableView.selectionHighlightStyle = .none
-            tableView.rowHeight = max(DesignTokens.Spacing.extraLarge, DesignTokens.Spacing.extraWide)
+            let contentView = FolderSidebarCanvasView(onActivateRow: context.coordinator.activateRow)
+            contentView.autoresizingMask = [.width]
+            context.coordinator.canvasView = contentView
 
-            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("FolderColumn"))
-            column.resizingMask = .autoresizingMask
-            tableView.addTableColumn(column)
-
-            tableView.delegate = context.coordinator
-            tableView.dataSource = context.coordinator
-            context.coordinator.tableView = tableView
-
-            scrollView.documentView = tableView
+            scrollView.documentView = contentView
             context.coordinator.update(rows: rows, generation: rowsGeneration, currentFilePath: currentFilePath)
             return scrollView
         }
 
         func updateNSView(_ nsView: NSScrollView, context: Context) {
+            if let canvasView = nsView.documentView as? FolderSidebarCanvasView {
+                canvasView.setFrameSize(
+                    NSSize(
+                        width: nsView.contentSize.width,
+                        height: canvasView.frame.height
+                    )
+                )
+            }
             context.coordinator.onActivateRow = onActivateRow
             context.coordinator.update(rows: rows, generation: rowsGeneration, currentFilePath: currentFilePath)
         }
 
         @MainActor
-        final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-            var rows: [FolderSidebarRow] = []
-            var currentFilePath: String = ""
+        final class Coordinator: NSObject {
             var onActivateRow: (FolderSidebarRow) -> Void
-            weak var tableView: NSTableView?
-            private var applyingSelection = false
+            weak var canvasView: FolderSidebarCanvasView?
             private var lastGeneration: Int = -1
 
             init(onActivateRow: @escaping (FolderSidebarRow) -> Void) {
@@ -382,107 +372,30 @@ struct FolderSidebarView: View {
             }
 
             func update(rows: [FolderSidebarRow], generation: Int, currentFilePath: String) {
-                let rowsChanged = generation != lastGeneration
-                let pathChanged = self.currentFilePath != currentFilePath
-                guard rowsChanged || pathChanged else { return }
-
+                guard let canvasView else { return }
+                canvasView.setFrameSize(
+                    NSSize(
+                        width: canvasView.enclosingScrollView?.contentSize.width ?? canvasView.frame.width,
+                        height: canvasView.frame.height
+                    )
+                )
+                canvasView.update(
+                    rows: rows,
+                    generation: generation,
+                    currentFilePath: currentFilePath,
+                    rowsChanged: generation != lastGeneration
+                )
                 lastGeneration = generation
-                self.rows = rows
-                self.currentFilePath = currentFilePath
-
-                guard let tableView else { return }
-
-                // Defer table updates to avoid thrashing during live SwiftUI layout cycles.
-                // Especially important when the window is active and receiving input events.
-                DispatchQueue.main.async {
-                    if rowsChanged {
-                        tableView.reloadData()
-                    }
-                    if pathChanged {
-                        self.refreshVisibleRows(in: tableView)
-                    }
-                    self.syncSelection(to: currentFilePath)
-                }
             }
 
-            private func syncSelection(to path: String) {
-                guard let tableView else { return }
-
-                CATransaction.begin()
-                CATransaction.setDisableActions(true)
-                applyingSelection = true
-                if let currentRow = rows.firstIndex(where: { $0.isCurrentFile(path: path) }) {
-                    if tableView.selectedRow != currentRow {
-                        tableView.selectRowIndexes(IndexSet(integer: currentRow), byExtendingSelection: false)
-                    }
-                } else {
-                    tableView.deselectAll(nil)
-                }
-                applyingSelection = false
-                CATransaction.commit()
-            }
-
-            private func refreshVisibleRows(in tableView: NSTableView) {
-                let visibleRows = tableView.rows(in: tableView.visibleRect)
-                guard visibleRows.length > 0 else { return }
-
-                let upperBound = min(rows.count, visibleRows.location + visibleRows.length)
-                guard visibleRows.location < upperBound else { return }
-
-                for rowIndex in visibleRows.location ..< upperBound {
-                    guard
-                        let cell = tableView.view(
-                            atColumn: 0,
-                            row: rowIndex,
-                            makeIfNecessary: false
-                        ) as? FolderSidebarCellView
-                    else { continue }
-                    let row = rows[rowIndex]
-                    cell.configure(row: row, isCurrent: row.isCurrentFile(path: currentFilePath))
-                }
-            }
-
-            func numberOfRows(in _: NSTableView) -> Int {
-                rows.count
-            }
-
-            func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-                guard row >= 0, row < rows.count else { return false }
-                return rows[row].isSelectable
-            }
-
-            func tableView(_ tableView: NSTableView, viewFor _: NSTableColumn?, row: Int) -> NSView? {
-                guard row >= 0, row < rows.count else { return nil }
-                let rowItem = rows[row]
-                let isCurrent = rowItem.isCurrentFile(path: currentFilePath)
-                let identifier = FolderSidebarCellView.reuseIdentifier
-                let cell: FolderSidebarCellView
-                if let reused = tableView.makeView(withIdentifier: identifier, owner: nil) as? FolderSidebarCellView {
-                    cell = reused
-                } else {
-                    cell = FolderSidebarCellView()
-                    cell.identifier = identifier
-                }
-                cell.configure(row: rowItem, isCurrent: isCurrent)
-                return cell
-            }
-
-            func tableViewSelectionDidChange(_ notification: Notification) {
-                guard !applyingSelection else { return }
-                guard let tableView = notification.object as? NSTableView else { return }
-                let row = tableView.selectedRow
-                guard row >= 0, row < rows.count else { return }
-                onActivateRow(rows[row])
+            func activateRow(_ row: FolderSidebarRow) {
+                onActivateRow(row)
             }
         }
     }
 
-    private final class FolderSidebarCellView: NSTableCellView {
-        static let reuseIdentifier = NSUserInterfaceItemIdentifier("FolderSidebarCellView")
-
-        /// Precomputed static row height — eliminates per-scroll CoreText
-        /// intrinsicContentSize queries that dominate the frame budget.
-        private static let staticRowHeight = max(DesignTokens.Spacing.extraLarge, DesignTokens.Spacing.extraWide)
+    private final class FolderSidebarCanvasView: NSView {
+        private static let rowHeight = max(DesignTokens.Spacing.extraLarge, DesignTokens.Spacing.extraWide)
         private static let iconSize: CGFloat = 18
         private static let paragraphStyle: NSParagraphStyle = {
             let style = NSMutableParagraphStyle()
@@ -498,86 +411,134 @@ struct FolderSidebarView: View {
             .font: NSFont.systemFont(ofSize: DesignTokens.Typography.caption, weight: .bold),
             .foregroundColor: NSColor.controlAccentColor,
         ]
+        private static let normalTextAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraphStyle,
+        ]
+        private static let currentTextAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall, weight: .medium),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraphStyle,
+        ]
+        private static let parentTextAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraphStyle,
+        ]
+        private static let checkmarkSize = ("✓" as NSString).size(withAttributes: checkmarkAttributes)
         private static let imageCache = NSCache<NSString, NSImage>()
 
-        // Skip-if-unchanged tracking to avoid redundant property sets during cell reuse.
-        private var currentIcon: String?
-        private var currentIsCurrent: Bool?
-        private var currentDisplayName: String?
-        private var currentRow: FolderSidebarRow?
+        override var isFlipped: Bool { true }
 
-        override init(frame frameRect: NSRect) {
-            super.init(frame: frameRect)
-            setup()
-        }
+        private let onActivateRow: (FolderSidebarRow) -> Void
+        private var rows: [FolderSidebarRow] = []
+        private var currentFilePath: String = ""
+        private var currentRowIndex: Int?
 
-        required init?(coder: NSCoder) {
-            super.init(coder: coder)
-            setup()
-        }
-
-        /// Static intrinsic size prevents CoreText layout queries on every cell reuse.
-        override var intrinsicContentSize: NSSize {
-            NSSize(width: NSView.noIntrinsicMetric, height: Self.staticRowHeight)
-        }
-
-        private func setup() {
+        init(onActivateRow: @escaping (FolderSidebarRow) -> Void) {
+            self.onActivateRow = onActivateRow
+            super.init(frame: .zero)
             wantsLayer = true
             layer?.drawsAsynchronously = true
             layerContentsRedrawPolicy = .onSetNeedsDisplay
-
-            // Flatten row content into a single drawn view to reduce
-            // cursor-rect and hit-testing overhead in key windows.
         }
 
-        func configure(row: FolderSidebarRow, isCurrent: Bool) {
-            let icon = row.icon
-            let name = row.displayName
-            // Skip redundant property updates during cell reuse — avoids
-            // invalidateIntrinsicContentSize and CoreText shaping per row.
-            guard icon != currentIcon || isCurrent != currentIsCurrent || name != currentDisplayName else { return }
-            currentIcon = icon
-            currentIsCurrent = isCurrent
-            currentDisplayName = name
-            currentRow = row
-            needsDisplay = true
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override var acceptsFirstResponder: Bool { false }
+
+        func update(rows: [FolderSidebarRow], generation _: Int, currentFilePath: String, rowsChanged: Bool) {
+            let previousCurrentRowIndex = currentRowIndex
+            let pathChanged = self.currentFilePath != currentFilePath
+            guard rowsChanged || pathChanged else { return }
+
+            self.rows = rows
+            self.currentFilePath = currentFilePath
+            currentRowIndex = rows.firstIndex(where: { $0.isCurrentFile(path: currentFilePath) })
+
+            let documentHeight = CGFloat(rows.count) * Self.rowHeight
+            let targetSize = NSSize(
+                width: enclosingScrollView?.contentSize.width ?? frame.width,
+                height: max(documentHeight, 1)
+            )
+            if frame.size != targetSize {
+                setFrameSize(targetSize)
+            }
+
+            if rowsChanged {
+                needsDisplay = true
+                return
+            }
+
+            if let previousCurrentRowIndex {
+                setNeedsDisplay(rowRect(at: previousCurrentRowIndex))
+            }
+            if let currentRowIndex, currentRowIndex != previousCurrentRowIndex {
+                setNeedsDisplay(rowRect(at: currentRowIndex))
+            }
         }
 
         override func draw(_ dirtyRect: NSRect) {
             super.draw(dirtyRect)
 
-            guard let currentRow, let currentDisplayName else { return }
+            let visibleStartIndex = max(0, Int(floor(dirtyRect.minY / Self.rowHeight)))
+            let visibleEndIndex = min(rows.count, Int(ceil(dirtyRect.maxY / Self.rowHeight)))
+            guard visibleStartIndex < visibleEndIndex else { return }
 
-            let bounds = bounds
+            for rowIndex in visibleStartIndex ..< visibleEndIndex {
+                drawRow(at: rowIndex)
+            }
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            let point = convert(event.locationInWindow, from: nil)
+            let rowIndex = Int(point.y / Self.rowHeight)
+            guard rowIndex >= 0, rowIndex < rows.count else {
+                super.mouseDown(with: event)
+                return
+            }
+
+            let row = rows[rowIndex]
+            guard row.isSelectable else {
+                super.mouseDown(with: event)
+                return
+            }
+            onActivateRow(row)
+        }
+
+        private func drawRow(at rowIndex: Int) {
+            let row = rows[rowIndex]
+            let isCurrent = rowIndex == currentRowIndex
+            let rowRect = rowRect(at: rowIndex)
             let iconRect = NSRect(
                 x: DesignTokens.Spacing.relaxed,
-                y: floor((bounds.height - Self.iconSize) / 2),
+                y: rowRect.minY + floor((rowRect.height - Self.iconSize) / 2),
                 width: Self.iconSize,
                 height: Self.iconSize
             )
 
-            let isCurrent = currentIsCurrent ?? false
             if isCurrent {
-                currentBackgroundPath(in: bounds).fill()
+                currentBackgroundPath(in: rowRect).fill()
             }
-            let showsCheckmark = isCurrent && !currentRow.isParentRow
-            let checkmarkSize = showsCheckmark
-                ? ("✓" as NSString).size(withAttributes: Self.checkmarkAttributes)
-                : .zero
-            let trailingInset = DesignTokens.Spacing.wide
+
+            let showsCheckmark = isCurrent && !row.isParentRow
+            let trailingInset = DesignTokens.Spacing.standard
             let labelLeading = iconRect.maxX + DesignTokens.Spacing.compact
             let labelTrailing = showsCheckmark
-                ? trailingInset + checkmarkSize.width + DesignTokens.Spacing.tight
+                ? trailingInset + Self.checkmarkSize.width + DesignTokens.Spacing.compact
                 : trailingInset
             let labelRect = NSRect(
                 x: labelLeading,
-                y: 0,
-                width: max(0, bounds.width - labelLeading - labelTrailing),
-                height: bounds.height
+                y: rowRect.minY,
+                width: max(0, rowRect.width - labelLeading - labelTrailing),
+                height: rowRect.height
             )
 
-            let iconColor = iconColor(for: currentRow, isCurrent: isCurrent)
-            if let iconImage = Self.cachedSymbolImage(named: currentRow.icon, color: iconColor) {
+            let iconColor = iconColor(for: row, isCurrent: isCurrent)
+            if let iconImage = Self.cachedSymbolImage(named: row.icon, color: iconColor) {
                 iconImage.draw(
                     in: iconRect,
                     from: .zero,
@@ -586,45 +547,41 @@ struct FolderSidebarView: View {
                 )
             }
 
-            currentDisplayName.draw(
+            row.displayName.draw(
                 with: labelRect,
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: textAttributes(for: currentRow, isCurrent: isCurrent)
+                options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine],
+                attributes: textAttributes(for: row, isCurrent: isCurrent)
             )
 
             guard showsCheckmark else { return }
 
             let checkRect = NSRect(
-                x: bounds.width - trailingInset - checkmarkSize.width,
-                y: floor((bounds.height - checkmarkSize.height) / 2),
-                width: checkmarkSize.width,
-                height: checkmarkSize.height
+                x: rowRect.maxX - trailingInset - Self.checkmarkSize.width,
+                y: rowRect.minY + floor((rowRect.height - Self.checkmarkSize.height) / 2),
+                width: Self.checkmarkSize.width,
+                height: Self.checkmarkSize.height
             )
             ("✓" as NSString).draw(in: checkRect, withAttributes: Self.checkmarkAttributes)
         }
 
-        private func textAttributes(
-            for row: FolderSidebarRow,
-            isCurrent: Bool
-        ) -> [NSAttributedString.Key: Any] {
-            [
-                .font: isCurrent
-                    ? NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall, weight: .medium)
-                    : NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall),
-                .foregroundColor: textColor(for: row, isCurrent: isCurrent),
-                .paragraphStyle: Self.paragraphStyle,
-            ]
-        }
-
-        private func textColor(for row: FolderSidebarRow, isCurrent: Bool) -> NSColor {
-            if row.isParentRow {
-                return .secondaryLabelColor
-            }
-            return isCurrent ? .labelColor : .secondaryLabelColor
-        }
-
         private func iconColor(for row: FolderSidebarRow, isCurrent: Bool) -> NSColor {
             row.isDirectoryLike ? .controlAccentColor : (isCurrent ? .controlAccentColor : .secondaryLabelColor)
+        }
+
+        private func textAttributes(for row: FolderSidebarRow, isCurrent: Bool) -> [NSAttributedString.Key: Any] {
+            if row.isParentRow {
+                return Self.parentTextAttributes
+            }
+            return isCurrent ? Self.currentTextAttributes : Self.normalTextAttributes
+        }
+
+        private func rowRect(at rowIndex: Int) -> NSRect {
+            NSRect(
+                x: 0,
+                y: CGFloat(rowIndex) * Self.rowHeight,
+                width: bounds.width,
+                height: Self.rowHeight
+            )
         }
 
         private func currentBackgroundPath(in bounds: NSRect) -> NSBezierPath {

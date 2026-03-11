@@ -34,6 +34,13 @@ The project uses `just` for task automation.
 | `just install` | Build and install to `/Applications/md.app` |
 | `just quality` | Full gate (Format + Lint + Build + Test) |
 
+### Test Execution Rule
+- Do not run `just quality` or the full test suite on every iteration.
+- During development, run only the narrowest relevant check first.
+- If one test fails, rerun only that test or the smallest relevant test group after each fix until it passes.
+- Use targeted commands such as `cd mdviewer && swift test --filter <TestName>`, `just test-unit`, `just test-visual`, or another smallest relevant subset.
+- Run `just quality` once, immediately before commit, push, or handoff that depends on a clean gate.
+
 ## Development Conventions
 
 ### 1. Performance (The "120fps" Rule)

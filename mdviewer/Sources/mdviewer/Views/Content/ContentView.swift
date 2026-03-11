@@ -44,7 +44,7 @@ struct ContentView: View {
     @State private var showMetadataInspector = false
     @State private var sidebarMode: SidebarMode = .folder
     @State private var showAppearancePopover = false
-    @State private var sidebarWidth: CGFloat = 260
+    @State private var sidebarWidth: CGFloat = DesignTokens.Component.Sidebar.idealWidth
     @State private var parseDebounceTask: Task<Void, Never>?
     @State private var activeFileURL: URL?
     @State private var sidebarRootFileURL: URL?
@@ -123,31 +123,43 @@ struct ContentView: View {
                 // continuous wrapping/unwrapping text relayouts while the sidebar slides.
                 .animation(nil, value: showMetadataInspector)
 
-            // Custom sidebar isolated in ZStack overlay
-            if showMetadataInspector {
-                InspectorSidebar(
-                    frontmatter: parsed.frontmatter,
-                    documentText: document.text,
-                    isPresented: $showMetadataInspector,
-                    sidebarMode: $sidebarMode,
-                    currentFileURL: activeFileURL,
-                    folderRootFileURL: sidebarRootFileURL,
-                    onOpenFile: openFileInCurrentWindow
-                )
-                .frame(width: sidebarWidth)
-                .accessibleTransition(from: .trailing, reduceMotion: reduceMotion)
-            }
+            // Keep the sidebar mounted so showing it does not rebuild the entire
+            // inspector hierarchy on demand, which was still visible as a choppy reveal.
+            InspectorSidebar(
+                frontmatter: parsed.frontmatter,
+                documentText: document.text,
+                isPresented: $showMetadataInspector,
+                sidebarMode: $sidebarMode,
+                currentFileURL: activeFileURL,
+                folderRootFileURL: sidebarRootFileURL,
+                onOpenFile: openFileInCurrentWindow
+            )
+            .frame(width: sidebarWidth)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .frame(width: showMetadataInspector ? sidebarWidth : 0, alignment: .trailing)
+            .clipped()
+            .allowsHitTesting(showMetadataInspector)
+            .accessibilityHidden(!showMetadataInspector)
+            .animation(nil, value: showMetadataInspector)
         }
         .preferredColorScheme(preferences.effectiveColorScheme)
         .overlay(alignment: .top) {
-            Color.clear
-                .frame(height: DesignTokens.Component.Button.height)
-                .contentShape(Rectangle())
-                .onHover { hovering in
-                    if hovering {
-                        NotificationCenter.default.post(name: NSNotification.Name("ToolbarHoverShow"), object: nil)
+            HStack(spacing: 0) {
+                Color.clear
+                    .frame(maxWidth: .infinity)
+                    .frame(height: DesignTokens.Component.Button.height)
+                    .contentShape(Rectangle())
+                    .onHover { hovering in
+                        if hovering {
+                            NotificationCenter.default.post(name: NSNotification.Name("ToolbarHoverShow"), object: nil)
+                        }
                     }
+                if showMetadataInspector {
+                    Color.clear
+                        .frame(width: sidebarWidth)
+                        .allowsHitTesting(false)
                 }
+            }
         }
         .onChange(of: document.text) { _, newValue in
             // Debounce frontmatter parsing during rapid edits to avoid
@@ -523,78 +535,18 @@ private struct InspectorSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header with mode picker
-            HStack {
-                Picker("", selection: $sidebarMode) {
-                    Label("Outline", systemImage: "list.bullet")
-                        .tag(SidebarMode.toc)
-                        .accessibilityLabel("Table of Contents")
-                    Label("Info", systemImage: "info.circle")
-                        .tag(SidebarMode.metadata)
-                        .accessibilityLabel("Metadata View")
-                    Label("Folder", systemImage: "folder")
-                        .tag(SidebarMode.folder)
-                        .accessibilityLabel("Folder View")
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
-
-                Spacer()
-
-                Button {
-                    withAnimation(.easeOut(duration: DesignTokens.Animation.normal)) {
-                        isPresented = false
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
-                        .accessibilityLabel("Close Inspector")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityHint("Close the inspector panel")
-            }
-            .zIndex(1)
-            .padding(.horizontal, DesignTokens.Spacing.extraWide)
-            .padding(.vertical, DesignTokens.Spacing.relaxed)
-
-            Divider()
-
-            // Content based on mode
-            Group {
-                switch sidebarMode {
-                case .toc:
-                    TableOfContentsView(documentURL: currentFileURL) { lineIndex in
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("JumpToLine"),
-                            object: nil,
-                            userInfo: ["lineIndex": lineIndex]
-                        )
-                    }
-                case .folder:
-                    folderContent
-                case .metadata:
-                    metadataContent
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .clipped()
+            inspectorHeader
+            inspectorContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .clipped()
         }
         .frame(
             minWidth: DesignTokens.Component.Sidebar.minWidth,
             idealWidth: DesignTokens.Component.Sidebar.idealWidth,
-            maxWidth: DesignTokens.Component.Sidebar.maxWidth
+            maxWidth: DesignTokens.Component.Sidebar.maxWidth,
+            maxHeight: .infinity,
+            alignment: .top
         )
-        .containerRelativeFrame(.horizontal) { length, _ in
-            // Responsive sidebar: 30% of container, clamped between 220-320pt
-            max(
-                DesignTokens.Component.Sidebar.minWidth,
-                min(
-                    DesignTokens.Component.Sidebar.maxWidth,
-                    length * DesignTokens.Component.Sidebar.widthFactor
-                )
-            )
-        }
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .leading) {
             Rectangle()
@@ -608,6 +560,48 @@ private struct InspectorSidebar: View {
         .task(id: currentFileURL) {
             await computeStats(text: documentText, url: currentFileURL)
         }
+    }
+
+    @ViewBuilder
+    private var inspectorContent: some View {
+        switch sidebarMode {
+        case .toc:
+            TableOfContentsView(documentURL: currentFileURL) { lineIndex in
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("JumpToLine"),
+                    object: nil,
+                    userInfo: ["lineIndex": lineIndex]
+                )
+            }
+        case .folder:
+            folderContent
+        case .metadata:
+            metadataContent
+        }
+    }
+
+    private var inspectorHeader: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .trailing) {
+                InspectorSidebarModeControl(sidebarMode: $sidebarMode)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, DesignTokens.Component.Button.heightSmall)
+
+                InspectorSidebarIconButton(systemImage: "xmark", accessibilityLabel: "Close Inspector") {
+                    isPresented = false
+                }
+                .accessibilityHint("Close the inspector panel")
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, DesignTokens.Spacing.extraWide)
+            .padding(.top, DesignTokens.Spacing.standard)
+            .padding(.bottom, DesignTokens.Spacing.relaxed)
+            .background(Color(nsColor: .windowBackgroundColor))
+
+            Divider()
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func computeStats(text: String, url: URL?) async {
@@ -655,6 +649,102 @@ private struct InspectorSidebar: View {
         } else {
             EmptyFolderState()
         }
+    }
+}
+
+private struct InspectorSidebarModeControl: View {
+    @Binding var sidebarMode: SidebarMode
+    @State private var hoveredMode: SidebarMode?
+
+    var body: some View {
+        HStack(spacing: DesignTokens.Spacing.tight) {
+            modeButton(.toc, title: "Outline", systemImage: "list.bullet", accessibilityLabel: "Table of Contents")
+            modeButton(.metadata, title: "Info", systemImage: "info.circle", accessibilityLabel: "Metadata View")
+            modeButton(.folder, title: "Folder", systemImage: "folder", accessibilityLabel: "Folder View")
+        }
+        .padding(DesignTokens.Spacing.tight)
+        .background(
+            RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+    }
+
+    private func modeButton(
+        _ mode: SidebarMode,
+        title: String,
+        systemImage: String,
+        accessibilityLabel: String
+    ) -> some View {
+        let isSelected = sidebarMode == mode
+        let isHovered = hoveredMode == mode
+
+        return Button {
+            sidebarMode = mode
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, DesignTokens.Spacing.standard)
+                .padding(.vertical, DesignTokens.Spacing.standard)
+                .frame(minWidth: 0)
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small, style: .continuous)
+                        .fill(backgroundColor(isSelected: isSelected, isHovered: isHovered))
+                )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveredMode = hovering ? mode : (hoveredMode == mode ? nil : hoveredMode)
+        }
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func backgroundColor(isSelected: Bool, isHovered: Bool) -> Color {
+        if isSelected {
+            return Color(nsColor: .selectedContentBackgroundColor)
+                .opacity(DesignTokens.Opacity.mediumHigh)
+        }
+        if isHovered {
+            return Color(nsColor: .selectedContentBackgroundColor)
+                .opacity(DesignTokens.Opacity.medium)
+        }
+        return Color.clear
+    }
+}
+
+private struct InspectorSidebarIconButton: View {
+    let systemImage: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(
+                    width: DesignTokens.Component.Button.heightSmall,
+                    height: DesignTokens.Component.Button.heightSmall
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small, style: .continuous)
+                        .fill(
+                            isHovered
+                                ? Color(nsColor: .selectedContentBackgroundColor)
+                                .opacity(DesignTokens.Opacity.medium)
+                                : Color.clear
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 
@@ -866,18 +956,18 @@ private struct EmptyFolderState: View {
 
 #Preview("Content View - With Content") {
     ContentView(document: .constant(MarkdownDocument(text: """
-    # Hello World
+        # Hello World
 
-    This is a **markdown** document.
+        This is a **markdown** document.
 
-    - Item 1
-    - Item 2
-    - Item 3
+        - Item 1
+        - Item 2
+        - Item 3
 
-    ```swift
-    let greeting = "Hello"
-    debugLog(greeting)
-    ```
+        ```swift
+        let greeting = "Hello"
+        debugLog(greeting)
+        ```
     """)), fileURL: nil)
         .environment(\.preferences, AppPreferences.shared)
 }

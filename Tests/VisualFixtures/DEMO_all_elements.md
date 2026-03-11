@@ -244,7 +244,7 @@ Between rules.
 
 Below the rules.
 
-## HTML Entities and Special Characters
+- ## HTML Entities and Special Characters
 
 - Em dash: —
 - En dash: –

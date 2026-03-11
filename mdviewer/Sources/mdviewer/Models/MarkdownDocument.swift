@@ -7,22 +7,6 @@ internal import OSLog
 internal import SwiftUI
 internal import UniformTypeIdentifiers
 
-extension UTType {
-    static var markdownDocument: UTType {
-        UTType(importedAs: "net.daringfireball.markdown")
-    }
-
-    static var markdownExtensions: [UTType] {
-        let types = [
-            UTType(filenameExtension: "md"),
-            UTType(filenameExtension: "markdown"),
-            UTType(filenameExtension: "mdown"),
-            UTType(filenameExtension: "mkd"),
-        ]
-        return types.compactMap(\.self)
-    }
-}
-
 enum MarkdownDocumentError: LocalizedError {
     case fileTooLarge(actualBytes: Int, maxBytes: Int)
 
@@ -59,13 +43,14 @@ struct MarkdownDocument: FileDocument {
     static var autosaveBeforeExternalChanges: Bool { true }
 
     static var readableContentTypes: [UTType] {
+        // Limit to built-in types to avoid requiring custom UTI declarations
         var seen = Set<String>()
-        let types = [UTType.markdownDocument] + UTType.markdownExtensions + [.plainText, .text]
+        let types: [UTType] = [.plainText, .text]
         return types.filter { seen.insert($0.identifier).inserted }
     }
 
     static var writableContentTypes: [UTType] {
-        [UTType.markdownDocument, .plainText, .text]
+        [.plainText, .text]
     }
 
     init(configuration: ReadConfiguration) throws {

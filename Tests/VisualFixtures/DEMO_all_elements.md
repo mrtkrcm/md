@@ -280,7 +280,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor i
 
 This text references something important[^1] and something else[^2].
 
-[^1]: First footnote with detailed explanation.
+[^1]: First footnote with detailed explanation.  
 [^2]: Second footnote with a [link](https://example.com).
 
 ## Definition-Style Content

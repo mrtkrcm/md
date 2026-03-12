@@ -42,6 +42,25 @@
                 XCTAssertEqual(heading.text, "Section Header")
             }
 
+            @MainActor
+            func testOutlineNavigationTargetPrefersHeadingIndex() {
+                let target = ReaderTextView.outlineNavigationTarget(from: [
+                    "headingIndex": 2,
+                    "lineIndex": 14,
+                ])
+
+                XCTAssertEqual(target, .heading(2))
+            }
+
+            @MainActor
+            func testOutlineNavigationTargetFallsBackToLineIndex() {
+                let target = ReaderTextView.outlineNavigationTarget(from: [
+                    "lineIndex": 14,
+                ])
+
+                XCTAssertEqual(target, .line(14))
+            }
+
             // MARK: - ReaderTextView Accessibility Tests
 
             @MainActor

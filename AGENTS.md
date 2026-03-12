@@ -5,7 +5,8 @@ Native macOS markdown viewer built with SwiftUI and AppKit (macOS 14+, Swift 6.0
 ## NON-NEGOTIABLE
 
 - Read files before editing. Make precise, minimal edits — no reformats of untouched code.
-- Run `just quality` before committing. All checks must pass.
+- Run `just quality` once before committing. All checks must pass.
+- Do not run `just quality` or the full test suite on every iteration. During development, run only the narrowest relevant check, and if one test fails, rerun only that test or the smallest relevant test group until it passes.
 - Never hardcode spacing, colors, or durations — use `DesignTokens` enum.
 - Never use `print()` or `NSLog()` — use `os_log` / `Logger`.
 - All colors must use Display P3 color space via `NativeThemePalette.p3Color`.
@@ -86,6 +87,13 @@ spacing via `NSParagraphStyle` (never literal newlines).
 Tests live in `mdviewer/Tests/mdviewerTests/`. 287 tests across:
 design system, frontmatter parsing, markdown rendering, visual regression,
 syntax highlighting, E2E, performance, and spacing stability.
+
+Iteration rule:
+- Use the smallest relevant test command first (`swift test --filter <TestName>`, `just test-unit`, `just test-visual`, etc.).
+- If a specific test fails, rerun only that test after each fix until it passes.
+- Do not rerun `just test` or `just quality` after every small change.
+- When implementing or changing a feature for interactive verification, run `just install-open` after each iteration unless the user explicitly says not to.
+- Run the full `just quality` gate only once, immediately before commit.
 
 Watch for regressions:
 - Double spacing in rendered output (→ `BlockSeparatorInjector`)

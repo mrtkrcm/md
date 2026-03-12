@@ -106,6 +106,50 @@
                 XCTAssertTrue(text.contains("Second quoted line"), "Second blockquote line must appear")
             }
 
+            func testTrailingSpacesRenderHardLineBreak() async {
+                let markdown = "Line one  \nLine two"
+                let request = RenderRequest(
+                    markdown: markdown,
+                    readerFontFamily: .newYork,
+                    readerFontSize: 16,
+                    codeFontSize: 14,
+                    appTheme: .basic,
+                    syntaxPalette: .midnight,
+                    colorScheme: .light,
+                    textSpacing: .balanced,
+                    readableWidth: ReaderColumnWidth.balanced.points,
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
+                )
+
+                let rendered = await MarkdownRenderService.shared.render(request)
+                let text = rendered.attributedString.string
+                XCTAssertTrue(text.contains("Line one\nLine two"))
+                XCTAssertFalse(text.contains("<br>"), "Hard breaks must not render as literal HTML")
+            }
+
+            func testBackslashRendersHardLineBreak() async {
+                let markdown = "Line one\\\nLine two"
+                let request = RenderRequest(
+                    markdown: markdown,
+                    readerFontFamily: .newYork,
+                    readerFontSize: 16,
+                    codeFontSize: 14,
+                    appTheme: .basic,
+                    syntaxPalette: .midnight,
+                    colorScheme: .light,
+                    textSpacing: .balanced,
+                    readableWidth: ReaderColumnWidth.balanced.points,
+                    showLineNumbers: false,
+                    typographyPreferences: TypographyPreferences()
+                )
+
+                let rendered = await MarkdownRenderService.shared.render(request)
+                let text = rendered.attributedString.string
+                XCTAssertTrue(text.contains("Line one\nLine two"))
+                XCTAssertFalse(text.contains("<br>"), "Backslash hard breaks must not render as literal HTML")
+            }
+
             func testHardBreakNotInjectedInsideCodeFence() async {
                 // Lines inside a fenced code block must not receive trailing "  " injection.
                 let markdown = """

@@ -233,6 +233,51 @@
                 XCTAssertNotNil(bg, "Inline code should have a background color attribute")
             }
 
+            func testFootnoteReferenceRendersAsSuperscriptMarker() async {
+                let markdown = """
+                Reference a note[^1].
+
+                [^1]: Footnote body.
+                """
+
+                let result = await rendered(markdown)
+                let ns = result.string as NSString
+                let footnoteLoc = ns.range(of: "1").location
+                let bodyLoc = ns.range(of: "Reference").location
+                XCTAssertNotEqual(footnoteLoc, NSNotFound)
+                XCTAssertNotEqual(bodyLoc, NSNotFound)
+
+                let footnoteFontSize = pointSize(at: footnoteLoc, in: result)
+                let bodyFontSize = pointSize(at: bodyLoc, in: result)
+                let baselineOffset = result.attribute(
+                    .baselineOffset,
+                    at: footnoteLoc,
+                    effectiveRange: nil
+                ) as? NSNumber
+
+                XCTAssertLessThan(footnoteFontSize, bodyFontSize, "Footnote marker should be smaller than body text")
+                XCTAssertGreaterThan(baselineOffset?.doubleValue ?? 0, 0, "Footnote marker should be raised")
+                XCTAssertFalse(
+                    result.string.contains("[^1]"),
+                    "Footnote references must not render raw markdown syntax"
+                )
+            }
+
+            func testFootnoteDefinitionDoesNotRenderRawSyntax() async {
+                let markdown = """
+                Reference a note[^1].
+
+                [^1]: Footnote with a [link](https://example.com).
+                """
+
+                let result = await rendered(markdown)
+                XCTAssertTrue(result.string.contains("Footnote with a link."))
+                XCTAssertFalse(
+                    result.string.contains("[^1]:"),
+                    "Footnote definition syntax must be removed from output"
+                )
+            }
+
             func testSwiftSyntaxHighlightingKeywordColor() async {
                 let markdown = """
                 ```swift
@@ -326,6 +371,53 @@
                     style?.paragraphSpacingBefore ?? 0,
                     0,
                     "Headings must have paragraphSpacingBefore > 0"
+                )
+            }
+
+            func testListItemWithHeadingSyntaxDoesNotBecomeRenderedHeading() async {
+                let markdown = """
+                ## Real Heading
+
+                - ## HTML Entities and Special Characters
+                - Plain list item
+                """
+
+                let result = await rendered(markdown)
+                let ns = result.string as NSString
+
+                let realHeadingLoc = ns.range(of: "Real Heading").location
+                let pseudoHeadingLoc = ns.range(of: "## HTML Entities and Special Characters").location
+                let plainItemLoc = ns.range(of: "Plain list item").location
+
+                XCTAssertNotEqual(realHeadingLoc, NSNotFound)
+                XCTAssertNotEqual(pseudoHeadingLoc, NSNotFound)
+                XCTAssertNotEqual(plainItemLoc, NSNotFound)
+
+                let realHeadingLevel = result.attribute(
+                    MarkdownRenderAttribute.headingLevel,
+                    at: realHeadingLoc,
+                    effectiveRange: nil
+                ) as? Int
+                let pseudoHeadingLevel = result.attribute(
+                    MarkdownRenderAttribute.headingLevel,
+                    at: pseudoHeadingLoc,
+                    effectiveRange: nil
+                ) as? Int
+
+                XCTAssertEqual(realHeadingLevel, 2, "Real heading should keep heading metadata")
+                XCTAssertNil(
+                    pseudoHeadingLevel,
+                    "List items that start with '- ##' must not become rendered heading anchors"
+                )
+                XCTAssertTrue(
+                    result.string.contains("## HTML Entities and Special Characters"),
+                    "List-contained heading syntax should remain visible as literal text"
+                )
+                XCTAssertEqual(
+                    pointSize(at: pseudoHeadingLoc, in: result),
+                    pointSize(at: plainItemLoc, in: result),
+                    accuracy: 0.1,
+                    "List-contained heading syntax should keep normal list-item typography"
                 )
             }
 

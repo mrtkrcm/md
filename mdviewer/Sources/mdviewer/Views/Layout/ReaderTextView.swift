@@ -76,6 +76,11 @@
     /// width and centers the column horizontally within the enclosing scroll view.
     @MainActor
     final class ReaderTextView: NSTextView, @unchecked Sendable {
+        enum OutlineNavigationTarget: Equatable {
+            case heading(Int)
+            case line(Int)
+        }
+
         var preferredReadableWidth: CGFloat = 720
         /// Minimum inset applied on each side of the content column. Drives both the
         /// minimum padding and the vertical top/bottom inset. Settable so the caller
@@ -160,8 +165,42 @@
 
         @objc
         private func handleJumpToLine(_ notification: Notification) {
-            guard let lineIndex = notification.userInfo?["lineIndex"] as? Int else { return }
-            jumpToLine(lineIndex)
+            guard let target = Self.outlineNavigationTarget(from: notification.userInfo) else { return }
+
+            switch target {
+            case .heading(let headingIndex):
+                if jumpToHeading(at: headingIndex) {
+                    return
+                }
+                if let lineIndex = notification.userInfo?["lineIndex"] as? Int {
+                    jumpToLine(lineIndex)
+                }
+            case .line(let lineIndex):
+                jumpToLine(lineIndex)
+            }
+        }
+
+        static func outlineNavigationTarget(from userInfo: [AnyHashable: Any]?) -> OutlineNavigationTarget? {
+            if let headingIndex = userInfo?["headingIndex"] as? Int {
+                return .heading(headingIndex)
+            }
+            if let lineIndex = userInfo?["lineIndex"] as? Int {
+                return .line(lineIndex)
+            }
+            return nil
+        }
+
+        private func jumpToHeading(at headingIndex: Int) -> Bool {
+            populateHeadingCacheIfNeeded()
+            guard headingIndex >= 0, headingIndex < headingInfos.count else { return false }
+
+            let heading = headingInfos[headingIndex]
+            currentHeadingIndex = headingIndex
+            setSelectedRange(heading.range)
+            scrollRangeToVisible(heading.range)
+            showFindIndicator(for: heading.range)
+            setAccessibilityValue("\(heading.text), heading level \(heading.level)")
+            return true
         }
 
         private func jumpToLine(_ lineIndex: Int) {
@@ -186,6 +225,28 @@
                 charIndex = NSMaxRange(range)
                 currentLine += 1
             }
+        }
+
+        private func populateHeadingCacheIfNeeded() {
+            guard headingInfos.isEmpty, let storage = textStorage, storage.length > 0 else { return }
+
+            var newHeadings: [HeadingInfo] = []
+            let fullRange = NSRange(location: 0, length: storage.length)
+            storage.enumerateAttribute(
+                MarkdownRenderAttribute.headingLevel,
+                in: fullRange,
+                options: []
+            ) { value, range, _ in
+                guard let level = value as? Int else { return }
+                let text = storage.attributedSubstring(from: range).string
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                newHeadings.append(HeadingInfo(range: range, level: level, text: text))
+            }
+
+            let sorted = newHeadings.sorted { $0.range.location < $1.range.location }
+            headingInfos = sorted
+            accessibilityHeadings = sorted.map { AccessibilityHeading(info: $0, parent: self) }
+            currentHeadingIndex = min(currentHeadingIndex, max(0, sorted.count - 1))
         }
 
         // MARK: - Accessibility Hierarchy

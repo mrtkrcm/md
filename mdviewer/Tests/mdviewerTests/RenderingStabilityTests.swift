@@ -484,6 +484,26 @@
                 XCTAssertTrue(mutable.string.contains("Emoji 😀 paragraph."))
                 XCTAssertTrue(mutable.string.contains("Next 😎 paragraph."))
             }
+
+            func testBlockSeparatorInjectorSeparatesTableCellsWithTabs() throws {
+                let markdown = """
+                | Name | Status |
+                | --- | --- |
+                | Parser | Done |
+                | Viewer | WIP |
+                """
+
+                let parsed = try MarkdownParser().parse(markdown)
+                let mutable = NSMutableAttributedString(attributedString: parsed)
+
+                BlockSeparatorInjector().injectSeparators(into: mutable)
+
+                XCTAssertEqual(
+                    mutable.string,
+                    "Name\tStatus\nParser\tDone\nViewer\tWIP",
+                    "Table cells should be separated with tabs and rows with newlines"
+                )
+            }
         }
     #endif
 #endif

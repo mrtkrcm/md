@@ -226,8 +226,8 @@ enum DesignTokens {
         enum Sidebar {
             /// Sidebar minimum width (220pt)
             static let minWidth: CGFloat = 220
-            /// Sidebar ideal width (260pt)
-            static let idealWidth: CGFloat = 260
+            /// Sidebar ideal width (300pt)
+            static let idealWidth: CGFloat = 300
             /// Sidebar maximum width (320pt)
             static let maxWidth: CGFloat = 320
             /// Sidebar responsive width factor (30% of container)

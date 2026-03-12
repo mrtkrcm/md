@@ -56,6 +56,42 @@
             var hr: [DecorationSpan] = []
         }
 
+        static func blockquoteDrawRect(
+            usedRect: CGRect,
+            origin: NSPoint,
+            containerWidth: CGFloat,
+            depth: Int
+        ) -> CGRect {
+            let nestingInset = CGFloat(max(0, depth - 1)) * 16
+            return CGRect(
+                x: origin.x + nestingInset,
+                y: usedRect.minY - 4,
+                width: max(0, containerWidth - nestingInset),
+                height: usedRect.height + 8
+            )
+        }
+
+        func invalidateDecorationCache() {
+            decorationCache = nil
+        }
+
+        override func processEditing(
+            for textStorage: NSTextStorage,
+            edited editMask: NSTextStorageEditActions,
+            range newCharRange: NSRange,
+            changeInLength delta: Int,
+            invalidatedRange invalidatedCharRange: NSRange
+        ) {
+            invalidateDecorationCache()
+            super.processEditing(
+                for: textStorage,
+                edited: editMask,
+                range: newCharRange,
+                changeInLength: delta,
+                invalidatedRange: invalidatedCharRange
+            )
+        }
+
         // MARK: - Drawing
 
         override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
@@ -170,12 +206,11 @@
                 }()
                 guard !rect.isNull else { continue }
 
-                let leftInset = CGFloat(depth - 1) * 16 + origin.x
-                let drawRect = CGRect(
-                    x: leftInset,
-                    y: rect.minY - 4,
-                    width: containerWidth - leftInset,
-                    height: rect.height + 8
+                let drawRect = Self.blockquoteDrawRect(
+                    usedRect: rect,
+                    origin: origin,
+                    containerWidth: containerWidth,
+                    depth: depth
                 )
 
                 ctx.saveGState()

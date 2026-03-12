@@ -407,10 +407,6 @@ struct FolderSidebarView: View {
             pointSize: DesignTokens.Typography.bodySmall,
             weight: .regular
         )
-        private static let checkmarkAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: DesignTokens.Typography.caption, weight: .bold),
-            .foregroundColor: NSColor.controlAccentColor,
-        ]
         private static let normalTextAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall),
             .foregroundColor: NSColor.secondaryLabelColor,
@@ -426,7 +422,6 @@ struct FolderSidebarView: View {
             .foregroundColor: NSColor.secondaryLabelColor,
             .paragraphStyle: paragraphStyle,
         ]
-        private static let checkmarkSize = ("✓" as NSString).size(withAttributes: checkmarkAttributes)
         private static let imageCache = NSCache<NSString, NSImage>()
 
         override var isFlipped: Bool { true }
@@ -524,17 +519,13 @@ struct FolderSidebarView: View {
                 currentBackgroundPath(in: rowRect).fill()
             }
 
-            let showsCheckmark = isCurrent && !row.isParentRow
-            let trailingInset = DesignTokens.Spacing.standard
+            let trailingInset = DesignTokens.Spacing.wide
             let labelLeading = iconRect.maxX + DesignTokens.Spacing.compact
-            let labelTrailing = showsCheckmark
-                ? trailingInset + Self.checkmarkSize.width + DesignTokens.Spacing.compact
-                : trailingInset
             let labelRect = NSRect(
                 x: labelLeading,
-                y: rowRect.minY,
-                width: max(0, rowRect.width - labelLeading - labelTrailing),
-                height: rowRect.height
+                y: rowRect.minY + floor((rowRect.height - textHeight(for: row, isCurrent: isCurrent)) / 2),
+                width: max(0, rowRect.width - labelLeading - trailingInset),
+                height: textHeight(for: row, isCurrent: isCurrent)
             )
 
             let iconColor = iconColor(for: row, isCurrent: isCurrent)
@@ -548,20 +539,9 @@ struct FolderSidebarView: View {
             }
 
             row.displayName.draw(
-                with: labelRect,
-                options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine],
-                attributes: textAttributes(for: row, isCurrent: isCurrent)
+                in: labelRect,
+                withAttributes: textAttributes(for: row, isCurrent: isCurrent)
             )
-
-            guard showsCheckmark else { return }
-
-            let checkRect = NSRect(
-                x: rowRect.maxX - trailingInset - Self.checkmarkSize.width,
-                y: rowRect.minY + floor((rowRect.height - Self.checkmarkSize.height) / 2),
-                width: Self.checkmarkSize.width,
-                height: Self.checkmarkSize.height
-            )
-            ("✓" as NSString).draw(in: checkRect, withAttributes: Self.checkmarkAttributes)
         }
 
         private func iconColor(for row: FolderSidebarRow, isCurrent: Bool) -> NSColor {
@@ -584,17 +564,21 @@ struct FolderSidebarView: View {
             )
         }
 
+        private func textHeight(for row: FolderSidebarRow, isCurrent: Bool) -> CGFloat {
+            ceil(row.displayName.size(withAttributes: textAttributes(for: row, isCurrent: isCurrent)).height)
+        }
+
         private func currentBackgroundPath(in bounds: NSRect) -> NSBezierPath {
             NSColor.selectedContentBackgroundColor
                 .withAlphaComponent(DesignTokens.Opacity.medium)
                 .setFill()
             return NSBezierPath(
                 roundedRect: bounds.insetBy(
-                    dx: DesignTokens.Spacing.standard,
-                    dy: DesignTokens.Spacing.tight / 2
+                    dx: DesignTokens.Component.Sidebar.rowHorizontalInset,
+                    dy: DesignTokens.Component.Sidebar.rowVerticalInset / 4
                 ),
-                xRadius: DesignTokens.CornerRadius.small,
-                yRadius: DesignTokens.CornerRadius.small
+                xRadius: DesignTokens.Component.Sidebar.rowCornerRadius,
+                yRadius: DesignTokens.Component.Sidebar.rowCornerRadius
             )
         }
 

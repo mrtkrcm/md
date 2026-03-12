@@ -203,6 +203,7 @@
                 let quoteLoc = (text.string as NSString).range(of: "A compact quote keeps transitions soft.").location
                 let codeLoc = (text.string as NSString).range(of: "let rhythm = true").location
                 let tableLoc = (text.string as NSString).range(of: "compact").location
+                let terminalTableLoc = (text.string as NSString).range(of: "stable").location
                 let afterTableLoc = (text.string as NSString).range(
                     of: "Spacing before this paragraph validates table-to-paragraph separation after row groups."
                 ).location
@@ -220,6 +221,7 @@
                 XCTAssertNotEqual(quoteLoc, NSNotFound)
                 XCTAssertNotEqual(codeLoc, NSNotFound)
                 XCTAssertNotEqual(tableLoc, NSNotFound)
+                XCTAssertNotEqual(terminalTableLoc, NSNotFound)
                 XCTAssertNotEqual(afterTableLoc, NSNotFound)
                 XCTAssertNotEqual(paragraphLoc, NSNotFound)
                 let bodyFontSize = CGFloat(16)
@@ -233,6 +235,7 @@
                 let quoteStyle = paragraphStyle(at: quoteLoc, in: text)
                 let codeStyle = paragraphStyle(at: codeLoc, in: text)
                 let tableRowStyle = paragraphStyle(at: tableLoc, in: text)
+                let terminalTableStyle = paragraphStyle(at: terminalTableLoc, in: text)
                 let afterTableStyle = paragraphStyle(at: afterTableLoc, in: text)
                 XCTAssertNotNil(h1Style)
                 XCTAssertNotNil(h2Style)
@@ -241,6 +244,7 @@
                 XCTAssertNotNil(quoteStyle)
                 XCTAssertNotNil(codeStyle)
                 XCTAssertNotNil(tableRowStyle)
+                XCTAssertNotNil(terminalTableStyle)
                 XCTAssertNotNil(afterTableStyle)
 
                 let expectedHeading1 = expectedSpacingForHeading(
@@ -326,6 +330,12 @@
                     tableRowStyle?.paragraphSpacingBefore ?? 0,
                     expectedTableSpacingBefore,
                     "Table rows should keep tuned pre-spacing"
+                )
+                XCTAssertEqual(
+                    terminalTableStyle?.paragraphSpacing ?? 0,
+                    expectedBodySpacing,
+                    accuracy: 0.01,
+                    "Final table row should restore full body spacing before the next block"
                 )
                 XCTAssertEqual(
                     afterTableStyle?.paragraphSpacing ?? 0,

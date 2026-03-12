@@ -29,14 +29,14 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
     /// These values are optimized for screen reading with macOS system fonts.
     /// Uses the "golden ratio" inspired scale for optimal readability.
     ///
-    /// - Compact: 1.52x (tight but readable, good for code/dense content)
-    /// - Balanced: 1.62x (approaches golden ratio, optimal for body text)
-    /// - Relaxed: 1.75x (generous, accessible, extended reading comfort)
+    /// - Compact: 1.08x (tightest)
+    /// - Balanced: 1.14x (default)
+    /// - Relaxed: 1.22x (most open)
     var lineHeightMultiplier: CGFloat {
         switch self {
-        case .compact: return 1.52
-        case .balanced: return 1.62
-        case .relaxed: return 1.75
+        case .compact: return 1.08
+        case .balanced: return 1.14
+        case .relaxed: return 1.22
         }
     }
 

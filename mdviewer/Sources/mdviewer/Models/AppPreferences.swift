@@ -30,6 +30,7 @@ final class AppPreferences {
     @ObservationIgnored private var _readerTextSpacing: ReaderTextSpacing
     @ObservationIgnored private var _readerColumnWidth: ReaderColumnWidth
     @ObservationIgnored private var _readerContentPadding: ReaderContentPadding
+    @ObservationIgnored private var _sidebarMode: SidebarMode
     @ObservationIgnored private var _showLineNumbers: Bool
     @ObservationIgnored private var _typographyPreferences: TypographyPreferences
     @ObservationIgnored private var _largeFileThreshold: LargeFileThreshold
@@ -166,6 +167,19 @@ final class AppPreferences {
         }
     }
 
+    var sidebarMode: SidebarMode {
+        get {
+            access(keyPath: \.sidebarMode)
+            return _sidebarMode
+        }
+        set {
+            withMutation(keyPath: \.sidebarMode) {
+                _sidebarMode = newValue
+                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.sidebarMode)
+            }
+        }
+    }
+
     var showLineNumbers: Bool {
         get {
             access(keyPath: \.showLineNumbers)
@@ -220,6 +234,7 @@ final class AppPreferences {
         static let readerTextSpacing = "readerTextSpacing"
         static let readerColumnWidth = "readerColumnWidth"
         static let readerContentPadding = "readerContentPadding"
+        static let sidebarMode = "sidebarMode"
         static let showLineNumbers = "showLineNumbers"
         static let typographyPreferences = "typographyPreferences"
         static let largeFileThreshold = "largeFileThreshold"
@@ -258,6 +273,7 @@ final class AppPreferences {
         _readerColumnWidth = ReaderColumnWidth(rawValue: ud.string(forKey: Keys.readerColumnWidth) ?? "") ?? .balanced
         _readerContentPadding = ReaderContentPadding(rawValue: ud.string(forKey: Keys.readerContentPadding) ?? "") ??
             .normal
+        _sidebarMode = SidebarMode(rawValue: ud.string(forKey: Keys.sidebarMode) ?? "") ?? .toc
         _showLineNumbers = ud.bool(forKey: Keys.showLineNumbers)
         if
             let data = ud.data(forKey: Keys.typographyPreferences),

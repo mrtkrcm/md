@@ -48,9 +48,7 @@ struct BlockSeparatorInjector: BlockSeparatorInjecting {
                 let prev = intents[i - 1].intent
 
                 if let sep = detectSeparator(prev: prev, curr: curr, newlineAttr: newlineAttr, tabAttr: tabAttr) {
-                    if sep == newlineAttr {
-                        mutations.append((currRange.location, newlineAttr))
-                    }
+                    mutations.append((currRange.location, sep))
                 }
             }
 

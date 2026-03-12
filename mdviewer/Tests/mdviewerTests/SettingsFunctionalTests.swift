@@ -129,6 +129,14 @@
                 XCTAssertEqual(preferences.readerMode, .raw)
             }
 
+            @MainActor
+            func testSidebarModeSetting() {
+                for mode in SidebarMode.allCases {
+                    preferences.sidebarMode = mode
+                    XCTAssertEqual(preferences.sidebarMode, mode)
+                }
+            }
+
             // MARK: - Code Settings Tests
 
             @MainActor
@@ -186,6 +194,7 @@
                 preferences.readerTextSpacing = .relaxed
                 preferences.readerColumnWidth = .wide
                 preferences.readerMode = .raw
+                preferences.sidebarMode = .folder
                 preferences.syntaxPalette = .sunset
                 preferences.codeFontSize = .large
                 preferences.largeFileThreshold = .mb10
@@ -198,6 +207,7 @@
                 XCTAssertEqual(preferences.readerTextSpacing, .relaxed)
                 XCTAssertEqual(preferences.readerColumnWidth, .wide)
                 XCTAssertEqual(preferences.readerMode, .raw)
+                XCTAssertEqual(preferences.sidebarMode, .folder)
                 XCTAssertEqual(preferences.syntaxPalette, .sunset)
                 XCTAssertEqual(preferences.codeFontSize, .large)
                 XCTAssertEqual(preferences.largeFileThreshold, .mb10)

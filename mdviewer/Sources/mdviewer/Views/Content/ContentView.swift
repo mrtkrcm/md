@@ -21,7 +21,7 @@ private let uiPerformanceLog = OSSignposter(subsystem: "mdviewer", category: "UI
 // MARK: - Content View
 
 /// Sidebar content mode.
-enum SidebarMode: String, CaseIterable {
+enum SidebarMode: String, CaseIterable, Sendable {
     case toc = "toc_view"
     case metadata = "metadata_view"
     case folder = "folder_view"
@@ -42,7 +42,7 @@ struct ContentView: View {
     @State private var showStartupWelcome = true
     @State private var openErrorMessage: String?
     @State private var showMetadataInspector = false
-    @State private var sidebarMode: SidebarMode = .folder
+    @State private var sidebarMode: SidebarMode = .toc
     @State private var showAppearancePopover = false
     @State private var sidebarWidth: CGFloat = DesignTokens.Component.Sidebar.idealWidth
     @State private var parseDebounceTask: Task<Void, Never>?
@@ -167,6 +167,11 @@ struct ContentView: View {
             }
             FolderSidebarPreloader.prewarmIfNeeded(fileURL: newURL)
         }
+        .onChange(of: sidebarMode) { _, newMode in
+            if preferences.sidebarMode != newMode {
+                preferences.sidebarMode = newMode
+            }
+        }
         .toolbar {
             contentToolbar(parsed: parsed)
         }
@@ -177,6 +182,9 @@ struct ContentView: View {
             }
             if windowReaderModeRaw.isEmpty {
                 windowReaderModeRaw = preferences.readerMode.rawValue
+            }
+            if sidebarMode != preferences.sidebarMode {
+                sidebarMode = preferences.sidebarMode
             }
             if !document.isEffectivelyEmpty {
                 showStartupWelcome = false
@@ -513,11 +521,14 @@ private struct InspectorSidebar: View {
     private var inspectorContent: some View {
         switch sidebarMode {
         case .toc:
-            TableOfContentsView(documentURL: currentFileURL) { lineIndex in
+            TableOfContentsView(documentURL: currentFileURL) { heading in
                 NotificationCenter.default.post(
                     name: NSNotification.Name("JumpToLine"),
                     object: nil,
-                    userInfo: ["lineIndex": lineIndex]
+                    userInfo: [
+                        "headingIndex": heading.headingIndex,
+                        "lineIndex": heading.lineIndex,
+                    ]
                 )
             }
         case .folder:

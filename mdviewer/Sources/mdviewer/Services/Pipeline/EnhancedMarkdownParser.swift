@@ -108,7 +108,7 @@
                     continue
                 }
 
-                result.append(line)
+                result.append(activeFence == nil ? escapeHeadingSyntaxInsideListItem(line) : line)
                 i += 1
             }
 
@@ -116,6 +116,25 @@
                 markdown: result.joined(separator: "\n"),
                 footnotes: footnotes
             )
+        }
+
+        private func escapeHeadingSyntaxInsideListItem(_ line: String) -> String {
+            let pattern = #"^(\s*(?:[-+*]|\d+[.)])\s+)(#{1,6})(?=\s)"#
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { return line }
+
+            let range = NSRange(line.startIndex ..< line.endIndex, in: line)
+            guard let match = regex.firstMatch(in: line, options: [], range: range) else { return line }
+            guard
+                let markerRange = Range(match.range(at: 1), in: line),
+                let hashesRange = Range(match.range(at: 2), in: line)
+            else {
+                return line
+            }
+
+            let marker = String(line[markerRange])
+            let hashes = String(line[hashesRange]).map { _ in "\\#" }.joined()
+            let suffix = String(line[hashesRange.upperBound...])
+            return marker + hashes + suffix
         }
 
         // MARK: - Post-processing

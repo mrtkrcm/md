@@ -13,7 +13,7 @@ internal import SwiftUI
 /// Displays a navigable table of contents for the current document.
 struct TableOfContentsView: View {
     let documentURL: URL?
-    let onSelectHeading: (Int) -> Void // Line number or character index
+    let onSelectHeading: (Heading) -> Void
 
     @State private var headings: [Heading] = []
     @State private var isLoading = false
@@ -71,7 +71,7 @@ struct TableOfContentsView: View {
                 LazyVStack(alignment: .leading, spacing: DesignTokens.Spacing.tight) {
                     ForEach(headings) { heading in
                         HeadingRow(heading: heading) {
-                            onSelectHeading(heading.lineIndex)
+                            onSelectHeading(heading)
                         }
                     }
                 }
@@ -86,6 +86,7 @@ struct TableOfContentsView: View {
         let id = UUID()
         let text: String
         let level: Int
+        let headingIndex: Int
         let lineIndex: Int
     }
 
@@ -94,6 +95,7 @@ struct TableOfContentsView: View {
             var results: [Heading] = []
             let lines = text.components(separatedBy: .newlines)
             var inCodeBlock = false
+            var headingIndex = 0
 
             for (index, line) in lines.enumerated() {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -123,7 +125,15 @@ struct TableOfContentsView: View {
                             let suffix = line[contentIndex...]
                             if suffix.hasPrefix(" ") {
                                 let headingText = suffix.trimmingCharacters(in: .whitespaces)
-                                results.append(Heading(text: headingText, level: level, lineIndex: index))
+                                results.append(
+                                    Heading(
+                                        text: headingText,
+                                        level: level,
+                                        headingIndex: headingIndex,
+                                        lineIndex: index
+                                    )
+                                )
+                                headingIndex += 1
                             }
                         }
                     }
@@ -139,7 +149,7 @@ struct TableOfContentsView: View {
 #if os(macOS)
     private struct TableOfContentsTableView: NSViewRepresentable {
         let headings: [TableOfContentsView.Heading]
-        let onSelectHeading: (Int) -> Void
+        let onSelectHeading: (TableOfContentsView.Heading) -> Void
 
         func makeCoordinator() -> Coordinator {
             Coordinator(onSelectHeading: onSelectHeading)
@@ -186,12 +196,12 @@ struct TableOfContentsView: View {
         @MainActor
         final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             var headings: [TableOfContentsView.Heading] = []
-            var onSelectHeading: (Int) -> Void
+            var onSelectHeading: (TableOfContentsView.Heading) -> Void
             weak var tableView: HoverTrackingTableView?
             private var hoveredRow = -1
             private var applyingSelection = false
 
-            init(onSelectHeading: @escaping (Int) -> Void) {
+            init(onSelectHeading: @escaping (TableOfContentsView.Heading) -> Void) {
                 self.onSelectHeading = onSelectHeading
             }
 
@@ -254,7 +264,7 @@ struct TableOfContentsView: View {
                 guard row >= 0, row < headings.count else { return }
 
                 applyingSelection = true
-                onSelectHeading(headings[row].lineIndex)
+                onSelectHeading(headings[row])
                 tableView.deselectAll(nil)
                 applyingSelection = false
             }

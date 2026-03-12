@@ -374,6 +374,53 @@
                 )
             }
 
+            func testListItemWithHeadingSyntaxDoesNotBecomeRenderedHeading() async {
+                let markdown = """
+                ## Real Heading
+
+                - ## HTML Entities and Special Characters
+                - Plain list item
+                """
+
+                let result = await rendered(markdown)
+                let ns = result.string as NSString
+
+                let realHeadingLoc = ns.range(of: "Real Heading").location
+                let pseudoHeadingLoc = ns.range(of: "## HTML Entities and Special Characters").location
+                let plainItemLoc = ns.range(of: "Plain list item").location
+
+                XCTAssertNotEqual(realHeadingLoc, NSNotFound)
+                XCTAssertNotEqual(pseudoHeadingLoc, NSNotFound)
+                XCTAssertNotEqual(plainItemLoc, NSNotFound)
+
+                let realHeadingLevel = result.attribute(
+                    MarkdownRenderAttribute.headingLevel,
+                    at: realHeadingLoc,
+                    effectiveRange: nil
+                ) as? Int
+                let pseudoHeadingLevel = result.attribute(
+                    MarkdownRenderAttribute.headingLevel,
+                    at: pseudoHeadingLoc,
+                    effectiveRange: nil
+                ) as? Int
+
+                XCTAssertEqual(realHeadingLevel, 2, "Real heading should keep heading metadata")
+                XCTAssertNil(
+                    pseudoHeadingLevel,
+                    "List items that start with '- ##' must not become rendered heading anchors"
+                )
+                XCTAssertTrue(
+                    result.string.contains("## HTML Entities and Special Characters"),
+                    "List-contained heading syntax should remain visible as literal text"
+                )
+                XCTAssertEqual(
+                    pointSize(at: pseudoHeadingLoc, in: result),
+                    pointSize(at: plainItemLoc, in: result),
+                    accuracy: 0.1,
+                    "List-contained heading syntax should keep normal list-item typography"
+                )
+            }
+
             // MARK: - Themes
 
             func testDarkModeCodeBackgroundDifferentFromLight() async {

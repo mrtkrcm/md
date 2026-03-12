@@ -205,10 +205,15 @@ struct TypographyApplier: TypographyApplying {
                 var isHeading = false
                 var headingLevel = 0
                 var isBlockQuote = false
+                let hasListItem = intent.components.contains {
+                    if case .listItem = $0.kind { return true }
+                    return false
+                }
 
                 for component in intent.components {
                     switch component.kind {
                     case .header(let level):
+                        guard !hasListItem else { continue }
                         isHeading = true
                         headingLevel = level
                         applyHeadingStyle(to: text, range: range, request: request, level: level, palette: palette)

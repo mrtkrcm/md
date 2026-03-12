@@ -1,6 +1,6 @@
 # mdviewer
 
-<!-- Repository purpose: mdviewer is a native macOS app for viewing and navigating Markdown documents with SwiftUI and AppKit-backed rendering. -->
+<!-- Repository purpose: mdviewer is a native macOS Markdown viewer for reading and navigating documents with SwiftUI and AppKit-backed rendering. -->
 
 Native macOS markdown viewer built with SwiftUI and AppKit-backed rendering.
 

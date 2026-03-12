@@ -223,14 +223,21 @@ struct TypographyApplier: TypographyApplying {
                     case .unorderedList, .orderedList:
                         applyListParagraphStyle(to: text, range: range, request: request)
                     case .tableHeaderRow:
-                        applyTableHeaderStyle(to: text, range: range, request: request, palette: palette)
+                        applyTableHeaderStyle(
+                            to: text,
+                            range: range,
+                            request: request,
+                            palette: palette,
+                            isTerminalInTable: isTerminalTableSegment(in: text, range: range, intent: intent)
+                        )
                     case .tableRow(let rowIndex):
                         applyTableRowStyle(
                             to: text,
                             range: range,
                             rowIndex: rowIndex,
                             request: request,
-                            palette: palette
+                            palette: palette,
+                            isTerminalInTable: isTerminalTableSegment(in: text, range: range, intent: intent)
                         )
                     default: break
                     }
@@ -345,7 +352,8 @@ struct TypographyApplier: TypographyApplying {
         to text: NSMutableAttributedString,
         range: NSRange,
         request: RenderRequest,
-        palette: NativeThemePalette
+        palette: NativeThemePalette,
+        isTerminalInTable: Bool
     ) {
         text.addAttributes([
             .font: request.readerFontFamily.nsFont(size: request.readerFontSize, weight: .semibold),
@@ -354,7 +362,12 @@ struct TypographyApplier: TypographyApplying {
             MarkdownRenderAttribute.tableBorder: palette.formattedTableBorder(),
             MarkdownRenderAttribute.tableColumnDividerOpacity: palette.tableColumnDividerOpacityMultiplier(),
         ], range: range)
-        applyTableRowParagraphStyle(to: text, range: range, request: request)
+        applyTableRowParagraphStyle(
+            to: text,
+            range: range,
+            request: request,
+            isTerminalInTable: isTerminalInTable
+        )
     }
 
     private func applyTableRowStyle(
@@ -362,7 +375,8 @@ struct TypographyApplier: TypographyApplying {
         range: NSRange,
         rowIndex: Int,
         request: RenderRequest,
-        palette: NativeThemePalette
+        palette: NativeThemePalette,
+        isTerminalInTable: Bool
     ) {
         let isAlternating = rowIndex % 2 == 0
         if isAlternating {
@@ -378,7 +392,12 @@ struct TypographyApplier: TypographyApplying {
             MarkdownRenderAttribute.tableBorder: palette.formattedTableBorder(),
             MarkdownRenderAttribute.tableColumnDividerOpacity: palette.tableColumnDividerOpacityMultiplier(),
         ], range: range)
-        applyTableRowParagraphStyle(to: text, range: range, request: request)
+        applyTableRowParagraphStyle(
+            to: text,
+            range: range,
+            request: request,
+            isTerminalInTable: isTerminalInTable
+        )
     }
 
     private func applyFootnoteReferenceStyle(
@@ -466,12 +485,14 @@ struct TypographyApplier: TypographyApplying {
     private func applyTableRowParagraphStyle(
         to text: NSMutableAttributedString,
         range: NSRange,
-        request: RenderRequest
+        request: RenderRequest,
+        isTerminalInTable: Bool
     ) {
-        let cellSpacing = max(5, request.textSpacing.paragraphSpacing(for: request.readerFontSize) * 0.28)
+        let bodySpacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
+        let cellSpacing = max(5, bodySpacing * 0.28)
         let style = createBaseParagraphStyle(
             lineSpacing: max(2, request.textSpacing.lineSpacing(for: request.readerFontSize) * 0.9),
-            paragraphSpacing: cellSpacing,
+            paragraphSpacing: isTerminalInTable ? bodySpacing : cellSpacing,
             paragraphSpacingBefore: cellSpacing * 0.5,
             alignment: request.typographyPreferences.justification.nsAlignment
         )
@@ -485,6 +506,59 @@ struct TypographyApplier: TypographyApplying {
         style.headIndent = 16
         style.firstLineHeadIndent = 16
         text.addAttribute(.paragraphStyle, value: style, range: range)
+    }
+
+    private func isTerminalTableSegment(
+        in text: NSAttributedString,
+        range: NSRange,
+        intent: PresentationIntent
+    ) -> Bool {
+        guard let currentTable = tableInfo(from: intent) else { return false }
+
+        var location = NSMaxRange(range)
+        while location < text.length {
+            var effectiveRange = NSRange(location: 0, length: 0)
+            let nextValue = text.attribute(
+                MarkdownRenderAttribute.presentationIntent,
+                at: location,
+                effectiveRange: &effectiveRange
+            )
+
+            if let nextIntent = nextValue as? PresentationIntent {
+                guard let nextTable = tableInfo(from: nextIntent) else { return true }
+                if nextTable.row == currentTable.row, nextTable.isHeader == currentTable.isHeader {
+                    location = max(location + 1, NSMaxRange(effectiveRange))
+                    continue
+                }
+                return false
+            }
+
+            location = effectiveRange.length > 0 ? max(location + 1, NSMaxRange(effectiveRange)) : location + 1
+        }
+
+        return true
+    }
+
+    private func tableInfo(from intent: PresentationIntent) -> (row: Int, isHeader: Bool)? {
+        var row = -2
+        var isHeader = false
+        var isTable = false
+
+        for component in intent.components {
+            switch component.kind {
+            case .tableCell:
+                isTable = true
+            case .tableRow(let rowIndex):
+                row = rowIndex
+            case .tableHeaderRow:
+                isHeader = true
+                row = -1
+            default:
+                break
+            }
+        }
+
+        return isTable ? (row, isHeader) : nil
     }
 
     private func applyHeadingParagraphStyle(

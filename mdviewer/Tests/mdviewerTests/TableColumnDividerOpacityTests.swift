@@ -150,7 +150,7 @@
 
             func testTableRowParagraphSpacingIsScaledWithFontSize() async {
                 // Cell spacing follows the table row clamp formula used by TypographyApplier.
-                let markdown = "| Col |\n| --- |\n| Cell |"
+                let markdown = "| Col |\n| --- |\n| Cell |\n| Tail |"
                 let result = await rendered(markdown, theme: .github, scheme: .light)
                 let ns = result.string as NSString
                 let loc = ns.range(of: "Cell").location
@@ -169,6 +169,30 @@
                     style?.paragraphSpacingBefore ?? 0,
                     0,
                     "paragraphSpacingBefore must be positive — cells need symmetric top cushion"
+                )
+            }
+
+            func testTerminalTableRowUsesBodyParagraphSpacingForExitRhythm() async {
+                let markdown = """
+                | Col |
+                | --- |
+                | Cell |
+                | Tail |
+
+                After table.
+                """
+                let result = await rendered(markdown, theme: .github, scheme: .light)
+                let ns = result.string as NSString
+                let loc = ns.range(of: "Tail").location
+                XCTAssertNotEqual(loc, NSNotFound, "Terminal table row text must appear in rendered output")
+
+                let style = result.attribute(.paragraphStyle, at: loc, effectiveRange: nil) as? NSParagraphStyle
+                XCTAssertNotNil(style, "Terminal table rows must carry a paragraph style attribute")
+                XCTAssertEqual(
+                    style?.paragraphSpacing ?? 0,
+                    ReaderTextSpacing.balanced.paragraphSpacing(for: 17),
+                    accuracy: 0.001,
+                    "Terminal table rows should restore full body spacing before the next block"
                 )
             }
         }

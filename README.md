@@ -1,5 +1,7 @@
 # mdviewer
 
+<!-- This repository contains mdviewer, a native macOS app for viewing and navigating Markdown documents. -->
+
 Native macOS markdown viewer built with SwiftUI and AppKit-backed rendering.
 
 ## Requirements

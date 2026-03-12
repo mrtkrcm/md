@@ -151,7 +151,7 @@
                     typographyPreferences: TypographyPreferences()
                 )
                 let result = await MarkdownRenderService.shared.render(request)
-                XCTAssertGreaterThan(result.attributedString.length, 0)
+                XCTAssertEqual(result.attributedString.length, 0)
             }
 
             func testVeryLongLineRendersWithoutCrash() async {

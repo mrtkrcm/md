@@ -273,6 +273,15 @@ struct TypographyApplier: TypographyApplying {
                     )
                 }
             }
+
+        text.enumerateAttribute(
+            MarkdownRenderAttribute.footnoteReference,
+            in: fullRange,
+            options: []
+        ) { value, range, _ in
+            guard value != nil else { return }
+            applyFootnoteReferenceStyle(to: text, range: range, request: request)
+        }
     }
 
     // MARK: - Component Stylers
@@ -370,6 +379,22 @@ struct TypographyApplier: TypographyApplying {
             MarkdownRenderAttribute.tableColumnDividerOpacity: palette.tableColumnDividerOpacityMultiplier(),
         ], range: range)
         applyTableRowParagraphStyle(to: text, range: range, request: request)
+    }
+
+    private func applyFootnoteReferenceStyle(
+        to text: NSMutableAttributedString,
+        range: NSRange,
+        request: RenderRequest
+    ) {
+        let pointSize = max(DesignTokens.Typography.caption, request.readerFontSize * 0.68)
+        let footnoteFont = request.readerFontFamily.nsFont(size: pointSize)
+        text.addAttributes(
+            [
+                .font: footnoteFont,
+                .baselineOffset: round(request.readerFontSize * 0.24),
+            ],
+            range: range
+        )
     }
 
     // MARK: - Paragraph Styles

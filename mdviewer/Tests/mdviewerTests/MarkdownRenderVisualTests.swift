@@ -233,6 +233,51 @@
                 XCTAssertNotNil(bg, "Inline code should have a background color attribute")
             }
 
+            func testFootnoteReferenceRendersAsSuperscriptMarker() async {
+                let markdown = """
+                Reference a note[^1].
+
+                [^1]: Footnote body.
+                """
+
+                let result = await rendered(markdown)
+                let ns = result.string as NSString
+                let footnoteLoc = ns.range(of: "1").location
+                let bodyLoc = ns.range(of: "Reference").location
+                XCTAssertNotEqual(footnoteLoc, NSNotFound)
+                XCTAssertNotEqual(bodyLoc, NSNotFound)
+
+                let footnoteFontSize = pointSize(at: footnoteLoc, in: result)
+                let bodyFontSize = pointSize(at: bodyLoc, in: result)
+                let baselineOffset = result.attribute(
+                    .baselineOffset,
+                    at: footnoteLoc,
+                    effectiveRange: nil
+                ) as? NSNumber
+
+                XCTAssertLessThan(footnoteFontSize, bodyFontSize, "Footnote marker should be smaller than body text")
+                XCTAssertGreaterThan(baselineOffset?.doubleValue ?? 0, 0, "Footnote marker should be raised")
+                XCTAssertFalse(
+                    result.string.contains("[^1]"),
+                    "Footnote references must not render raw markdown syntax"
+                )
+            }
+
+            func testFootnoteDefinitionDoesNotRenderRawSyntax() async {
+                let markdown = """
+                Reference a note[^1].
+
+                [^1]: Footnote with a [link](https://example.com).
+                """
+
+                let result = await rendered(markdown)
+                XCTAssertTrue(result.string.contains("Footnote with a link."))
+                XCTAssertFalse(
+                    result.string.contains("[^1]:"),
+                    "Footnote definition syntax must be removed from output"
+                )
+            }
+
             func testSwiftSyntaxHighlightingKeywordColor() async {
                 let markdown = """
                 ```swift

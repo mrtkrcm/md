@@ -102,4 +102,10 @@ enum MarkdownRenderAttribute {
     /// Value is an `Int` (1-6) indicating the heading level for accessibility navigation.
     /// Used by accessibility rotor to enable heading-based navigation.
     static let headingLevel = NSAttributedString.Key("mdv.headingLevel")
+
+    /// Key indicating an inline footnote reference marker.
+    ///
+    /// Value is the rendered footnote label text. TypographyApplier uses this to
+    /// apply superscript styling after the base body font pass.
+    static let footnoteReference = NSAttributedString.Key("mdv.footnoteReference")
 }

@@ -149,7 +149,7 @@
             // MARK: - Cell spacing
 
             func testTableRowParagraphSpacingIsScaledWithFontSize() async {
-                // Cell spacing must scale with font size and exceed the legacy fixed 5pt value.
+                // Cell spacing follows the table row clamp formula used by TypographyApplier.
                 let markdown = "| Col |\n| --- |\n| Cell |"
                 let result = await rendered(markdown, theme: .github, scheme: .light)
                 let ns = result.string as NSString
@@ -158,11 +158,12 @@
 
                 let style = result.attribute(.paragraphStyle, at: loc, effectiveRange: nil) as? NSParagraphStyle
                 XCTAssertNotNil(style, "Table rows must carry a paragraph style attribute")
-                // Standard font size (17pt): cellSpacing = max(6, 17 × 0.36) ≈ 6.12pt
-                XCTAssertGreaterThan(
+                let expectedSpacing = max(5, ReaderTextSpacing.balanced.paragraphSpacing(for: 17) * 0.28)
+                XCTAssertEqual(
                     style?.paragraphSpacing ?? 0,
-                    5,
-                    "paragraphSpacing must exceed the previous fixed 5pt value"
+                    expectedSpacing,
+                    accuracy: 0.001,
+                    "paragraphSpacing must match the table row spacing formula"
                 )
                 XCTAssertGreaterThan(
                     style?.paragraphSpacingBefore ?? 0,

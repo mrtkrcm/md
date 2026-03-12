@@ -15,18 +15,18 @@
         // MARK: - ReaderTextSpacing.lineSpacing(for:)
 
         func testLineSpacingCompactAt16pt() {
-            // compact: 16 * 1.52 - 16 = 8.32
-            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 8.32, accuracy: 0.001)
+            // compact: 16 * 1.08 - 16 = 1.28
+            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 1.28, accuracy: 0.001)
         }
 
         func testLineSpacingBalancedAt16pt() {
-            // balanced: 16 * 1.62 - 16 = 9.92
-            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 9.92, accuracy: 0.001)
+            // balanced: 16 * 1.14 - 16 = 2.24
+            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 2.24, accuracy: 0.001)
         }
 
         func testLineSpacingRelaxedAt16pt() {
-            // relaxed: 16 * 1.75 - 16 = 12.0
-            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 12.0, accuracy: 0.001)
+            // relaxed: 16 * 1.22 - 16 = 3.52
+            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 3.52, accuracy: 0.001)
         }
 
         func testLineSpacingNeverNegative() {
@@ -61,18 +61,18 @@
         // MARK: - ReaderTextSpacing.paragraphSpacing(for:)
 
         func testParagraphSpacingCompactAt16pt() {
-            // 16*1.52=24.32; 24.32*0.5=12.16
-            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 12.16, accuracy: 0.001)
+            // 16*1.08=17.28; 17.28*0.5=8.64
+            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 8.64, accuracy: 0.001)
         }
 
         func testParagraphSpacingBalancedAt16pt() {
-            // 16*1.62=25.92; 25.92*0.75=19.44
-            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 19.44, accuracy: 0.001)
+            // 16*1.14=18.24; 18.24*0.75=13.68
+            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 13.68, accuracy: 0.001)
         }
 
         func testParagraphSpacingRelaxedAt16pt() {
-            // 16*1.75=28.0; 28.0*1.0=28.0
-            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 28.0, accuracy: 0.001)
+            // 16*1.22=19.52; 19.52*1.0=19.52
+            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 19.52, accuracy: 0.001)
         }
 
         func testParagraphSpacingOrderPreserved() {

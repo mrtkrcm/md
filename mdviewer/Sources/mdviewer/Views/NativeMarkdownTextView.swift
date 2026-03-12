@@ -195,8 +195,15 @@ internal import SwiftUI
                 // setAttributedString / layout so they don't produce dropped frames.
                 CATransaction.begin()
                 CATransaction.setDisableActions(true)
+                (textView.layoutManager as? ReaderLayoutManager)?.invalidateDecorationCache()
                 textView.textStorage?.setAttributedString(rendered.attributedString)
                 textView.updateContainerGeometry()
+                if let storage = textView.textStorage {
+                    textView.layoutManager?.invalidateDisplay(
+                        forCharacterRange: NSRange(location: 0, length: storage.length)
+                    )
+                }
+                textView.needsDisplay = true
                 CATransaction.commit()
 
                 // Update accessibility value with document info

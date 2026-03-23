@@ -207,25 +207,16 @@ struct FolderSidebarView: View {
 
     private var headerView: some View {
         HStack(alignment: .center, spacing: DesignTokens.Spacing.compact) {
-            Image(systemName: "folder.fill")
-                .font(.system(size: DesignTokens.Typography.bodySmall))
-                .foregroundStyle(Color(nsColor: .controlAccentColor))
-
             Text(viewModel.currentFolderName)
-                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
+                .font(.system(size: DesignTokens.Typography.small, weight: .medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.secondary)
 
-            Spacer(minLength: DesignTokens.Component.Sidebar.rowTrailingSpacer)
-
-            Text("\(viewModel.totalItemCount)")
-                .font(.system(size: DesignTokens.Typography.caption, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .monospacedDigit()
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, DesignTokens.Component.Sidebar.contentInset)
-        .padding(.vertical, DesignTokens.Spacing.standard)
+        .padding(.horizontal, DesignTokens.Spacing.relaxed)
+        .padding(.vertical, DesignTokens.Spacing.compact)
     }
 
     @ViewBuilder
@@ -385,7 +376,7 @@ struct FolderSidebarView: View {
 
     private final class FolderSidebarCanvasView: NSView {
         private static let rowHeight = DesignTokens.Component.Sidebar.rowHeight
-        private static let iconSize: CGFloat = 18
+        private static let iconSize: CGFloat = 16
         private static let paragraphStyle: NSParagraphStyle = {
             let style = NSMutableParagraphStyle()
             style.lineBreakMode = .byTruncatingMiddle
@@ -393,8 +384,8 @@ struct FolderSidebarView: View {
         }()
 
         private static let symbolConfiguration = NSImage.SymbolConfiguration(
-            pointSize: DesignTokens.Typography.bodySmall,
-            weight: .regular
+            pointSize: DesignTokens.Typography.small,
+            weight: .light
         )
         private static let normalTextAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall),
@@ -543,13 +534,9 @@ struct FolderSidebarView: View {
             )
 
             if isCurrent {
-                let currentBackgroundPath = currentBackgroundPath(in: rowRect)
-                currentBackgroundPath.fill()
-                currentBackgroundPath.stroke()
+                currentBackgroundPath(in: rowRect).fill()
             } else if isHovered {
-                let hoverBackgroundPath = hoverBackgroundPath(in: rowRect)
-                hoverBackgroundPath.fill()
-                hoverBackgroundPath.stroke()
+                hoverBackgroundPath(in: rowRect).fill()
             }
 
             let trailingInset = DesignTokens.Spacing.wide
@@ -602,9 +589,9 @@ struct FolderSidebarView: View {
 
         private func iconColor(for row: FolderSidebarRow, isCurrent: Bool) -> NSColor {
             if row.isDirectoryLike {
-                return NSColor.controlAccentColor
+                return .secondaryLabelColor
             }
-            return isCurrent ? NSColor.labelColor : .secondaryLabelColor
+            return isCurrent ? .secondaryLabelColor : .tertiaryLabelColor
         }
 
         private func textAttributes(for row: FolderSidebarRow, isCurrent: Bool) -> [NSAttributedString.Key: Any] {
@@ -627,14 +614,12 @@ struct FolderSidebarView: View {
             let path = NSBezierPath(
                 roundedRect: bounds.insetBy(
                     dx: DesignTokens.Component.Sidebar.rowHorizontalInset,
-                    dy: DesignTokens.Component.Sidebar.rowVerticalInset / 4
+                    dy: DesignTokens.Component.Sidebar.rowVerticalInset / 2
                 ),
-                xRadius: DesignTokens.Component.Sidebar.rowCornerRadius,
-                yRadius: DesignTokens.Component.Sidebar.rowCornerRadius
+                xRadius: DesignTokens.CornerRadius.small,
+                yRadius: DesignTokens.CornerRadius.small
             )
             NSColor.controlAccentColor.withAlphaComponent(0.10).setFill()
-            NSColor.controlAccentColor.withAlphaComponent(0.18).setStroke()
-            path.lineWidth = DesignTokens.Component.Sidebar.hoverRingWidth
             return path
         }
 
@@ -642,14 +627,12 @@ struct FolderSidebarView: View {
             let path = NSBezierPath(
                 roundedRect: bounds.insetBy(
                     dx: DesignTokens.Component.Sidebar.rowHorizontalInset,
-                    dy: DesignTokens.Component.Sidebar.rowVerticalInset / 4
+                    dy: DesignTokens.Component.Sidebar.rowVerticalInset / 2
                 ),
-                xRadius: DesignTokens.Component.Sidebar.rowCornerRadius,
-                yRadius: DesignTokens.Component.Sidebar.rowCornerRadius
+                xRadius: DesignTokens.CornerRadius.small,
+                yRadius: DesignTokens.CornerRadius.small
             )
             NSColor.labelColor.withAlphaComponent(0.04).setFill()
-            NSColor.separatorColor.withAlphaComponent(0.08).setStroke()
-            path.lineWidth = DesignTokens.Component.Sidebar.hoverRingWidth
             return path
         }
 

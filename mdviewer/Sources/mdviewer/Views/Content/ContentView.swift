@@ -484,7 +484,7 @@ private struct InspectorSidebar: View {
             maxHeight: .infinity,
             alignment: .top
         )
-        .background(sidebarPanelBackground)
+        .modifier(SidebarPanelBackgroundModifier())
         .overlay(alignment: .leading) {
             sidebarLeadingEdge
         }
@@ -519,94 +519,30 @@ private struct InspectorSidebar: View {
     }
 
     private var inspectorHeader: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .trailing) {
-                InspectorSidebarModeControl(sidebarMode: $sidebarMode)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.trailing, DesignTokens.Component.Button.heightSmall)
+        HStack(spacing: 0) {
+            InspectorSidebarModeControl(sidebarMode: $sidebarMode)
+                .fixedSize(horizontal: true, vertical: false)
 
-                InspectorSidebarIconButton(systemImage: "xmark", accessibilityLabel: "Close Inspector") {
-                    isPresented = false
-                }
-                .accessibilityHint("Close the inspector panel")
+            Spacer(minLength: DesignTokens.Spacing.compact)
+
+            InspectorSidebarIconButton(systemImage: "xmark", accessibilityLabel: "Close Inspector") {
+                isPresented = false
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, DesignTokens.Component.Sidebar.contentInset)
-            .padding(.top, DesignTokens.Component.Sidebar.contentInset)
-            .padding(.bottom, DesignTokens.Component.Sidebar.headerBottomPadding)
-            .background(headerBackground)
-
-            Rectangle()
-                .fill(sidebarDividerColor)
-                .frame(height: DesignTokens.Component.Sidebar.borderLineWidth)
-                .padding(.horizontal, DesignTokens.Component.Sidebar.contentInset)
-                .padding(.bottom, DesignTokens.Spacing.tight)
+            .accessibilityHint("Close the inspector panel")
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var headerBackground: some View {
-        RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
-            .fill(.thinMaterial)
-            .overlay {
-                RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
-                    .fill(sidebarTintColor.opacity(DesignTokens.Opacity.verySubtle))
-            }
-    }
-
-    private var sidebarPanelBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
-                .fill(.regularMaterial)
-
-            RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
-                .fill(sidebarSurfaceColor.opacity(DesignTokens.Opacity.light))
-
-            RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
-                .stroke(sidebarStrokeColor, lineWidth: DesignTokens.Component.Sidebar.borderLineWidth)
-        }
-        .padding(
-            EdgeInsets(
-                top: DesignTokens.Component.Sidebar.contentInset,
-                leading: 0,
-                bottom: DesignTokens.Component.Sidebar.contentInset,
-                trailing: DesignTokens.Component.Sidebar.contentInset
-            )
-        )
+        .padding(.horizontal, DesignTokens.Component.Sidebar.contentInset)
+        .padding(.top, DesignTokens.Spacing.standard)
+        .padding(.bottom, DesignTokens.Spacing.standard)
     }
 
     private var sidebarLeadingEdge: some View {
-        RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
-            .fill(sidebarDividerColor)
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor).opacity(colorScheme == .dark ? 0.12 : 0.2))
             .frame(width: DesignTokens.Component.Sidebar.borderLineWidth)
-            .padding(.vertical, DesignTokens.Component.Sidebar.contentInset)
     }
 
     private var sidebarClipShape: some Shape {
-        UnevenRoundedRectangle(
-            topLeadingRadius: DesignTokens.CornerRadius.small,
-            bottomLeadingRadius: DesignTokens.CornerRadius.small,
-            bottomTrailingRadius: DesignTokens.Component.Sidebar.panelCornerRadius,
-            topTrailingRadius: DesignTokens.Component.Sidebar.panelCornerRadius,
-            style: .continuous
-        )
-    }
-
-    private var sidebarSurfaceColor: Color {
-        Color(nsColor: colorScheme == .dark ? .windowBackgroundColor : .controlBackgroundColor)
-    }
-
-    private var sidebarTintColor: Color {
-        Color(nsColor: .controlAccentColor)
-    }
-
-    private var sidebarStrokeColor: Color {
-        Color(nsColor: .separatorColor).opacity(colorScheme == .dark ? 0.3 : 0.5)
-    }
-
-    private var sidebarDividerColor: Color {
-        Color(nsColor: .separatorColor).opacity(colorScheme == .dark ? 0.2 : 0.35)
+        Rectangle()
     }
 
     private func computeStats(text: String, url: URL?) async {
@@ -657,6 +593,22 @@ private struct InspectorSidebar: View {
     }
 }
 
+/// Background modifier that applies native Liquid Glass on macOS 26+,
+/// falling back to a clean material on older systems.
+private struct SidebarPanelBackgroundModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .glassEffect(.regular, in: .rect)
+        } else {
+            content
+                .background(.ultraThinMaterial)
+        }
+    }
+}
+
 private struct InspectorSidebarModeControl: View {
     @Binding var sidebarMode: SidebarMode
     @State private var hoveredMode: SidebarMode?
@@ -664,17 +616,14 @@ private struct InspectorSidebarModeControl: View {
 
     var body: some View {
         HStack(spacing: DesignTokens.Spacing.tight) {
-            modeButton(.toc, title: "Outline", systemImage: "list.bullet", accessibilityLabel: "Table of Contents")
-            modeButton(.metadata, title: "Info", systemImage: "info.circle", accessibilityLabel: "Metadata View")
-            modeButton(.folder, title: "Folder", systemImage: "folder", accessibilityLabel: "Folder View")
+            modeButton(.toc, systemImage: "list.bullet", accessibilityLabel: "Table of Contents")
+            modeButton(.metadata, systemImage: "info.circle", accessibilityLabel: "Metadata View")
+            modeButton(.folder, systemImage: "folder", accessibilityLabel: "Folder View")
         }
-        .padding(DesignTokens.Spacing.tight)
-        .background(modeControlBackground)
     }
 
     private func modeButton(
         _ mode: SidebarMode,
-        title: String,
         systemImage: String,
         accessibilityLabel: String
     ) -> some View {
@@ -684,21 +633,20 @@ private struct InspectorSidebarModeControl: View {
         return Button {
             sidebarMode = mode
         } label: {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, DesignTokens.Spacing.standard)
-                .padding(.vertical, DesignTokens.Spacing.comfortable)
-                .frame(minWidth: 0)
-                .foregroundStyle(isSelected ? selectedForegroundColor : .secondary)
+            Image(systemName: systemImage)
+                .font(.system(size: DesignTokens.Typography.bodySmall, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? .primary : .tertiary)
+                .frame(
+                    width: DesignTokens.Component.Button.heightSmall,
+                    height: DesignTokens.Component.Button.heightSmall
+                )
                 .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.medium, style: .continuous)
-                        .fill(backgroundColor(isSelected: isSelected, isHovered: isHovered))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.medium, style: .continuous)
-                                .stroke(borderColor(isSelected: isSelected), lineWidth: DesignTokens.Component.Sidebar.borderLineWidth)
-                        }
+                    RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small, style: .continuous)
+                        .fill(isSelected
+                            ? Color(nsColor: .controlAccentColor).opacity(colorScheme == .dark ? 0.14 : 0.10)
+                            : isHovered
+                            ? Color(nsColor: .labelColor).opacity(0.04)
+                            : Color.clear)
                 )
         }
         .buttonStyle(.plain)
@@ -706,39 +654,6 @@ private struct InspectorSidebarModeControl: View {
             hoveredMode = hovering ? mode : (hoveredMode == mode ? nil : hoveredMode)
         }
         .accessibilityLabel(accessibilityLabel)
-    }
-
-    private func backgroundColor(isSelected: Bool, isHovered: Bool) -> Color {
-        if isSelected {
-            return Color(nsColor: .controlAccentColor).opacity(colorScheme == .dark ? 0.18 : 0.12)
-        }
-        if isHovered {
-            return Color(nsColor: .labelColor).opacity(colorScheme == .dark ? 0.06 : 0.04)
-        }
-        return Color.clear
-    }
-
-    private func borderColor(isSelected: Bool) -> Color {
-        if isSelected {
-            return Color(nsColor: .controlAccentColor).opacity(colorScheme == .dark ? 0.22 : 0.18)
-        }
-        return Color.clear
-    }
-
-    private var selectedForegroundColor: Color {
-        .primary
-    }
-
-    private var modeControlBackground: some View {
-        RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.standard, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .overlay {
-                RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.standard, style: .continuous)
-                    .stroke(
-                        Color(nsColor: .separatorColor).opacity(colorScheme == .dark ? 0.2 : 0.3),
-                        lineWidth: DesignTokens.Component.Sidebar.borderLineWidth
-                    )
-            }
     }
 }
 
@@ -748,46 +663,23 @@ private struct InspectorSidebarIconButton: View {
     let action: () -> Void
 
     @State private var isHovered = false
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
-                .foregroundStyle(iconColor)
+                .font(.system(size: DesignTokens.Typography.small, weight: .medium))
+                .foregroundStyle(isHovered ? .secondary : .tertiary)
                 .frame(
                     width: DesignTokens.Component.Button.heightSmall,
                     height: DesignTokens.Component.Button.heightSmall
                 )
-                .background(
-                    Circle()
-                        .fill(backgroundColor)
-                        .overlay {
-                            Circle()
-                                .stroke(borderColor, lineWidth: DesignTokens.Component.Sidebar.borderLineWidth)
-                        }
-                )
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .onHover { hovering in
             isHovered = hovering
         }
         .accessibilityLabel(accessibilityLabel)
-    }
-
-    private var iconColor: Color {
-        isHovered ? .primary : .secondary
-    }
-
-    private var backgroundColor: Color {
-        if isHovered {
-            return Color(nsColor: .labelColor).opacity(colorScheme == .dark ? 0.08 : 0.05)
-        }
-        return Color.clear
-    }
-
-    private var borderColor: Color {
-        Color(nsColor: .separatorColor).opacity(colorScheme == .dark ? 0.15 : 0.2)
     }
 }
 

@@ -23,10 +23,6 @@ struct TableOfContentsView: View {
                 VStack {
                     Spacer()
                     ProgressView().controlSize(.small)
-                    Text("Loading Outline...")
-                        .font(.system(size: DesignTokens.Typography.bodySmall))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, DesignTokens.Spacing.tight)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
@@ -332,17 +328,38 @@ struct TableOfContentsView: View {
         }
     }
 
+    /// Uses native NSTextField + Auto Layout for pixel-perfect vertical centering
+    /// regardless of heading level font size. The text field handles its own
+    /// intrinsic content size, eliminating manual y-offset calculations.
     private final class HeadingCellView: NSTableCellView {
         static let reuseIdentifier = NSUserInterfaceItemIdentifier("HeadingCellView")
 
-        private static let rowHeight = DesignTokens.Component.Sidebar.rowHeight
         private static let baseIndent = DesignTokens.Spacing.relaxed
-        private static let paragraphStyle: NSParagraphStyle = {
-            let style = NSMutableParagraphStyle()
-            style.lineBreakMode = .byTruncatingTail
-            return style
+        private static let leadingPadding = DesignTokens.Component.Sidebar.rowHorizontalInset + DesignTokens.Spacing.compact
+        private static let trailingPadding = DesignTokens.Spacing.relaxed
+
+        private let label: NSTextField = {
+            let field = NSTextField(labelWithString: "")
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.cell?.lineBreakMode = .byTruncatingTail
+            field.maximumNumberOfLines = 1
+            field.isEditable = false
+            field.isSelectable = false
+            field.isBordered = false
+            field.drawsBackground = false
+            return field
         }()
 
+        private let hoverBackdrop: NSView = {
+            let view = NSView()
+            view.translatesAutoresizingMaskIntoConstraints = false
+            view.wantsLayer = true
+            view.layer?.cornerRadius = DesignTokens.CornerRadius.small
+            view.layer?.cornerCurve = .continuous
+            return view
+        }()
+
+        private var leadingConstraint: NSLayoutConstraint?
         private var currentHeading: TableOfContentsView.Heading?
         private var isHovered = false
 
@@ -356,133 +373,98 @@ struct TableOfContentsView: View {
             setup()
         }
 
-        override var intrinsicContentSize: NSSize {
-            NSSize(width: NSView.noIntrinsicMetric, height: Self.rowHeight)
-        }
-
         private func setup() {
-            wantsLayer = true
-            layer?.drawsAsynchronously = true
-            layerContentsRedrawPolicy = .onSetNeedsDisplay
+            addSubview(hoverBackdrop)
+            addSubview(label)
+            textField = label
+
+            let leading = label.leadingAnchor.constraint(
+                equalTo: leadingAnchor,
+                constant: Self.leadingPadding
+            )
+            leadingConstraint = leading
+
+            NSLayoutConstraint.activate([
+                // Hover backdrop
+                hoverBackdrop.leadingAnchor.constraint(
+                    equalTo: leadingAnchor,
+                    constant: DesignTokens.Component.Sidebar.rowHorizontalInset
+                ),
+                hoverBackdrop.trailingAnchor.constraint(
+                    equalTo: trailingAnchor,
+                    constant: -DesignTokens.Component.Sidebar.rowHorizontalInset
+                ),
+                hoverBackdrop.topAnchor.constraint(
+                    equalTo: topAnchor,
+                    constant: DesignTokens.Component.Sidebar.rowVerticalInset / 2
+                ),
+                hoverBackdrop.bottomAnchor.constraint(
+                    equalTo: bottomAnchor,
+                    constant: -DesignTokens.Component.Sidebar.rowVerticalInset / 2
+                ),
+                // Label
+                leading,
+                label.trailingAnchor.constraint(
+                    equalTo: trailingAnchor,
+                    constant: -Self.trailingPadding
+                ),
+                label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ])
+
+            hoverBackdrop.isHidden = true
         }
 
         func configure(heading: TableOfContentsView.Heading, isHovered: Bool) {
-            let needsUpdate = currentHeading != heading || self.isHovered != isHovered
-            guard needsUpdate else { return }
-
+            guard currentHeading != heading || self.isHovered != isHovered else { return }
             currentHeading = heading
             self.isHovered = isHovered
-            needsDisplay = true
+            applyState()
         }
 
         func setHovered(_ isHovered: Bool) {
             guard self.isHovered != isHovered else { return }
             self.isHovered = isHovered
-            needsDisplay = true
+            applyHoverState()
         }
 
-        override func draw(_ dirtyRect: NSRect) {
-            super.draw(dirtyRect)
+        private func applyState() {
+            guard let heading = currentHeading else { return }
 
-            guard let currentHeading else { return }
+            label.stringValue = heading.text
+            label.font = font(for: heading.level)
 
-            let backgroundRect = bounds.insetBy(
-                dx: DesignTokens.Component.Sidebar.rowHorizontalInset,
-                dy: DesignTokens.Component.Sidebar.rowVerticalInset / 2
-            )
-            if isHovered {
-                let hoverPath = hoverBackgroundPath(in: backgroundRect)
-                hoverPath.fill()
-                hoverPath.stroke()
-            }
+            let indent = CGFloat(max(heading.level - 1, 0)) * Self.baseIndent
+            leadingConstraint?.constant = Self.leadingPadding + indent
 
-            let indent = CGFloat(max(currentHeading.level - 1, 0)) * Self.baseIndent
-            let railRect = NSRect(
-                x: DesignTokens.Component.Sidebar.rowHorizontalInset + indent,
-                y: rowRectMidYAligned(in: backgroundRect, height: backgroundRect.height - DesignTokens.Spacing.tight),
-                width: DesignTokens.Component.Sidebar.hierarchyRailWidth,
-                height: backgroundRect.height - DesignTokens.Spacing.tight
-            )
-            let textRect = NSRect(
-                x: railRect.maxX + DesignTokens.Spacing.standard,
-                y: floor((bounds.height - DesignTokens.Typography.standard) / 2) - 1,
-                width: max(0, bounds.width - (DesignTokens.Spacing.extraWide * 2) - indent),
-                height: bounds.height
-            )
-
-            hierarchyRailColor(for: currentHeading.level).setFill()
-            let hierarchyPath = NSBezierPath(
-                roundedRect: railRect,
-                xRadius: DesignTokens.Component.Sidebar.hierarchyRailWidth,
-                yRadius: DesignTokens.Component.Sidebar.hierarchyRailWidth
-            )
-            hierarchyPath.fill()
-
-            currentHeading.text.draw(
-                with: textRect,
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: textAttributes(for: currentHeading)
-            )
+            applyHoverState()
         }
 
-        private func rowRectMidYAligned(in bounds: NSRect, height: CGFloat) -> CGFloat {
-            bounds.minY + floor((bounds.height - height) / 2)
-        }
+        private func applyHoverState() {
+            guard let heading = currentHeading else { return }
 
-        private func hoverBackgroundPath(in rect: NSRect) -> NSBezierPath {
-            let path = NSBezierPath(
-                roundedRect: rect,
-                xRadius: DesignTokens.Component.Sidebar.rowCornerRadius,
-                yRadius: DesignTokens.Component.Sidebar.rowCornerRadius
-            )
-            let fillColor = NativeThemePalette.p3Color(r: 0.92, g: 0.95, b: 0.99, a: 0.12)
-            let strokeColor = NativeThemePalette.p3Color(r: 0.78, g: 0.84, b: 0.94, a: 0.18)
-            fillColor.setFill()
-            strokeColor.setStroke()
-            path.lineWidth = DesignTokens.Component.Sidebar.hoverRingWidth
-            return path
-        }
-
-        private func hierarchyRailColor(for level: Int) -> NSColor {
-            switch level {
-            case 1:
-                return NSColor.controlAccentColor.withAlphaComponent(0.82)
-            case 2:
-                return NSColor.controlAccentColor.withAlphaComponent(0.58)
-            case 3:
-                return NativeThemePalette.p3Color(r: 0.66, g: 0.76, b: 0.88, a: 0.40)
-            default:
-                return NativeThemePalette.p3Color(r: 0.72, g: 0.79, b: 0.88, a: 0.28)
-            }
-        }
-
-        private func textAttributes(for heading: TableOfContentsView.Heading) -> [NSAttributedString.Key: Any] {
-            [
-                .font: font(for: heading.level),
-                .foregroundColor: isHovered ? NSColor.labelColor : textColor(for: heading.level),
-                .paragraphStyle: Self.paragraphStyle,
-            ]
+            label.textColor = isHovered ? .labelColor : textColor(for: heading.level)
+            hoverBackdrop.isHidden = !isHovered
+            hoverBackdrop.layer?.backgroundColor = isHovered
+                ? NSColor.labelColor.withAlphaComponent(0.04).cgColor
+                : nil
         }
 
         private func font(for level: Int) -> NSFont {
             switch level {
             case 1:
-                return NSFont.systemFont(ofSize: DesignTokens.Typography.standard, weight: .semibold)
+                return .systemFont(ofSize: DesignTokens.Typography.bodySmall, weight: .medium)
             case 2:
-                return NSFont.systemFont(ofSize: DesignTokens.Typography.standard, weight: .medium)
+                return .systemFont(ofSize: DesignTokens.Typography.bodySmall, weight: .regular)
             default:
-                return NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall, weight: .regular)
+                return .systemFont(ofSize: DesignTokens.Typography.small, weight: .regular)
             }
         }
 
         private func textColor(for level: Int) -> NSColor {
             switch level {
-            case 1:
-                return NSColor.labelColor
-            case 2:
-                return NSColor.secondaryLabelColor
-            default:
-                return NSColor.tertiaryLabelColor
+            case 1: .labelColor
+            case 2: .secondaryLabelColor
+            default: .tertiaryLabelColor
             }
         }
     }
@@ -495,39 +477,21 @@ private struct HeadingRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 0) {
-                RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.hierarchyRailWidth, style: .continuous)
-                    .fill(railColor)
-                    .frame(
-                        width: DesignTokens.Component.Sidebar.hierarchyRailWidth,
-                        height: DesignTokens.Component.Sidebar.rowHeight - DesignTokens.Spacing.standard
-                    )
-                    .padding(.leading, CGFloat(max(heading.level - 1, 0)) * DesignTokens.Spacing.relaxed)
-                    .padding(.trailing, DesignTokens.Spacing.standard)
-
-                Text(heading.text)
-                    .font(font)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .foregroundStyle(isHovered ? .primary : foregroundStyle)
-
-                Spacer()
-            }
-            .padding(.horizontal, DesignTokens.Component.Sidebar.rowHorizontalInset)
-            .frame(height: DesignTokens.Component.Sidebar.rowHeight)
-            .contentShape(Rectangle())
+            Text(heading.text)
+                .font(font)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .foregroundStyle(isHovered ? .primary : foregroundStyle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, CGFloat(max(heading.level - 1, 0)) * DesignTokens.Spacing.relaxed)
+                .padding(.horizontal, DesignTokens.Component.Sidebar.rowHorizontalInset + DesignTokens.Spacing.compact)
+                .frame(height: DesignTokens.Component.Sidebar.rowHeight)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(
-            RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.rowCornerRadius, style: .continuous)
-                .fill(isHovered ? hoverFillColor : Color.clear)
-                .overlay {
-                    RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.rowCornerRadius, style: .continuous)
-                        .stroke(
-                            isHovered ? hoverStrokeColor : Color.clear,
-                            lineWidth: DesignTokens.Component.Sidebar.hoverRingWidth
-                        )
-                }
+            RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small, style: .continuous)
+                .fill(isHovered ? Color(nsColor: .labelColor).opacity(0.04) : Color.clear)
                 .padding(.horizontal, DesignTokens.Component.Sidebar.rowHorizontalInset)
         )
         .onHover { hovering in
@@ -540,11 +504,11 @@ private struct HeadingRow: View {
     private var font: Font {
         switch heading.level {
         case 1:
-            return .system(size: DesignTokens.Typography.standard, weight: .semibold)
+            return .system(size: DesignTokens.Typography.bodySmall, weight: .medium)
         case 2:
-            return .system(size: DesignTokens.Typography.standard, weight: .medium)
-        default:
             return .system(size: DesignTokens.Typography.bodySmall)
+        default:
+            return .system(size: DesignTokens.Typography.small)
         }
     }
 
@@ -558,44 +522,17 @@ private struct HeadingRow: View {
             return Color(nsColor: .tertiaryLabelColor)
         }
     }
-
-    private var railColor: Color {
-        switch heading.level {
-        case 1:
-            return Color(nsColor: NSColor.controlAccentColor.withAlphaComponent(0.82))
-        case 2:
-            return Color(nsColor: NSColor.controlAccentColor.withAlphaComponent(0.58))
-        case 3:
-            return Color(nsColor: NativeThemePalette.p3Color(r: 0.66, g: 0.76, b: 0.88, a: 0.40))
-        default:
-            return Color(nsColor: NativeThemePalette.p3Color(r: 0.72, g: 0.79, b: 0.88, a: 0.28))
-        }
-    }
-
-    private var hoverFillColor: Color {
-        Color(nsColor: NativeThemePalette.p3Color(r: 0.92, g: 0.95, b: 0.99, a: 0.12))
-    }
-
-    private var hoverStrokeColor: Color {
-        Color(nsColor: NativeThemePalette.p3Color(r: 0.78, g: 0.84, b: 0.94, a: 0.18))
-    }
 }
 
 private struct EmptyToCState: View {
     var body: some View {
-        VStack(spacing: DesignTokens.Spacing.relaxed) {
-            Image(systemName: "list.bullet.rectangle.portrait")
-                .font(.system(size: 32))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
+        VStack(spacing: DesignTokens.Spacing.compact) {
+            Spacer()
             Text("No Headings")
-                .font(.headline)
-            Text("This document has no detected headings")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .font(.system(size: DesignTokens.Typography.bodySmall))
+                .foregroundStyle(.tertiary)
+            Spacer()
         }
-        .padding(DesignTokens.Spacing.extraLarge)
         .frame(maxWidth: .infinity)
     }
 }

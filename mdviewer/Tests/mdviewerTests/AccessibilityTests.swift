@@ -20,7 +20,6 @@
             func testContentToolbarHasAccessibilityLabels() {
                 let view = ContentToolbar(
                     readerMode: .constant(.rendered),
-                    showAppearancePopover: .constant(false),
                     showMetadataInspector: .constant(false),
                     sidebarMode: .constant(.metadata),
                     documentText: "test",
@@ -72,27 +71,6 @@
 
                 XCTAssertNotNil(openButton)
                 XCTAssertNotNil(starterButton)
-            }
-
-            // MARK: - AppearancePopoverView Accessibility Tests
-
-            @MainActor
-            func testAppearancePopoverHasAccessibilityLabels() {
-                let view = AppearancePopoverView(
-                    selectedTheme: .constant(.github),
-                    readerFontSize: .constant(.standard),
-                    readerFontFamily: .constant(.newYork),
-                    syntaxPalette: .constant(.midnight),
-                    codeFontSize: .constant(.medium),
-                    appearanceMode: .constant(.auto),
-                    readerTextSpacing: .constant(.balanced),
-                    readerColumnWidth: .constant(.balanced),
-                    readerContentPadding: .constant(.normal),
-                    showLineNumbers: .constant(true),
-                    typographyPreferences: .constant(TypographyPreferences())
-                )
-
-                XCTAssertNotNil(view)
             }
 
             @MainActor
@@ -164,7 +142,7 @@
                     "Rendered Mode",
                     "Raw Mode",
                     "Metadata Inspector",
-                    "Appearance Settings",
+                    "Settings",
                     "Share Document",
                     "Open File",
                     "Welcome to mdviewer",
@@ -175,7 +153,6 @@
                     "Reader Text Size",
                     "Reader Text Spacing",
                     "Reader Column Width",
-                    "Syntax Highlighting Palette",
                     "Code Font Size",
                     "Show Line Numbers",
                     "Markdown Source Editor",
@@ -195,7 +172,7 @@
                     "Show raw markdown source",
                     "Show or hide document metadata panel",
                     "No metadata available in this document",
-                    "Open appearance and theme settings",
+                    "Open app settings",
                     "Share the document text",
                     "Open a markdown file from disk",
                     "Create a new document with sample content",
@@ -232,7 +209,7 @@
                     "Switch to Raw Mode",
                     "Show Metadata Panel",
                     "Hide Metadata Panel",
-                    "Open Appearance Settings",
+                    "Open Settings",
                     "Open Document",
                     "Jump to Top",
                     "Jump to Bottom",

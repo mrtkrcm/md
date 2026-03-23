@@ -50,7 +50,7 @@ redundantReturn,\
 redundantSelf,\
 redundantType,\
 redundantTypedThrows,\
-sortedImports,\
+sortImports,\
 spaceAroundBraces,\
 spaceAroundBrackets,\
 spaceAroundComments,\
@@ -70,7 +70,6 @@ trailingSpace,\
 typeSugar,\
 unusedArguments,\
 void,\
-wrap,\
 wrapAttributes,\
 wrapEnumCases,\
 wrapMultilineStatementBraces,\
@@ -90,12 +89,8 @@ wrapSingleLineComments
 --stripunusedargs closure-only
 --trimwhitespace always
 --voidtype void
---wraparguments before-first
---wrapcollections before-first
---wrapconditions before-first
 --wrapparameters before-first
 --wrapreturntype preserve
---wraptypealiases before-first
 --xcodeindentation disabled
 
 

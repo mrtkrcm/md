@@ -21,7 +21,6 @@ final class AppPreferences {
     // MARK: - Backing Storage
 
     @ObservationIgnored private var _theme: AppTheme
-    @ObservationIgnored private var _syntaxPalette: SyntaxPalette
     @ObservationIgnored private var _readerFontSize: ReaderFontSize
     @ObservationIgnored private var _codeFontSize: CodeFontSize
     @ObservationIgnored private var _appearanceMode: AppearanceMode
@@ -46,19 +45,6 @@ final class AppPreferences {
             withMutation(keyPath: \.theme) {
                 _theme = newValue
                 UserDefaults.standard.set(newValue.rawValue, forKey: Keys.theme)
-            }
-        }
-    }
-
-    var syntaxPalette: SyntaxPalette {
-        get {
-            access(keyPath: \.syntaxPalette)
-            return _syntaxPalette
-        }
-        set {
-            withMutation(keyPath: \.syntaxPalette) {
-                _syntaxPalette = newValue
-                UserDefaults.standard.set(newValue.rawValue, forKey: Keys.syntaxPalette)
             }
         }
     }
@@ -225,7 +211,6 @@ final class AppPreferences {
 
     private enum Keys {
         static let theme = "theme"
-        static let syntaxPalette = "syntaxPalette"
         static let readerFontSize = "readerFontSize"
         static let codeFontSize = "codeFontSize"
         static let appearanceMode = "appearanceMode"
@@ -263,7 +248,6 @@ final class AppPreferences {
     private init() {
         let ud = UserDefaults.standard
         _theme = AppTheme(rawValue: ud.string(forKey: Keys.theme) ?? "") ?? .github
-        _syntaxPalette = SyntaxPalette(rawValue: ud.string(forKey: Keys.syntaxPalette) ?? "") ?? .midnight
         _readerFontSize = ReaderFontSize(rawValue: ud.integer(forKey: Keys.readerFontSize)) ?? .standard
         _codeFontSize = CodeFontSize(rawValue: ud.integer(forKey: Keys.codeFontSize)) ?? .medium
         _appearanceMode = AppearanceMode(rawValue: ud.string(forKey: Keys.appearanceMode) ?? "") ?? .auto

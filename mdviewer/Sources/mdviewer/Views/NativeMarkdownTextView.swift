@@ -12,6 +12,9 @@ internal import SwiftUI
     /// Signpost logger for markdown rendering pipeline profiling.
     private let markdownRenderSignposter = OSSignposter(subsystem: "mdviewer", category: "MarkdownRenderPipeline")
 
+    /// Logger for view lifecycle and cancellation events.
+    private let logger = Logger(subsystem: "mdviewer", category: "NativeMarkdownTextView")
+
     /// Threshold for considering a document "large" and needing a loading announcement.
     private let largeDocumentThreshold: Int = 50_000
 
@@ -23,7 +26,6 @@ internal import SwiftUI
         let readerFontSize: CGFloat
         let codeFontSize: CGFloat
         let appTheme: AppTheme
-        let syntaxPalette: SyntaxPalette
         let colorScheme: ColorScheme
         let textSpacing: ReaderTextSpacing
         let readableWidth: CGFloat
@@ -31,6 +33,9 @@ internal import SwiftUI
         let showLineNumbers: Bool
         let typographyPreferences: TypographyPreferences
         var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
+
+        /// Syntax style derived from the current theme.
+        private var syntaxStyle: NativeSyntaxStyle { appTheme.nativeSyntax }
 
         func makeNSView(context: Context) -> NSScrollView {
             // Signpost: TextView creation start
@@ -120,7 +125,6 @@ internal import SwiftUI
                 readerFontSize: readerFontSize,
                 codeFontSize: codeFontSize,
                 appTheme: appTheme,
-                syntaxPalette: syntaxPalette,
                 colorScheme: colorScheme,
                 textSpacing: textSpacing,
                 readableWidth: readableWidth,
@@ -145,6 +149,20 @@ internal import SwiftUI
                     && abs(previousRequest.readableWidth - request.readableWidth) > 0.5
             } else {
                 isWidthOnlyChange = false
+            }
+
+            // Check if theme changed - if so, cancel in-flight render immediately
+            let previousTheme = coordinator.currentTheme
+            let themeChanged = previousTheme != nil && previousTheme != appTheme
+            coordinator.currentTheme = appTheme
+
+            if themeChanged {
+                // Cancel in-flight render to avoid wasted work
+                coordinator.renderTask?.cancel()
+                let fromTheme = previousTheme?.rawValue ?? "nil"
+                logger.debug(
+                    "Theme changed from \(fromTheme, privacy: .public) to \(appTheme.rawValue, privacy: .public), cancelling render"
+                )
             }
 
             coordinator.currentRequest = request
@@ -239,6 +257,7 @@ internal import SwiftUI
         @MainActor
         final class Coordinator {
             var currentRequest: RenderRequest?
+            var currentTheme: AppTheme?
             var generation: Int = 0
             var renderTask: Task<Void, Never>?
         }
@@ -251,7 +270,6 @@ internal import SwiftUI
         var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
         private var lastReportedOffset: CGFloat = 0
-        private var scrollUpdateTask: Task<Void, Never>?
         private var isScrolling = false
         private var scrollEndTask: Task<Void, Never>?
 
@@ -287,35 +305,22 @@ internal import SwiftUI
 
         @objc
         private func boundsDidChange() {
-            // Cancel any pending update and schedule a new one
-            scrollUpdateTask?.cancel()
-
             let isFirstScroll = !isScrolling
             isScrolling = true
+            reportScrollPosition(force: isFirstScroll)
+            scheduleScrollEndDetection()
+        }
 
-            scrollUpdateTask = Task { @MainActor [weak self] in
-                // Minimal delay for 120fps precision (1ms = ~1000fps coalescing)
-                try? await Task.sleep(for: .milliseconds(1))
+        private func scheduleScrollEndDetection() {
+            scrollEndTask?.cancel()
+            scrollEndTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(PerformanceConstants.scrollSettleDelay))
                 guard !Task.isCancelled, let self else { return }
-
-                reportScrollPosition()
-
-                // Schedule scroll end detection
-                scrollEndTask?.cancel()
-                scrollEndTask = Task { @MainActor [weak self] in
-                    try? await Task.sleep(for: .milliseconds(50))
-                    guard !Task.isCancelled, let self else { return }
-                    isScrolling = false
-                }
-            }
-
-            // Immediately report first scroll for responsiveness
-            if isFirstScroll {
-                reportScrollPosition()
+                isScrolling = false
             }
         }
 
-        private func reportScrollPosition() {
+        private func reportScrollPosition(force: Bool = false) {
             guard
                 let onScroll,
                 let documentView
@@ -326,7 +331,7 @@ internal import SwiftUI
             let visibleHeight = contentView.bounds.height
 
             // Sub-pixel threshold for 120fps smooth tracking
-            guard abs(offset - lastReportedOffset) > 0.5 else { return }
+            guard force || abs(offset - lastReportedOffset) > PerformanceConstants.minScrollDelta else { return }
             lastReportedOffset = offset
 
             onScroll(offset, contentHeight, visibleHeight)
@@ -336,7 +341,6 @@ internal import SwiftUI
         var isActivelyScrolling: Bool { isScrolling }
 
         deinit {
-            scrollUpdateTask?.cancel()
             scrollEndTask?.cancel()
         }
     }

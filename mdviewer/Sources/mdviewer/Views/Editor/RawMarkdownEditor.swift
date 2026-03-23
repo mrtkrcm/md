@@ -682,7 +682,6 @@ private final class ScrollTrackingScrollView: NSScrollView {
     var onScroll: ((CGFloat, CGFloat, CGFloat) -> Void)?
 
     private var lastReportedOffset: CGFloat = 0
-    private var scrollUpdateTask: Task<Void, Never>?
     private var isScrolling = false
     private var scrollEndTask: Task<Void, Never>?
 
@@ -718,35 +717,22 @@ private final class ScrollTrackingScrollView: NSScrollView {
 
     @objc
     private func boundsDidChange() {
-        // Cancel any pending update and schedule a new one
-        scrollUpdateTask?.cancel()
-
         let isFirstScroll = !isScrolling
         isScrolling = true
+        reportScrollPosition(force: isFirstScroll)
+        scheduleScrollEndDetection()
+    }
 
-        scrollUpdateTask = Task { @MainActor [weak self] in
-            // Minimal delay for 120fps precision (1ms = ~1000fps coalescing)
-            try? await Task.sleep(for: .milliseconds(1))
+    private func scheduleScrollEndDetection() {
+        scrollEndTask?.cancel()
+        scrollEndTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(PerformanceConstants.scrollSettleDelay))
             guard !Task.isCancelled, let self else { return }
-
-            reportScrollPosition()
-
-            // Schedule scroll end detection
-            scrollEndTask?.cancel()
-            scrollEndTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(50))
-                guard !Task.isCancelled, let self else { return }
-                isScrolling = false
-            }
-        }
-
-        // Immediately report first scroll for responsiveness
-        if isFirstScroll {
-            reportScrollPosition()
+            isScrolling = false
         }
     }
 
-    private func reportScrollPosition() {
+    private func reportScrollPosition(force: Bool = false) {
         guard
             let onScroll,
             let documentView
@@ -757,7 +743,7 @@ private final class ScrollTrackingScrollView: NSScrollView {
         let visibleHeight = contentView.bounds.height
 
         // Sub-pixel threshold for 120fps smooth tracking
-        guard abs(offset - lastReportedOffset) > 0.5 else { return }
+        guard force || abs(offset - lastReportedOffset) > PerformanceConstants.minScrollDelta else { return }
         lastReportedOffset = offset
 
         onScroll(offset, contentHeight, visibleHeight)
@@ -767,7 +753,6 @@ private final class ScrollTrackingScrollView: NSScrollView {
     var isActivelyScrolling: Bool { isScrolling }
 
     deinit {
-        scrollUpdateTask?.cancel()
         scrollEndTask?.cancel()
     }
 }

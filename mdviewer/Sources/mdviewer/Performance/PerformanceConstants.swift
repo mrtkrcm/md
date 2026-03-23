@@ -30,6 +30,12 @@ enum PerformanceConstants {
     /// Minimum scroll delta to report (sub-pixel precision for smooth 120fps).
     static let minScrollDelta: CGFloat = 0.5
 
+    /// Delay before considering a scroll gesture settled.
+    static let scrollSettleDelay: TimeInterval = 0.05
+
+    /// Delay after launch before background prewarming starts.
+    static let startupPrewarmDelay: TimeInterval = 0.15
+
     /// Threshold for considering scroll velocity "fast" (points/second).
     static let fastScrollVelocity: CGFloat = 2000
 

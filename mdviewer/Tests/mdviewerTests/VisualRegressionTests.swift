@@ -29,7 +29,6 @@
                 fontSize: CGFloat = 16,
                 codeFontSize: CGFloat = 14,
                 theme: AppTheme = .basic,
-                syntaxPalette: SyntaxPalette = .midnight,
                 scheme: ColorScheme = .light,
                 textSpacing: ReaderTextSpacing = .balanced,
                 readableWidth: CGFloat = 760,
@@ -42,7 +41,6 @@
                         readerFontSize: fontSize,
                         codeFontSize: codeFontSize,
                         appTheme: theme,
-                        syntaxPalette: syntaxPalette,
                         colorScheme: scheme,
                         textSpacing: textSpacing,
                         readableWidth: readableWidth,
@@ -117,13 +115,22 @@
                 default: headingSize = fontSize
                 }
 
-                let baseSpacing = spacing.paragraphSpacing(for: headingSize)
+                let lineHeight = headingSize * spacing.lineHeightMultiplier
+
+                // Space before: larger headings get more space (section breaks)
+                // H1: 1.5×, H2: 1.25×, H3: 1.0×, H4+: 0.75×
+                let spaceBeforeMultiplier: CGFloat
                 switch level {
-                case 1: return (baseSpacing * 0.72, baseSpacing * 0.72)
-                case 2: return (baseSpacing * 0.62, baseSpacing * 0.62)
-                case 3: return (baseSpacing * 0.54, baseSpacing * 0.54)
-                default: return (baseSpacing * 0.46, baseSpacing * 0.46)
+                case 1: spaceBeforeMultiplier = 1.5
+                case 2: spaceBeforeMultiplier = 1.25
+                case 3: spaceBeforeMultiplier = 1.0
+                default: spaceBeforeMultiplier = 0.75
                 }
+
+                // Space after: half of space before (connects heading to content)
+                let spaceAfterMultiplier = spaceBeforeMultiplier * 0.5
+
+                return (lineHeight * spaceAfterMultiplier, lineHeight * spaceBeforeMultiplier)
             }
 
             // MARK: - Paragraph Spacing
@@ -225,7 +232,6 @@
                 XCTAssertNotEqual(afterTableLoc, NSNotFound)
                 XCTAssertNotEqual(paragraphLoc, NSNotFound)
                 let bodyFontSize = CGFloat(16)
-                let codeFontSize = CGFloat(14)
                 let spacing = ReaderTextSpacing.balanced
 
                 let h1Style = paragraphStyle(at: heading1Loc, in: text)
@@ -257,14 +263,25 @@
                     fontSize: bodyFontSize,
                     spacing: spacing
                 )
-                let expectedBodySpacing = spacing.paragraphSpacing(for: bodyFontSize)
-                let expectedListSpacing = expectedBodySpacing * 0.5
+                // Updated spacing expectations matching TypographyApplier improvements
+                let baseParagraphSpacing = spacing.paragraphSpacing(for: bodyFontSize)
+                let expectedBodySpacing = baseParagraphSpacing * 1.1
+                let bodyLineHeight = bodyFontSize * spacing.lineHeightMultiplier
+                // List spacing: lineHeight * 0.375 (tighter spacing for lists)
+                let expectedListSpacing = bodyLineHeight * 0.375
                 let expectedListBefore = 0.0
-                let expectedQuoteSpacing = spacing.paragraphSpacing(for: bodyFontSize) * 0.62
-                let expectedQuoteBefore = spacing.paragraphSpacing(for: bodyFontSize) * 0.42
-                let expectedCodeSpacing = spacing.paragraphSpacing(for: codeFontSize) * 0.75
-                let expectedTableSpacing = max(5, expectedBodySpacing * 0.28)
-                let expectedTableSpacingBefore = expectedTableSpacing * 0.5
+
+                // Blockquote spacing: lineHeight * 0.75 for spacing, * 0.5625 for before
+                let expectedQuoteSpacing = bodyLineHeight * 0.75
+                let expectedQuoteBefore = bodyLineHeight * 0.5625
+
+                // Code block spacing: removed paragraph-level spacing in favor of tighter in-block rhythm.
+                let expectedCodeSpacing = 0.0
+                let expectedCodeLineSpacing = 14 * DesignTokens.TypographySpacing.codeBlockLineMultiplier
+
+                // Table spacing: lineHeight * 0.375 for spacing, * 0.25 for before
+                let expectedTableSpacing = bodyLineHeight * 0.375
+                let expectedTableSpacingBefore = bodyLineHeight * 0.25
                 let expectedHRSpacing = max(12, expectedBodySpacing * 0.6)
 
                 XCTAssertEqual(
@@ -319,7 +336,13 @@
                     codeStyle?.paragraphSpacing ?? 0,
                     expectedCodeSpacing,
                     accuracy: 0.01,
-                    "Code block paragraphSpacing should keep tuned ratio"
+                    "Code block paragraphSpacing should reflect tight code-block spacing"
+                )
+                XCTAssertEqual(
+                    codeStyle?.lineSpacing ?? 0,
+                    expectedCodeLineSpacing,
+                    accuracy: 0.01,
+                    "Code block lineSpacing should follow the compact code block multiplier"
                 )
                 XCTAssertGreaterThanOrEqual(
                     tableRowStyle?.paragraphSpacing ?? 0,
@@ -331,9 +354,10 @@
                     expectedTableSpacingBefore,
                     "Table rows should keep tuned pre-spacing"
                 )
+                // Terminal table row uses raw body spacing (no 1.1x multiplier) when it's terminal
                 XCTAssertEqual(
                     terminalTableStyle?.paragraphSpacing ?? 0,
-                    expectedBodySpacing,
+                    baseParagraphSpacing,
                     accuracy: 0.01,
                     "Final table row should restore full body spacing before the next block"
                 )

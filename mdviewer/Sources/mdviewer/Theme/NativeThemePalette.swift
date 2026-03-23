@@ -117,6 +117,8 @@ struct NativeThemePalette {
     var formattedHeading2: NSColor
     var formattedHeading3: NSColor
     var formattedTableHeaderSurface: NSColor
+    var formattedTableHeaderText: NSColor
+    var formattedTableBodySurface: NSColor
     var formattedTableRowSurface: NSColor
     var formattedTableBorderStroke: NSColor
     var formattedLinkUnderline: NSColor

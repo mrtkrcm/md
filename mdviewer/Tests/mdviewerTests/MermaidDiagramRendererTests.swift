@@ -36,7 +36,6 @@
                         readerFontSize: ReaderFontSize.standard.points,
                         codeFontSize: 14,
                         appTheme: theme,
-                        syntaxPalette: .midnight,
                         colorScheme: scheme,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,

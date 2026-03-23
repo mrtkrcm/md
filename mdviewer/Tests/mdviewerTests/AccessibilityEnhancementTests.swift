@@ -213,7 +213,7 @@
                     "Edit raw markdown text with syntax highlighting",
                     "Document Metadata",
                     "Close the metadata inspector panel",
-                    "Open appearance and theme settings",
+                    "Open app settings",
                     "Show formatted markdown preview",
                     "Show raw markdown source",
                 ]

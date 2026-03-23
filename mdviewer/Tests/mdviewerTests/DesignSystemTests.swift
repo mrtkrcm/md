@@ -215,7 +215,6 @@
                     readerFontSize: DesignTokens.Typography.body,
                     codeFontSize: DesignTokens.Typography.standard,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,

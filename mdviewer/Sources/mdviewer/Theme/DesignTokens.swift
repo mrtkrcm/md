@@ -115,10 +115,16 @@ enum DesignTokens {
         static let metadataMaxHeight: CGFloat = 280
         /// Appearance popover width (300pt)
         static let appearancePopoverWidth: CGFloat = 300
-        /// Settings view width (460pt)
-        static let settingsWidth: CGFloat = 460
-        /// Settings view height (320pt)
-        static let settingsHeight: CGFloat = 320
+        /// Settings view width (860pt)
+        static let settingsWidth: CGFloat = 860
+        /// Settings view height (640pt)
+        static let settingsHeight: CGFloat = 640
+        /// Settings summary rail width (236pt)
+        static let settingsSidebarWidth: CGFloat = 236
+        /// Settings hero preview height (140pt)
+        static let settingsHeroHeight: CGFloat = 140
+        /// Theme preview grid height inside settings (248pt)
+        static let settingsThemeGridHeight: CGFloat = 248
         /// Minimum content height (480pt)
         static let minContentHeight: CGFloat = 480
         /// Welcome view max width (380pt)
@@ -146,6 +152,65 @@ enum DesignTokens {
         static let iconStandard: CGFloat = 13
         /// Icon large (40pt)
         static let iconLarge: CGFloat = 40
+        /// Preview extra small (9pt)
+        static let previewExtraSmall: CGFloat = 9
+        /// Preview tiny (4pt) - for small indicators
+        static let tiny: CGFloat = 4
+    }
+
+    // MARK: - Typography Spacing
+
+    enum TypographySpacing {
+        /// Code block line spacing multiplier (1.0x total line height at 16pt).
+        static let codeBlockLineMultiplier: CGFloat = 0.0
+        /// Paragraph spacing multiplier for body text
+        static let bodyParagraphMultiplier: CGFloat = 1.1
+        /// Paragraph-spacing-before multiplier for body text
+        static let bodyParagraphBeforeMultiplier: CGFloat = 0.5
+        /// Blockquote spacing multipliers
+        static let blockquoteSpacingMultiplier: CGFloat = 0.85
+        static let blockquoteSpacingBeforeMultiplier: CGFloat = 0.65
+        /// Blockquote indentation
+        static let blockquoteBaseIndent: CGFloat = 16
+        static let blockquoteDepthIncrement: CGFloat = 12
+        /// Horizontal rule spacing multiplier
+        static let horizontalRuleSpacingMultiplier: CGFloat = 0.6
+        /// Horizontal rule minimum spacing
+        static let horizontalRuleMinSpacing: CGFloat = 12
+        /// Code block character width multiplier for gutter
+        static let codeBlockCharWidthMultiplier: CGFloat = 0.6
+        /// Code block gutter character count
+        static let codeBlockGutterChars: CGFloat = 4
+        /// Code block gutter padding multiplier
+        static let codeBlockGutterPaddingMultiplier: CGFloat = 0.8
+        /// Table cell spacing multiplier
+        static let tableCellSpacingMultiplier: CGFloat = 0.375
+    }
+
+    // MARK: - Focus Ring
+
+    enum FocusRing {
+        static let thinWidth: CGFloat = 2
+        static let standardWidth: CGFloat = 2.5
+        static let thickWidth: CGFloat = 4
+        static let subtleScale: CGFloat = 1.01
+        static let pressedScale: CGFloat = 0.97
+        static let hoverScale: CGFloat = 1.02
+    }
+
+    // MARK: - Interaction States
+
+    enum Interaction {
+        static let pressedOpacity: CGFloat = 0.8
+        static let loadingOpacity: CGFloat = 0.6
+    }
+
+    // MARK: - Shadow Opacity
+
+    enum ShadowOpacity {
+        static let subtle: Double = 0.05
+        static let standard: Double = 0.10
+        static let elevated: Double = 0.15
     }
 
     // MARK: - Semantic Colors
@@ -205,6 +270,30 @@ enum DesignTokens {
             static let itemHeightCompact: CGFloat = 32
             /// List item indentation (20pt)
             static let indentation: CGFloat = 20
+            /// Head indent for list paragraphs (24pt)
+            static let headIndent: CGFloat = 24
+        }
+
+        enum Table {
+            /// Minimum cell spacing (5pt)
+            static let minCellSpacing: CGFloat = 5
+            /// Minimum column width (90pt)
+            static let minColumnWidth: CGFloat = 90
+            /// Leading inset before the first cell's text (12pt)
+            static let contentInset: CGFloat = 12
+            /// Vertical row padding (8pt)
+            static let rowVerticalPadding: CGFloat = 8
+            /// Horizontal padding (32pt)
+            static let horizontalPadding: CGFloat = 32
+            /// Inset between interior dividers and the next cell's text start (12pt)
+            static let columnDividerInset: CGFloat = 12
+            /// Truncation padding (4pt)
+            static let truncationPadding: CGFloat = 4
+        }
+
+        enum HorizontalRule {
+            /// Font size for horizontal rule element (6pt)
+            static let fontSize: CGFloat = 6
         }
 
         enum Toolbar {
@@ -244,6 +333,22 @@ enum DesignTokens {
             static let rowTrailingSpacer: CGFloat = 4
             /// Sidebar border line width (0.5pt)
             static let borderLineWidth: CGFloat = 0.5
+            /// Sidebar panel corner radius (18pt)
+            static let panelCornerRadius: CGFloat = 18
+            /// Sidebar content outer inset (12pt)
+            static let contentInset: CGFloat = 12
+            /// Sidebar section inner inset (10pt)
+            static let sectionInset: CGFloat = 10
+            /// Sidebar header bottom padding (14pt)
+            static let headerBottomPadding: CGFloat = 14
+            /// Sidebar row height for outline and folder items (30pt)
+            static let rowHeight: CGFloat = 30
+            /// Sidebar hover ring line width (1pt)
+            static let hoverRingWidth: CGFloat = 1
+            /// Sidebar hierarchy rail width (3pt)
+            static let hierarchyRailWidth: CGFloat = 3
+            /// Sidebar trailing accessory width (14pt)
+            static let accessoryWidth: CGFloat = 14
         }
     }
 
@@ -311,6 +416,31 @@ enum DesignTokens {
                 removal: .opacity
             )
         }
+    }
+
+    // MARK: - Typography Rhythm
+
+    /// Vertical rhythm system based on 4pt base unit.
+    /// All spacing derives from this base to maintain consistent alignment.
+    /// Based on industry standards (Apple, Google, Atlassian design systems).
+    enum TypographyRhythm {
+        /// Base rhythm unit (4pt) - all spacing is multiples of this
+        static let baseUnit: CGFloat = 4
+
+        /// Rhythm unit scaled to font size (rounds to nearest 4pt)
+        static func unit(for fontSize: CGFloat) -> CGFloat {
+            round(fontSize / 4) * 4 / 4 // Normalized to ~4pt at standard sizes
+        }
+
+        // MARK: - Spacing Scale (multiples of base unit)
+
+        static let xs: CGFloat = 4 // 1× - inline padding, tight gaps
+        static let sm: CGFloat = 8 // 2× - list item spacing
+        static let md: CGFloat = 12 // 3× - paragraph spacing (compact)
+        static let lg: CGFloat = 16 // 4× - component padding
+        static let xl: CGFloat = 24 // 6× - paragraph spacing (balanced)
+        static let xxl: CGFloat = 32 // 8× - paragraph spacing (relaxed)
+        static let xxxl: CGFloat = 48 // 12× - heading top margin
     }
 
     // MARK: - Spacing Scale

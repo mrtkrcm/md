@@ -5,6 +5,13 @@
 
 internal import AppKit
 
+// MARK: - Color Helper
+
+/// Creates a color in the Display P3 color space using NativeThemePalette's helper
+private func p3Color(r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat = 1.0) -> NSColor {
+    NativeThemePalette.p3Color(r: r, g: g, b: b, a: a)
+}
+
 // MARK: - Theme Color Data Structure
 
 /// Raw color data for a single theme variant
@@ -368,10 +375,4 @@ enum ThemeRegistry {
     static let allThemes: [ThemeData] = [
         basic, github, docC, solarized, gruvbox, dracula, monokai, nord, onedark, tokyonight,
     ]
-}
-
-// MARK: - Color Helper
-
-private func p3Color(r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat = 1.0) -> NSColor {
-    NSColor(red: r, green: g, blue: b, alpha: a)
 }

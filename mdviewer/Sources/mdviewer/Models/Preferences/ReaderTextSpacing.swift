@@ -25,18 +25,18 @@ enum ReaderTextSpacing: String, CaseIterable, Identifiable, Sendable {
 
     // MARK: - Line Height (Leading)
 
-    /// Line height multiplier using a refined scale for professional typography.
-    /// These values are optimized for screen reading with macOS system fonts.
-    /// Uses the "golden ratio" inspired scale for optimal readability.
+    /// Line height multiplier based on typographic best practices.
+    /// Uses 1.5x (150%) as the optimal balanced line height for screen reading.
+    /// Based on Bringhurst's "The Elements of Typographic Style" and screen readability research.
     ///
-    /// - Compact: 1.08x (tightest)
-    /// - Balanced: 1.14x (default)
-    /// - Relaxed: 1.22x (most open)
+    /// - Compact: 1.25x (minimum for legibility)
+    /// - Balanced: 1.50x (optimal for extended reading)
+    /// - Relaxed: 1.75x (generous spacing for accessibility)
     var lineHeightMultiplier: CGFloat {
         switch self {
-        case .compact: return 1.08
-        case .balanced: return 1.14
-        case .relaxed: return 1.22
+        case .compact: return 1.25
+        case .balanced: return 1.50
+        case .relaxed: return 1.75
         }
     }
 

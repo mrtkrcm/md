@@ -18,6 +18,8 @@
             // MARK: - Helpers
 
             private let dividerOpacityKey = NSAttributedString.Key("mdv.tableColumnDividerOpacity")
+            private let columnCountKey = NSAttributedString.Key("mdv.tableColumnCount")
+            private let terminalRowKey = NSAttributedString.Key("mdv.tableTerminalRow")
 
             private func rendered(
                 _ markdown: String,
@@ -31,7 +33,6 @@
                         readerFontSize: ReaderFontSize.standard.points,
                         codeFontSize: 14,
                         appTheme: theme,
-                        syntaxPalette: .midnight,
                         colorScheme: scheme,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
@@ -77,6 +78,21 @@
                     XCTAssertGreaterThan(multiplier, 0)
                     XCTAssertLessThanOrEqual(multiplier, 1)
                 }
+            }
+
+            func testTableRowsCacheResolvedColumnCountForLayoutPass() async {
+                let markdown = """
+                | Name | Value | Notes |
+                | ---- | ----- | ----- |
+                | Foo  | Bar   | Baz   |
+                """
+                let result = await rendered(markdown, theme: .github, scheme: .light)
+                let ns = result.string as NSString
+                let rowLoc = ns.range(of: "Foo").location
+                XCTAssertNotEqual(rowLoc, NSNotFound, "Table row text must appear in rendered output")
+
+                let columnCount = result.attribute(columnCountKey, at: rowLoc, effectiveRange: nil) as? Int
+                XCTAssertEqual(columnCount, 3, "Table rows must cache their resolved column count for layout")
             }
 
             // MARK: - Hierarchy contract
@@ -158,7 +174,8 @@
 
                 let style = result.attribute(.paragraphStyle, at: loc, effectiveRange: nil) as? NSParagraphStyle
                 XCTAssertNotNil(style, "Table rows must carry a paragraph style attribute")
-                let expectedSpacing = max(5, ReaderTextSpacing.balanced.paragraphSpacing(for: 17) * 0.28)
+                // Table cell spacing: lineHeight * 0.375
+                let expectedSpacing = 17 * ReaderTextSpacing.balanced.lineHeightMultiplier * 0.375
                 XCTAssertEqual(
                     style?.paragraphSpacing ?? 0,
                     expectedSpacing,
@@ -194,6 +211,42 @@
                     accuracy: 0.001,
                     "Terminal table rows should restore full body spacing before the next block"
                 )
+            }
+
+            func testEachTableMarksItsOwnTerminalRowForLayoutClosure() async {
+                let markdown = """
+                | A | B |
+                | - | - |
+                | 1 | 2 |
+
+                Between tables.
+
+                | C | D |
+                | - | - |
+                | 3 | 4 |
+                """
+
+                let result = await rendered(markdown, theme: .github, scheme: .light)
+                let ns = result.string as NSString
+
+                let firstTerminalLoc = ns.range(of: "1").location
+                let secondTerminalLoc = ns.range(of: "3").location
+                XCTAssertNotEqual(firstTerminalLoc, NSNotFound)
+                XCTAssertNotEqual(secondTerminalLoc, NSNotFound)
+
+                let firstIsTerminal = result.attribute(
+                    terminalRowKey,
+                    at: firstTerminalLoc,
+                    effectiveRange: nil
+                ) as? Bool
+                let secondIsTerminal = result.attribute(
+                    terminalRowKey,
+                    at: secondTerminalLoc,
+                    effectiveRange: nil
+                ) as? Bool
+
+                XCTAssertEqual(firstIsTerminal, true, "First table must close its own terminal row")
+                XCTAssertEqual(secondIsTerminal, true, "Second table must close its own terminal row")
             }
         }
     #endif

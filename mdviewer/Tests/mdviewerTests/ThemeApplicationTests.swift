@@ -171,7 +171,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: theme,
-                    syntaxPalette: .midnight,
                     colorScheme: scheme,
                     textSpacing: .balanced,
                     readableWidth: 720,
@@ -206,7 +205,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .github,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 720,
@@ -220,7 +218,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .github,
-                    syntaxPalette: .midnight,
                     colorScheme: .dark,
                     textSpacing: .balanced,
                     readableWidth: 720,
@@ -282,7 +279,6 @@
                             readerFontSize: 16,
                             codeFontSize: 14,
                             appTheme: theme,
-                            syntaxPalette: .midnight,
                             colorScheme: scheme,
                             textSpacing: .balanced,
                             readableWidth: 720,
@@ -326,6 +322,21 @@
                             palette.formattedTableHeaderSurface.alphaComponent,
                             0.1,
                             "\(theme.rawValue) \(scheme) formattedTableHeaderSurface should be visible"
+                        )
+                        XCTAssertGreaterThan(
+                            palette.formattedTableHeaderText.alphaComponent,
+                            0.5,
+                            "\(theme.rawValue) \(scheme) formattedTableHeaderText should be visible"
+                        )
+                        XCTAssertGreaterThan(
+                            palette.formattedTableBodySurface.alphaComponent,
+                            0.1,
+                            "\(theme.rawValue) \(scheme) formattedTableBodySurface should be visible"
+                        )
+                        XCTAssertGreaterThan(
+                            palette.formattedTableRowSurface.alphaComponent,
+                            0.1,
+                            "\(theme.rawValue) \(scheme) formattedTableRowSurface should be visible"
                         )
                         XCTAssertGreaterThan(
                             palette.formattedTableBorderStroke.alphaComponent,

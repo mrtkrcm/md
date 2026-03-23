@@ -34,7 +34,6 @@
                     "Reader Font Size",
                     "Reader Line Spacing",
                     "Reader Column Width",
-                    "Syntax Highlighting Palette",
                     "Code Font Size",
                 ]
 
@@ -74,8 +73,8 @@
             @MainActor
             func testSettingsWindowSize() {
                 // Verify settings window dimensions are accessible
-                XCTAssertEqual(DesignTokens.Layout.settingsWidth, 460)
-                XCTAssertEqual(DesignTokens.Layout.settingsHeight, 320)
+                XCTAssertEqual(DesignTokens.Layout.settingsWidth, 860)
+                XCTAssertEqual(DesignTokens.Layout.settingsHeight, 640)
             }
 
             // MARK: - Accessibility Identifier Tests

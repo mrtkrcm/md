@@ -16,34 +16,6 @@
             XCTAssertEqual(AppTheme.docC.rawValue, "DocC")
         }
 
-        func testSyntaxPalettesRemainStable() {
-            XCTAssertEqual(SyntaxPalette.sundellsColors.rawValue, "Sundell's Colors")
-            XCTAssertEqual(SyntaxPalette.midnight.rawValue, "Midnight")
-            XCTAssertEqual(SyntaxPalette.sunset.rawValue, "Sunset")
-        }
-
-        // MARK: - SyntaxPalette.from()
-
-        func testSyntaxPaletteFromExactMatch() {
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "Midnight"), .midnight)
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "Sunset"), .sunset)
-        }
-
-        func testSyntaxPaletteFromCaseInsensitiveFallback() {
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "midnight"), .midnight)
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "SUNSET"), .sunset)
-        }
-
-        func testSyntaxPaletteFromSmartQuoteNormalization() {
-            // Persisted preferences may contain a typographic apostrophe instead of straight one.
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "Sundell\u{2019}s Colors"), .sundellsColors)
-        }
-
-        func testSyntaxPaletteFromUnknownDefaultsMidnight() {
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "NonExistent"), .midnight)
-            XCTAssertEqual(SyntaxPalette.from(rawValue: ""), .midnight)
-        }
-
         // MARK: - AppearanceMode
 
         func testAppearanceModePreferredColorScheme() {

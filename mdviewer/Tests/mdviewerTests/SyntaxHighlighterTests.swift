@@ -32,7 +32,7 @@
                 let base = NSMutableAttributedString(attributedString: parsed)
                 let highlighter = SyntaxHighlighter()
                 let fullRange = NSRange(location: 0, length: base.length)
-                let syntax = SyntaxPalette.midnight.nativeSyntax
+                let syntax = AppTheme.dracula.nativeSyntax
 
                 XCTContext.runActivity(named: "SyntaxHighlighter.highlight \(lines)-line code block") { _ in
                     measure(metrics: [XCTClockMetric()]) {
@@ -49,7 +49,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -62,7 +61,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -75,7 +73,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -103,7 +100,6 @@
                         readerFontSize: 16,
                         codeFontSize: 14,
                         appTheme: .basic,
-                        syntaxPalette: .midnight,
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
@@ -112,7 +108,7 @@
                     )
                 ).attributedString
 
-                let expected = SyntaxPalette.midnight.nativeSyntax
+                let expected = AppTheme.basic.nativeSyntax
 
                 let stringRange = (rendered.string as NSString).range(of: "if let")
                 let commentRange = (rendered.string as NSString).range(of: "return")
@@ -139,7 +135,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .github,
-                    syntaxPalette: .midnight,
                     colorScheme: .dark,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -203,7 +198,6 @@
                         readerFontSize: 16,
                         codeFontSize: 14,
                         appTheme: .basic,
-                        syntaxPalette: .midnight,
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
@@ -212,7 +206,7 @@
                     )
                 ).attributedString
 
-                let expected = SyntaxPalette.midnight.nativeSyntax
+                let expected = AppTheme.basic.nativeSyntax
 
                 let stringRange = (rendered.string as NSString).range(of: "hello")
                 let commentRange = (rendered.string as NSString).range(of: "This is a comment")
@@ -252,7 +246,6 @@
                         readerFontSize: 16,
                         codeFontSize: 14,
                         appTheme: .basic,
-                        syntaxPalette: .midnight,
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
@@ -261,7 +254,7 @@
                     )
                 ).attributedString
 
-                let expected = SyntaxPalette.midnight.nativeSyntax
+                let expected = AppTheme.basic.nativeSyntax
 
                 let stringRange = (rendered.string as NSString).range(of: "hello")
                 let commentRange = (rendered.string as NSString).range(of: "This is a comment")
@@ -302,7 +295,6 @@
                         readerFontSize: 16,
                         codeFontSize: 14,
                         appTheme: .basic,
-                        syntaxPalette: .midnight,
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
@@ -311,7 +303,7 @@
                     )
                 ).attributedString
 
-                let expected = SyntaxPalette.midnight.nativeSyntax
+                let expected = AppTheme.basic.nativeSyntax
 
                 let stringRange = (rendered.string as NSString).range(of: "test")
                 let keywordRange = (rendered.string as NSString).range(of: "true")
@@ -346,7 +338,6 @@
                         readerFontSize: 16,
                         codeFontSize: 14,
                         appTheme: .basic,
-                        syntaxPalette: .midnight,
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
@@ -355,7 +346,7 @@
                     )
                 ).attributedString
 
-                let expected = SyntaxPalette.midnight.nativeSyntax
+                let expected = AppTheme.basic.nativeSyntax
 
                 let stringRange = (rendered.string as NSString).range(of: "hello")
                 let keywordRange = (rendered.string as NSString).range(of: "let")
@@ -389,7 +380,6 @@
                         readerFontSize: 16,
                         codeFontSize: 14,
                         appTheme: .basic,
-                        syntaxPalette: .midnight,
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: ReaderColumnWidth.balanced.points,
@@ -398,7 +388,7 @@
                     )
                 ).attributedString
 
-                let expected = SyntaxPalette.midnight.nativeSyntax
+                let expected = AppTheme.basic.nativeSyntax
 
                 let stringRange = (rendered.string as NSString).range(of: "test")
                 let numberRange = (rendered.string as NSString).range(of: "42")

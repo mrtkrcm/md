@@ -23,7 +23,6 @@
                 fontSize: ReaderFontSize = .standard,
                 codeFontSize: CGFloat = 14,
                 theme: AppTheme = .basic,
-                syntaxPalette: SyntaxPalette = .midnight,
                 scheme: ColorScheme = .light,
                 textSpacing: ReaderTextSpacing = .balanced
             ) async -> NSAttributedString {
@@ -34,7 +33,6 @@
                         readerFontSize: fontSize.points,
                         codeFontSize: codeFontSize,
                         appTheme: theme,
-                        syntaxPalette: syntaxPalette,
                         colorScheme: scheme,
                         textSpacing: textSpacing,
                         readableWidth: ReaderColumnWidth.balanced.points,
@@ -285,20 +283,21 @@
                 ```
                 """
 
-                let result = await rendered(markdown, syntaxPalette: .midnight)
+                let result = await rendered(markdown)
                 let ns = result.string as NSString
 
                 let keywordLoc = ns.range(of: "let").location
                 XCTAssertNotEqual(keywordLoc, NSNotFound)
 
                 let actual = foregroundColor(at: keywordLoc, in: result)
-                let expected = SyntaxPalette.midnight.nativeSyntax.keyword
+                // Basic theme uses sundell's colors for syntax highlighting
+                let expected = AppTheme.basic.nativeSyntax.keyword
 
                 XCTAssertNotNil(actual)
                 if let actual {
                     XCTAssertTrue(
                         colorsApproxEqual(actual, expected),
-                        "Swift 'let' keyword should match the midnight palette keyword color"
+                        "Swift 'let' keyword should match the theme's syntax palette keyword color"
                     )
                 }
             }
@@ -317,8 +316,9 @@
                 let style = paragraphStyle(at: bodyLoc, in: result)
                 XCTAssertNotNil(style)
                 // Use dynamic lineSpacing(for:) with standard font size (17pt)
+                // Paragraph spacing now has 1.1x multiplier for better breathing room
                 let expectedLineSpacing = ReaderTextSpacing.relaxed.lineSpacing(for: 17)
-                let expectedParagraphSpacing = ReaderTextSpacing.relaxed.paragraphSpacing(for: 17)
+                let expectedParagraphSpacing = ReaderTextSpacing.relaxed.paragraphSpacing(for: 17) * 1.1
                 XCTAssertEqual(style?.lineSpacing ?? 0, expectedLineSpacing, accuracy: 0.1)
                 XCTAssertEqual(style?.paragraphSpacing ?? 0, expectedParagraphSpacing, accuracy: 0.1)
             }
@@ -343,8 +343,8 @@
                 // Use dynamic lineSpacing(for:) with standard font size (17pt)
                 let expectedLineSpacing = ReaderTextSpacing.compact.lineSpacing(for: 17)
                 XCTAssertEqual(style?.lineSpacing ?? 0, expectedLineSpacing, accuracy: 0.1)
-                // paragraphSpacing for list items is 50% of the user value.
-                let expectedParagraphSpacing = ReaderTextSpacing.compact.paragraphSpacing(for: 17) * 0.5
+                // paragraphSpacing for list items: lineHeight * 0.375 (tighter spacing)
+                let expectedParagraphSpacing = 17 * ReaderTextSpacing.compact.lineHeightMultiplier * 0.375
                 XCTAssertEqual(style?.paragraphSpacing ?? 0, expectedParagraphSpacing, accuracy: 0.1)
                 // headIndent must be positive — proves indentation was applied.
                 XCTAssertGreaterThan(style?.headIndent ?? 0, 0, "List items must be indented")
@@ -732,6 +732,42 @@
                 }
             }
 
+            func testInlineCodeUsesThemeCodeForegroundColor() async {
+                let markdown = "Use `inline code` here."
+                let result = await rendered(markdown, theme: .github, scheme: .light)
+                let ns = result.string as NSString
+                let loc = ns.range(of: "inline code").location
+                XCTAssertNotEqual(loc, NSNotFound)
+
+                let color = foregroundColor(at: loc, in: result)
+                let palette = NativeThemePalette(theme: .github, scheme: .light)
+                XCTAssertNotNil(color)
+                if let color {
+                    XCTAssertTrue(
+                        colorsApproxEqual(color, palette.codeText),
+                        "Inline code should use the palette's codeText foreground"
+                    )
+                }
+            }
+
+            func testBlockquoteUsesThemeBlockquoteTextColor() async {
+                let markdown = "> Quoted text"
+                let result = await rendered(markdown, theme: .github, scheme: .light)
+                let ns = result.string as NSString
+                let loc = ns.range(of: "Quoted text").location
+                XCTAssertNotEqual(loc, NSNotFound)
+
+                let color = foregroundColor(at: loc, in: result)
+                let palette = NativeThemePalette(theme: .github, scheme: .light)
+                XCTAssertNotNil(color)
+                if let color {
+                    XCTAssertTrue(
+                        colorsApproxEqual(color, palette.blockquoteText),
+                        "Blockquote text should use the palette's blockquoteText color"
+                    )
+                }
+            }
+
             // MARK: - Theme text color baseline
 
             func testBodyTextReceivesLabelColor() async {
@@ -748,6 +784,26 @@
                 XCTAssertNotNil(color, "Body text must have a foreground color attribute after rendering")
             }
 
+            func testBodyParagraphGetsPositiveParagraphSpacingBeforeForReadability() async {
+                let markdown = """
+                First paragraph.
+
+                Second paragraph.
+                """
+                let result = await rendered(markdown, theme: .github, scheme: .light)
+                let ns = result.string as NSString
+                let loc = ns.range(of: "Second paragraph").location
+                XCTAssertNotEqual(loc, NSNotFound)
+
+                let style = paragraphStyle(at: loc, in: result)
+                XCTAssertNotNil(style)
+                XCTAssertGreaterThan(
+                    style?.paragraphSpacingBefore ?? 0,
+                    0,
+                    "Body paragraphs should have positive paragraphSpacingBefore for better scan rhythm"
+                )
+            }
+
             func testSyntaxColorDoesNotLeakIntoBodyText() async {
                 // Keyword colors from code spans must not bleed into adjacent body text.
                 let markdown = """
@@ -757,14 +813,15 @@
 
                 Plain paragraph after code.
                 """
-                let result = await rendered(markdown, syntaxPalette: .midnight)
+                let result = await rendered(markdown)
                 let ns = result.string as NSString
 
                 let paragraphLoc = ns.range(of: "Plain paragraph").location
                 XCTAssertNotEqual(paragraphLoc, NSNotFound)
 
                 let paragraphColor = foregroundColor(at: paragraphLoc, in: result)
-                let keywordColor = SyntaxPalette.midnight.nativeSyntax.keyword
+                // Use basic theme's syntax colors for comparison
+                let keywordColor = AppTheme.basic.nativeSyntax.keyword
                 XCTAssertNotNil(paragraphColor)
                 if let paragraphColor {
                     XCTAssertFalse(
@@ -817,6 +874,7 @@
             private let bqAccentKey = NSAttributedString.Key("mdv.blockquoteAccent")
             private let bqBgKey = NSAttributedString.Key("mdv.blockquoteBackground")
             private let tableHeaderBgKey = NSAttributedString.Key("mdv.tableHeaderBackground")
+            private let tableBodyBgKey = NSAttributedString.Key("mdv.tableBodyBackground")
             private let tableRowBgKey = NSAttributedString.Key("mdv.tableRowBackground")
             private let tableBorderKey = NSAttributedString.Key("mdv.tableBorder")
             private let tableRowAlternatingKey = NSAttributedString.Key("mdv.tableRowAlternating")
@@ -881,22 +939,47 @@
 
                 let headerBg = result.attribute(tableHeaderBgKey, at: headerLoc, effectiveRange: nil) as? NSColor
                 let headerBorder = result.attribute(tableBorderKey, at: headerLoc, effectiveRange: nil) as? NSColor
+                let headerText = foregroundColor(at: headerLoc, in: result)
                 XCTAssertNotNil(headerBg, "Table header should carry themed header background attribute")
                 XCTAssertNotNil(headerBorder, "Table header should carry table border attribute")
+                XCTAssertNotNil(headerText, "Table header should carry an explicit foreground color")
+
+                let palette = NativeThemePalette.cached(theme: .github, scheme: .light)
+                XCTAssertTrue(
+                    colorsApproxEqual(headerText!, palette.formattedTableHeaderText),
+                    "Table header text should use the derived table header text color"
+                )
 
                 let firstRowHasBorder = result.attribute(
                     tableBorderKey,
                     at: firstRowLoc,
                     effectiveRange: nil
                 ) as? NSColor
+                let firstRowBg = result.attribute(tableBodyBgKey, at: firstRowLoc, effectiveRange: nil) as? NSColor
+                let firstRowText = foregroundColor(at: firstRowLoc, in: result)
                 let firstRowAlternating = result.attribute(
                     tableRowAlternatingKey,
                     at: firstRowLoc,
                     effectiveRange: nil
                 ) as? Bool
                 XCTAssertNotNil(firstRowHasBorder, "Table row should carry border attribute")
+                XCTAssertNotNil(firstRowBg, "Table row should carry a themed body background attribute")
+                XCTAssertNotNil(firstRowText, "Table row should carry an explicit foreground color")
+                XCTAssertTrue(
+                    colorsApproxEqual(firstRowText!, palette.textPrimary),
+                    "Table rows should render with the primary text color"
+                )
+                XCTAssertTrue(
+                    colorsApproxEqual(firstRowBg!, palette.formattedTableBodySurface),
+                    "Non-alternating body rows should use the derived table body surface"
+                )
                 XCTAssertEqual(firstRowAlternating, false, "First body row should not be alternating")
 
+                let secondRowBodyBg = result.attribute(
+                    tableBodyBgKey,
+                    at: secondRowLoc,
+                    effectiveRange: nil
+                ) as? NSColor
                 let secondRowBg = result.attribute(tableRowBgKey, at: secondRowLoc, effectiveRange: nil) as? NSColor
                 let secondRowAlternating = result.attribute(
                     tableRowAlternatingKey,
@@ -904,7 +987,16 @@
                     effectiveRange: nil
                 ) as? Bool
                 XCTAssertEqual(secondRowAlternating, true, "Second body row should be alternating")
+                XCTAssertNotNil(secondRowBodyBg, "Alternating rows should keep the themed body surface attribute")
                 XCTAssertNotNil(secondRowBg, "Alternating table row should carry row background attribute")
+                XCTAssertTrue(
+                    colorsApproxEqual(secondRowBodyBg!, palette.formattedTableBodySurface),
+                    "Alternating rows should keep the shared table body surface"
+                )
+                XCTAssertTrue(
+                    colorsApproxEqual(secondRowBg!, palette.formattedTableRowSurface),
+                    "Alternating rows should use the derived zebra stripe surface"
+                )
             }
 
             func testTableParagraphStyleUsesEnhancedSpacingAndInset() async {
@@ -921,13 +1013,22 @@
 
                 let style = paragraphStyle(at: rowLoc, in: result)
                 XCTAssertNotNil(style, "Table rows should include paragraph styling")
-                XCTAssertEqual(style?.headIndent ?? 0, 16, accuracy: 0.1, "Table rows should use wider inset")
-                XCTAssertEqual(style?.firstLineHeadIndent ?? 0, 16, accuracy: 0.1)
+                XCTAssertEqual(
+                    style?.headIndent ?? 0,
+                    TableLayoutMetrics.contentInset,
+                    accuracy: 0.1,
+                    "Table rows should use wider inset"
+                )
+                XCTAssertEqual(style?.firstLineHeadIndent ?? 0, TableLayoutMetrics.contentInset, accuracy: 0.1)
                 XCTAssertGreaterThanOrEqual(style?.paragraphSpacing ?? 0, 5, "Table rows should have improved spacing")
-                XCTAssertGreaterThanOrEqual(
+                XCTAssertEqual(
                     style?.tabStops.first?.location ?? 0,
-                    120,
-                    "First table tab stop should be roomy"
+                    TableLayoutMetrics.contentInset + TableLayoutMetrics.columnWidth(
+                        readableWidth: ReaderColumnWidth.balanced.points,
+                        columnCount: 3
+                    ),
+                    accuracy: 0.1,
+                    "First table tab stop should align with the shared table width calculation"
                 )
             }
 
@@ -989,7 +1090,6 @@
                             readerFontSize: ReaderFontSize.standard.points,
                             codeFontSize: 14,
                             appTheme: .basic,
-                            syntaxPalette: .midnight,
                             colorScheme: .light,
                             textSpacing: .balanced,
                             readableWidth: ReaderColumnWidth.balanced.points,
@@ -1023,7 +1123,6 @@
                             readerFontSize: ReaderFontSize.standard.points,
                             codeFontSize: 14,
                             appTheme: .basic,
-                            syntaxPalette: .midnight,
                             colorScheme: .light,
                             textSpacing: .balanced,
                             readableWidth: ReaderColumnWidth.balanced.points,

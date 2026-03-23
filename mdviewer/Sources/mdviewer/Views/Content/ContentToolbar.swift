@@ -7,9 +7,6 @@
 
 internal import OSLog
 internal import SwiftUI
-#if os(macOS)
-    internal import AppKit
-#endif
 
 /// Signpost logger for toolbar interaction profiling.
 private let toolbarSignposter = OSSignposter(subsystem: "mdviewer", category: "Toolbar")
@@ -18,7 +15,6 @@ private let toolbarSignposter = OSSignposter(subsystem: "mdviewer", category: "T
 /// Uses native macOS toolbar components with SF Symbol effects for liquid design.
 struct ContentToolbar: ToolbarContent {
     @Binding var readerMode: ReaderMode
-    @Binding var showAppearancePopover: Bool
     @Binding var showMetadataInspector: Bool
     @Binding var sidebarMode: SidebarMode
     let documentText: String
@@ -70,18 +66,6 @@ struct ContentToolbar: ToolbarContent {
             .accessibilityLabel("Inspector")
             .accessibilityHint(sidebarAccessibilityHint)
             .accessibilityValue(showMetadataInspector ? "Visible" : "Hidden")
-        }
-
-        ToolbarItem(id: "appearance", placement: .automatic) {
-            Button {
-                showAppearancePopover = true
-            } label: {
-                Image(systemName: "paintbrush")
-                    .symbolBounce(on: showAppearancePopover)
-            }
-            .help("Appearance Settings")
-            .accessibilityLabel("Appearance Settings")
-            .accessibilityHint("Open appearance and theme settings")
         }
 
         ToolbarItem(id: "share", placement: .automatic) {

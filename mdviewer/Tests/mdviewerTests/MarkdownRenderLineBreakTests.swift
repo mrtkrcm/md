@@ -27,7 +27,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -60,7 +59,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -92,7 +90,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -114,7 +111,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -136,7 +132,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -164,7 +159,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -194,7 +188,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -223,7 +216,6 @@
                         readerFontSize: 16,
                         codeFontSize: 14,
                         appTheme: .basic,
-                        syntaxPalette: .midnight,
                         colorScheme: .light,
                         textSpacing: spacing,
                         readableWidth: ReaderColumnWidth.balanced.points,
@@ -258,7 +250,6 @@
                     readerFontSize: 16,
                     codeFontSize: 14,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .relaxed,
                     readableWidth: ReaderColumnWidth.balanced.points,
@@ -274,9 +265,10 @@
                 let style = ns.attribute(.paragraphStyle, at: loc, effectiveRange: nil) as? NSParagraphStyle
                 XCTAssertNotNil(style, "Body text must have a paragraph style")
                 XCTAssertEqual(style?.lineSpacing ?? 0, ReaderTextSpacing.relaxed.lineSpacing(for: 16), accuracy: 0.1)
+                // Paragraph spacing now has 1.1x multiplier for better breathing room
                 XCTAssertEqual(
                     style?.paragraphSpacing ?? 0,
-                    ReaderTextSpacing.relaxed.paragraphSpacing(for: 16),
+                    ReaderTextSpacing.relaxed.paragraphSpacing(for: 16) * 1.1,
                     accuracy: 0.1
                 )
             }

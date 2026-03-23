@@ -72,11 +72,14 @@ struct TypographyApplier: TypographyApplying {
     ) {
         let nsString = text.string as NSString
         let rhythm = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let hrSpacing = max(12, rhythm * 0.6)
+        let hrSpacing = max(
+            DesignTokens.TypographySpacing.horizontalRuleMinSpacing,
+            rhythm * DesignTokens.TypographySpacing.horizontalRuleSpacingMultiplier
+        )
         let hrStyle = NSMutableParagraphStyle()
         hrStyle.paragraphSpacingBefore = hrSpacing
         hrStyle.paragraphSpacing = hrSpacing
-        let hrFont = NSFont.systemFont(ofSize: 6, weight: .regular)
+        let hrFont = NSFont.systemFont(ofSize: DesignTokens.Component.HorizontalRule.fontSize, weight: .regular)
 
         var listInsertions: [(location: Int, marker: String, style: NSParagraphStyle?)] = []
         var hrInsertions: [Int] = []
@@ -328,6 +331,7 @@ struct TypographyApplier: TypographyApplying {
         text.addAttributes([
             .font: codeFont,
             .backgroundColor: palette.codeBackground,
+            .foregroundColor: palette.codeText,
         ], range: range)
         if request.showLineNumbers {
             text.addAttribute(MarkdownRenderAttribute.codeBlock, value: true, range: range)
@@ -345,7 +349,7 @@ struct TypographyApplier: TypographyApplying {
         var depth = 0
         for c in intent.components { if case .blockQuote = c.kind { depth += 1 } }
         text.addAttributes([
-            .foregroundColor: palette.textSecondary,
+            .foregroundColor: palette.blockquoteText,
             MarkdownRenderAttribute.blockquoteAccent: palette.blockquoteAccent,
             MarkdownRenderAttribute.blockquoteBackground: palette.blockquoteBackground,
             MarkdownRenderAttribute.blockquoteDepth: max(1, depth),
@@ -360,18 +364,22 @@ struct TypographyApplier: TypographyApplying {
         palette: NativeThemePalette,
         isTerminalInTable: Bool
     ) {
+        let columnCount = tableColumnCount(in: text, range: range)
         text.addAttributes([
             .font: request.readerFontFamily.nsFont(size: request.readerFontSize, weight: .semibold),
-            .foregroundColor: palette.heading,
+            .foregroundColor: palette.formattedTableHeaderTextColor(),
             MarkdownRenderAttribute.tableHeaderBackground: palette.formattedTableHeaderBackground(),
             MarkdownRenderAttribute.tableBorder: palette.formattedTableBorder(),
             MarkdownRenderAttribute.tableColumnDividerOpacity: palette.tableColumnDividerOpacityMultiplier(),
+            MarkdownRenderAttribute.tableColumnCount: columnCount,
+            MarkdownRenderAttribute.tableTerminalRow: isTerminalInTable,
         ], range: range)
         applyTableRowParagraphStyle(
             to: text,
             range: range,
             request: request,
-            isTerminalInTable: isTerminalInTable
+            isTerminalInTable: isTerminalInTable,
+            columnCount: columnCount
         )
     }
 
@@ -383,6 +391,7 @@ struct TypographyApplier: TypographyApplying {
         palette: NativeThemePalette,
         isTerminalInTable: Bool
     ) {
+        let columnCount = tableColumnCount(in: text, range: range)
         let isAlternating = rowIndex % 2 == 0
         if isAlternating {
             text.addAttribute(
@@ -393,15 +402,20 @@ struct TypographyApplier: TypographyApplying {
         }
         text.addAttributes([
             .font: request.readerFontFamily.nsFont(size: request.readerFontSize),
+            .foregroundColor: palette.textPrimary,
+            MarkdownRenderAttribute.tableBodyBackground: palette.formattedTableBodyBackground(),
             MarkdownRenderAttribute.tableRowAlternating: isAlternating,
             MarkdownRenderAttribute.tableBorder: palette.formattedTableBorder(),
             MarkdownRenderAttribute.tableColumnDividerOpacity: palette.tableColumnDividerOpacityMultiplier(),
+            MarkdownRenderAttribute.tableColumnCount: columnCount,
+            MarkdownRenderAttribute.tableTerminalRow: isTerminalInTable,
         ], range: range)
         applyTableRowParagraphStyle(
             to: text,
             range: range,
             request: request,
-            isTerminalInTable: isTerminalInTable
+            isTerminalInTable: isTerminalInTable,
+            columnCount: columnCount
         )
     }
 
@@ -446,27 +460,34 @@ struct TypographyApplier: TypographyApplying {
         request: RenderRequest,
         depth: Int
     ) {
-        let baseSpacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
+        let lineHeight = request.readerFontSize * request.textSpacing.lineHeightMultiplier
+        // Consistent 0.75× spacing for blockquotes (between compact and balanced)
+        let spacing = lineHeight * 0.75
         let style = createBaseParagraphStyle(
             lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
-            paragraphSpacing: baseSpacing * 0.62 * min(1.6, 1.0 + CGFloat(max(0, depth - 1)) * 0.2),
-            paragraphSpacingBefore: baseSpacing * 0.42,
+            paragraphSpacing: spacing,
+            paragraphSpacingBefore: spacing * 0.75,
             hyphenationFactor: request.typographyPreferences.hyphenation ? max(
                 0,
                 request.textSpacing.hyphenationFactor - 0.05
             ) : 0,
             alignment: request.typographyPreferences.justification.nsAlignment
         )
-        let indent: CGFloat = 12 + CGFloat(max(0, depth - 1)) * 10
+        let indent: CGFloat = DesignTokens.TypographySpacing
+            .blockquoteBaseIndent + CGFloat(max(0, depth - 1)) * DesignTokens.TypographySpacing.blockquoteDepthIncrement
         style.headIndent = indent
         style.firstLineHeadIndent = indent
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
     private func applyParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
+        // Increased paragraph spacing for better visual separation (1.1x for more breathing room)
         let style = createBaseParagraphStyle(
             lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
-            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize),
+            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize) * DesignTokens
+                .TypographySpacing.bodyParagraphMultiplier,
+            paragraphSpacingBefore: request.textSpacing.paragraphSpacingBefore(for: request.readerFontSize) * DesignTokens
+                .TypographySpacing.bodyParagraphBeforeMultiplier,
             hyphenationFactor: request.typographyPreferences.hyphenation ? max(
                 0,
                 request.textSpacing.hyphenationFactor - 0.05
@@ -477,12 +498,14 @@ struct TypographyApplier: TypographyApplying {
     }
 
     private func applyListParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
+        let lineHeight = request.readerFontSize * request.textSpacing.lineHeightMultiplier
+        // Tighter spacing for lists: 0.375× line height (between xs and sm)
         let style = createBaseParagraphStyle(
             lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
-            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize) * 0.5,
+            paragraphSpacing: lineHeight * 0.375,
             alignment: request.typographyPreferences.justification.nsAlignment
         )
-        style.headIndent = 24
+        style.headIndent = DesignTokens.Component.List.headIndent
         style.firstLineHeadIndent = 0
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
@@ -491,25 +514,28 @@ struct TypographyApplier: TypographyApplying {
         to text: NSMutableAttributedString,
         range: NSRange,
         request: RenderRequest,
-        isTerminalInTable: Bool
+        isTerminalInTable: Bool,
+        columnCount: Int
     ) {
+        let lineHeight = request.readerFontSize * request.textSpacing.lineHeightMultiplier
         let bodySpacing = request.textSpacing.paragraphSpacing(for: request.readerFontSize)
-        let cellSpacing = max(5, bodySpacing * 0.28)
+        let cellSpacing = max(
+            DesignTokens.Component.Table.minCellSpacing,
+            lineHeight * DesignTokens.TypographySpacing.tableCellSpacingMultiplier
+        )
         let style = createBaseParagraphStyle(
             lineSpacing: max(2, request.textSpacing.lineSpacing(for: request.readerFontSize) * 0.9),
             paragraphSpacing: isTerminalInTable ? bodySpacing : cellSpacing,
-            paragraphSpacingBefore: cellSpacing * 0.5,
+            paragraphSpacingBefore: cellSpacing,
             alignment: request.typographyPreferences.justification.nsAlignment
         )
-        let colWidth = max(90, (request.readableWidth - 32) * 0.20)
-        style.tabStops = (0 ..< 8).map { NSTextTab(
-            textAlignment: .left,
-            location: 16 + (colWidth * CGFloat($0 + 1)),
-            options: [:]
-        ) }
+        style.tabStops = TableLayoutMetrics.tabStops(
+            readableWidth: request.readableWidth,
+            columnCount: columnCount
+        )
         style.lineBreakMode = .byTruncatingTail
-        style.headIndent = 16
-        style.firstLineHeadIndent = 16
+        style.headIndent = TableLayoutMetrics.contentInset
+        style.firstLineHeadIndent = TableLayoutMetrics.contentInset
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
 
@@ -573,12 +599,25 @@ struct TypographyApplier: TypographyApplying {
         level: Int
     ) {
         let headingSize = fontSizeForHeader(level: level, baseSize: request.readerFontSize)
-        let baseSpacing = request.textSpacing.paragraphSpacing(for: headingSize)
-        let mult: CGFloat = level == 1 ? 0.72 : (level == 2 ? 0.62 : (level == 3 ? 0.54 : 0.46))
+        let lineHeight = headingSize * request.textSpacing.lineHeightMultiplier
+
+        // Space before: larger headings get more space (section breaks)
+        // H1: 1.5×, H2: 1.25×, H3: 1.0×, H4+: 0.75×
+        let spaceBeforeMultiplier: CGFloat
+        switch level {
+        case 1: spaceBeforeMultiplier = 1.5
+        case 2: spaceBeforeMultiplier = 1.25
+        case 3: spaceBeforeMultiplier = 1.0
+        default: spaceBeforeMultiplier = 0.75
+        }
+
+        // Space after: half of space before (connects heading to content)
+        let spaceAfterMultiplier = spaceBeforeMultiplier * 0.5
+
         text.addAttribute(.paragraphStyle, value: createBaseParagraphStyle(
             lineSpacing: request.textSpacing.lineSpacing(for: headingSize),
-            paragraphSpacing: baseSpacing * mult,
-            paragraphSpacingBefore: baseSpacing * mult,
+            paragraphSpacing: lineHeight * spaceAfterMultiplier,
+            paragraphSpacingBefore: lineHeight * spaceBeforeMultiplier,
             alignment: request.typographyPreferences.justification.nsAlignment
         ), range: range)
     }
@@ -596,11 +635,16 @@ struct TypographyApplier: TypographyApplying {
         hasLineNumbers: Bool
     ) {
         let style = createBaseParagraphStyle(
-            lineSpacing: max(2, request.codeFontSize * 0.15),
-            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.codeFontSize) * 0.75
+            lineSpacing: request.codeFontSize * DesignTokens.TypographySpacing.codeBlockLineMultiplier,
+            paragraphSpacing: 0,
+            paragraphSpacingBefore: 0
         )
+        // Enable soft word wrapping for code blocks (matching reference image)
+        style.lineBreakMode = .byWordWrapping
         if hasLineNumbers {
-            let gutter = (request.codeFontSize * 0.6 * 4) + (request.codeFontSize * 0.8)
+            let gutter = (request.codeFontSize * DesignTokens.TypographySpacing
+                .codeBlockCharWidthMultiplier * DesignTokens.TypographySpacing.codeBlockGutterChars) +
+                (request.codeFontSize * DesignTokens.TypographySpacing.codeBlockGutterPaddingMultiplier)
             style.headIndent = gutter
             style.firstLineHeadIndent = gutter
         }
@@ -621,6 +665,7 @@ struct TypographyApplier: TypographyApplying {
                 [
                     .font: font!,
                     .backgroundColor: palette.inlineCodeBackground,
+                    .foregroundColor: palette.codeText,
                     .baselineOffset: round(request.readerFontSize * 0.06),
                 ],
                 range: range
@@ -646,7 +691,6 @@ struct TypographyApplier: TypographyApplying {
     }
 
     private func truncateTableCells(in text: NSMutableAttributedString, bodyFont: NSFont, request: RenderRequest) {
-        let colWidth = max(90, (request.readableWidth - 32) * 0.20) - 4
         let nsString = text.string as NSString
         var mutations: [(range: NSRange, text: String)] = []
         let ellipsisWidth = ("…" as NSString).size(withAttributes: [.font: bodyFont]).width
@@ -658,6 +702,10 @@ struct TypographyApplier: TypographyApplying {
             ) { sub, subR, _, _ in
                 guard let row = sub, row.contains("\t") else { return }
                 let segs = row.components(separatedBy: "\t")
+                let colWidth = TableLayoutMetrics.nonTerminalCellContentWidth(
+                    readableWidth: request.readableWidth,
+                    columnCount: segs.count
+                ) - DesignTokens.Component.Table.truncationPadding
                 var newSegs: [String] = []
                 var changed = false
                 for (i, seg) in segs.enumerated() {
@@ -679,6 +727,18 @@ struct TypographyApplier: TypographyApplying {
             in: m.range,
             with: m.text
         ) }
+    }
+
+    private func tableColumnCount(in text: NSAttributedString, range: NSRange) -> Int {
+        let nsString = text.string as NSString
+        let lineRange = nsString.lineRange(for: NSRange(location: range.location, length: 0))
+        let lineText = nsString.substring(with: lineRange)
+        let tabCount = lineText.reduce(into: 0) { result, character in
+            if character == "\t" {
+                result += 1
+            }
+        }
+        return max(1, tabCount + 1)
     }
 
     private nonisolated(unsafe) static let fontCache = NSCache<NSString, NSFont>()

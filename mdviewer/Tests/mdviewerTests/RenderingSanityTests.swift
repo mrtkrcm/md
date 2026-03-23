@@ -17,7 +17,6 @@
                     readerFontSize: 16,
                     codeFontSize: 12,
                     appTheme: .basic,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 760,

@@ -56,6 +56,12 @@ enum MarkdownRenderAttribute {
     /// to draw header surface decoration.
     static let tableHeaderBackground = NSAttributedString.Key("mdv.tableHeaderBackground")
 
+    /// Key for themed table body row background color.
+    ///
+    /// Stored on every table body row so the layout manager can draw a stable
+    /// table surface even when zebra striping is disabled for that row.
+    static let tableBodyBackground = NSAttributedString.Key("mdv.tableBodyBackground")
+
     /// Key for themed table row background color.
     ///
     /// Stored on alternating table row ranges; consumed by
@@ -84,6 +90,19 @@ enum MarkdownRenderAttribute {
     /// when drawing interior column guides. Allows per-theme tuning independent
     /// of the outer border weight.
     static let tableColumnDividerOpacity = NSAttributedString.Key("mdv.tableColumnDividerOpacity")
+
+    /// Key for the resolved table column count on a rendered row.
+    ///
+    /// Value is an `Int` captured during typography so the layout manager can
+    /// draw dividers without rescanning the row text for tab separators.
+    static let tableColumnCount = NSAttributedString.Key("mdv.tableColumnCount")
+
+    /// Key indicating whether a rendered table row is the terminal row of its table.
+    ///
+    /// Value is a `Bool` captured during typography so layout drawing can restore
+    /// bottom padding and border closure for every table, not just the final one
+    /// in the document.
+    static let tableTerminalRow = NSAttributedString.Key("mdv.tableTerminalRow")
 
     /// Key for horizontal rule (thematic break) styling.
     ///

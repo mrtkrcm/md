@@ -39,7 +39,6 @@
                         readerFontSize: 16,
                         codeFontSize: 12,
                         appTheme: theme,
-                        syntaxPalette: .midnight,
                         colorScheme: .light,
                         textSpacing: .balanced,
                         readableWidth: 760,
@@ -85,7 +84,6 @@
                         readerFontSize: 16,
                         codeFontSize: 12,
                         appTheme: theme,
-                        syntaxPalette: .midnight,
                         colorScheme: .dark,
                         textSpacing: .balanced,
                         readableWidth: 760,
@@ -126,7 +124,6 @@
                             readerFontSize: 16,
                             codeFontSize: 12,
                             appTheme: theme,
-                            syntaxPalette: .midnight,
                             colorScheme: .light,
                             textSpacing: spacing,
                             readableWidth: 760,
@@ -155,7 +152,6 @@
                             readerFontSize: 16,
                             codeFontSize: 12,
                             appTheme: theme,
-                            syntaxPalette: .midnight,
                             colorScheme: scheme,
                             textSpacing: .balanced,
                             readableWidth: 760,
@@ -197,7 +193,6 @@
                             readerFontSize: 16,
                             codeFontSize: 12,
                             appTheme: theme,
-                            syntaxPalette: .midnight,
                             colorScheme: scheme,
                             textSpacing: .balanced,
                             readableWidth: 760,
@@ -230,12 +225,12 @@
             /// Test that all themes are properly registered and accessible.
             func testAllThemesAreRegistered() {
                 let themes = AppTheme.allCases
-                XCTAssertEqual(themes.count, 10, "Should have exactly 10 themes")
+                XCTAssertEqual(themes.count, 12, "Should have exactly 12 themes")
 
                 let expectedThemes = [
                     "Basic", "GitHub", "DocC",
                     "Solarized", "Gruvbox", "Dracula", "Monokai", "Nord",
-                    "One Dark", "Tokyo Night",
+                    "One Dark", "Tokyo Night", "Catppuccin", "Rose Pine",
                 ]
 
                 let registeredNames = themes.map(\.rawValue)

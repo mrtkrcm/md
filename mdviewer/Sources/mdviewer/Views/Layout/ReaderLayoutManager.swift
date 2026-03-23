@@ -16,30 +16,42 @@
         private static let codeHPadding: CGFloat = 12
         private static let bqBarWidth: CGFloat = 3
         private static let bqHPadding: CGFloat = 12
-        private static let tableHPadding: CGFloat = 12
-        private static let tableVPadding: CGFloat = 6
-        private static let tableMinWidth: CGFloat = 280
         private static let lineNumberGutterPadding: CGFloat = 12
         private static let lineNumberMinWidth: CGFloat = 32
 
         // MARK: - Cache
 
+        private struct DecorationRangeKey: Hashable {
+            let charStart: Int
+            let charEnd: Int
+        }
+
         private struct CachedDecoration {
             let spans: DecorationSpans
-            let usedRects: [Int: CGRect] // Key: hash of span
-            let textHash: Int
+            let usedRects: [DecorationRangeKey: CGRect]
+            let generation: Int
             let containerWidth: CGFloat
         }
 
         private var decorationCache: CachedDecoration?
+        private var decorationCacheGeneration = 0
 
         // MARK: - Decoration Span Types
+
+        private struct TableDecoration: Hashable {
+            let backgroundColor: NSColor?
+            let borderColor: NSColor?
+            let dividerColor: NSColor?
+            let naturalWidth: CGFloat
+            let rowInsets: TableLayoutMetrics.RowInsets
+            let drawsBottomEdge: Bool
+            let dividerLocations: [CGFloat]
+        }
 
         private enum SpanKind: Hashable {
             case code(bg: NSColor)
             case blockquote(bg: NSColor, accent: NSColor, depth: Int)
-            case tableHeader(bg: NSColor)
-            case tableRow(alternating: Bool, bg: NSColor)
+            case table(decoration: TableDecoration)
             case horizontalRule(color: NSColor)
         }
 
@@ -47,6 +59,10 @@
             var charStart: Int
             var charEnd: Int
             var kind: SpanKind
+
+            var rangeKey: DecorationRangeKey {
+                DecorationRangeKey(charStart: charStart, charEnd: charEnd)
+            }
         }
 
         private struct DecorationSpans {
@@ -71,7 +87,28 @@
             )
         }
 
+        static func tableRowDrawRect(
+            usedRect: CGRect,
+            origin: NSPoint,
+            containerWidth: CGFloat,
+            naturalTableWidth: CGFloat,
+            rowInsets: TableLayoutMetrics.RowInsets
+        ) -> CGRect {
+            let tableWidth = min(
+                containerWidth,
+                max(TableLayoutMetrics.minimumTableWidth, naturalTableWidth)
+            )
+
+            return CGRect(
+                x: origin.x,
+                y: usedRect.minY - rowInsets.top,
+                width: tableWidth,
+                height: usedRect.height + rowInsets.top + rowInsets.bottom
+            )
+        }
+
         func invalidateDecorationCache() {
+            decorationCacheGeneration &+= 1
             decorationCache = nil
         }
 
@@ -108,15 +145,14 @@
             guard totalLen > 0 else { return }
 
             let containerWidth = container.containerSize.width
-            let textHash = ts.string.hashValue
 
             // ── Validate and Update Cache ────────────────────────────────────────
             let spans: DecorationSpans
-            var usedRects: [Int: CGRect]
+            var usedRects: [DecorationRangeKey: CGRect]
 
             if
                 let cached = decorationCache,
-                cached.textHash == textHash,
+                cached.generation == decorationCacheGeneration,
                 abs(cached.containerWidth - containerWidth) < 0.1
             {
                 spans = cached.spans
@@ -129,7 +165,7 @@
                 decorationCache = CachedDecoration(
                     spans: spans,
                     usedRects: usedRects,
-                    textHash: textHash,
+                    generation: decorationCacheGeneration,
                     containerWidth: containerWidth
                 )
             }
@@ -142,12 +178,7 @@
                 guard span.charEnd > charRange.location, span.charStart < NSMaxRange(charRange) else { continue }
                 guard case .code(let bg) = span.kind else { continue }
 
-                let spanHash = span.hashValue
-                let rect = usedRects[spanHash] ?? {
-                    let r = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
-                    usedRects[spanHash] = r
-                    return r
-                }()
+                let rect = cachedUsedRect(for: span, usedRects: &usedRects, origin: origin)
                 guard !rect.isNull else { continue }
 
                 let hasLineNumbers = ts.attribute(
@@ -198,12 +229,7 @@
                 guard span.charEnd > charRange.location, span.charStart < NSMaxRange(charRange) else { continue }
                 guard case .blockquote(let bg, let accent, let depth) = span.kind else { continue }
 
-                let spanHash = span.hashValue
-                let rect = usedRects[spanHash] ?? {
-                    let r = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
-                    usedRects[spanHash] = r
-                    return r
-                }()
+                let rect = cachedUsedRect(for: span, usedRects: &usedRects, origin: origin)
                 guard !rect.isNull else { continue }
 
                 let drawRect = Self.blockquoteDrawRect(
@@ -229,72 +255,35 @@
             }
 
             // ── Draw table surfaces and separators ───────────────────────────────
-            for (spanIndex, span) in spans.table.enumerated() {
+            for span in spans.table {
                 guard span.charEnd > charRange.location, span.charStart < NSMaxRange(charRange) else { continue }
+                guard case .table(let decoration) = span.kind else { continue }
 
-                let spanHash = span.hashValue
-                let rect = usedRects[spanHash] ?? {
-                    let r = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
-                    usedRects[spanHash] = r
-                    return r
-                }()
+                let rect = cachedUsedRect(for: span, usedRects: &usedRects, origin: origin)
                 guard !rect.isNull else { continue }
 
-                let isLastTableSpan = spanIndex == spans.table.count - 1
-
-                let paragraph = ts.attribute(
-                    .paragraphStyle,
-                    at: span.charStart,
-                    effectiveRange: nil
-                ) as? NSParagraphStyle
-                let lineRange = (ts.string as NSString).lineRange(for: NSRange(location: span.charStart, length: 0))
-                let lineText = (ts.string as NSString).substring(with: lineRange)
-                let tabCount = lineText.reduce(into: 0) { partialResult, char in
-                    if char == "\t" { partialResult += 1 }
-                }
-
-                let tableWidth = max(Self.tableMinWidth, containerWidth - 16)
-
-                let rowRect = CGRect(
-                    x: origin.x + Self.tableHPadding,
-                    y: rect.minY - Self.tableVPadding,
-                    width: tableWidth,
-                    height: rect.height + (Self.tableVPadding * 2)
+                let rowRect = Self.tableRowDrawRect(
+                    usedRect: rect,
+                    origin: origin,
+                    containerWidth: containerWidth,
+                    naturalTableWidth: decoration.naturalWidth,
+                    rowInsets: decoration.rowInsets
                 )
                 guard rowRect.width > 0, rowRect.height > 0 else { continue }
 
-                let borderColor = ts
-                    .attribute(MarkdownRenderAttribute.tableBorder, at: span.charStart, effectiveRange: nil) as? NSColor
-
                 ctx.saveGState()
-                switch span.kind {
-                case .tableHeader(let bg):
-                    bg.setFill()
+                if let backgroundColor = decoration.backgroundColor {
+                    backgroundColor.setFill()
                     ctx.fill(rowRect)
-
-                case .tableRow(let alternating, let bg):
-                    if alternating {
-                        bg.setFill()
-                        ctx.fill(rowRect)
-                    }
-
-                default:
-                    break
                 }
 
-                if let borderColor {
+                if let borderColor = decoration.borderColor {
                     ctx.setLineWidth(0.5)
                     borderColor.setStroke()
                     ctx.beginPath()
                     ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.minY))
                     ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.minY))
-                    let drawsBottomEdge: Bool
-                    if case .tableHeader = span.kind {
-                        drawsBottomEdge = true
-                    } else {
-                        drawsBottomEdge = isLastTableSpan
-                    }
-                    if drawsBottomEdge {
+                    if decoration.drawsBottomEdge {
                         ctx.move(to: CGPoint(x: rowRect.minX, y: rowRect.maxY))
                         ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.maxY))
                     }
@@ -304,18 +293,11 @@
                     ctx.addLine(to: CGPoint(x: rowRect.maxX, y: rowRect.maxY))
                     ctx.strokePath()
 
-                    if let paragraph, tabCount > 0 {
-                        let rawMultiplier = ts.attribute(
-                            MarkdownRenderAttribute.tableColumnDividerOpacity,
-                            at: span.charStart,
-                            effectiveRange: nil
-                        ) as? CGFloat ?? 0.45
-                        let dividerMultiplier = max(0.0, min(1.0, rawMultiplier))
-
-                        borderColor.withAlphaComponent(borderColor.alphaComponent * dividerMultiplier).setStroke()
+                    if let dividerColor = decoration.dividerColor, !decoration.dividerLocations.isEmpty {
+                        dividerColor.setStroke()
                         ctx.beginPath()
-                        for tabStop in paragraph.tabStops.prefix(tabCount) {
-                            let x = origin.x + tabStop.location
+                        for dividerLocation in decoration.dividerLocations {
+                            let x = origin.x + dividerLocation
                             guard x > rowRect.minX, x < rowRect.maxX else { continue }
                             ctx.move(to: CGPoint(x: x, y: rowRect.minY))
                             ctx.addLine(to: CGPoint(x: x, y: rowRect.maxY))
@@ -331,12 +313,7 @@
                 guard span.charEnd > charRange.location, span.charStart < NSMaxRange(charRange) else { continue }
                 guard case .horizontalRule(let color) = span.kind else { continue }
 
-                let spanHash = span.hashValue
-                let rect = usedRects[spanHash] ?? {
-                    let r = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
-                    usedRects[spanHash] = r
-                    return r
-                }()
+                let rect = cachedUsedRect(for: span, usedRects: &usedRects, origin: origin)
                 guard !rect.isNull else { continue }
 
                 let lineY = floor(rect.midY) + 0.5
@@ -357,7 +334,7 @@
             decorationCache = CachedDecoration(
                 spans: spans,
                 usedRects: usedRects,
-                textHash: textHash,
+                generation: decorationCacheGeneration,
                 containerWidth: containerWidth
             )
         }
@@ -370,6 +347,8 @@
             totalLen: Int
         ) -> DecorationSpans {
             var spans = DecorationSpans()
+            let nsString = ts.string as NSString
+            var seenTableRows: Set<NSRange> = []
 
             ts.enumerateAttribute(
                 MarkdownRenderAttribute.presentationIntent,
@@ -423,34 +402,26 @@
                 for component in intent.components {
                     switch component.kind {
                     case .tableHeaderRow:
-                        if
-                            let bg = ts.attribute(
-                                MarkdownRenderAttribute.tableHeaderBackground,
-                                at: range.location,
-                                effectiveRange: nil
-                            ) as? NSColor
-                        {
-                            spans.table.append(DecorationSpan(
-                                charStart: range.location,
-                                charEnd: NSMaxRange(range),
-                                kind: .tableHeader(bg: bg)
-                            ))
+                        let lineRange = nsString.lineRange(for: NSRange(location: range.location, length: 0))
+                        guard seenTableRows.insert(lineRange).inserted else { continue }
+                        guard let decoration = tableDecoration(in: ts, at: range.location, isHeader: true) else {
+                            continue
                         }
-                    case .tableRow:
-                        let bg = ts.attribute(
-                            MarkdownRenderAttribute.tableRowBackground,
-                            at: range.location,
-                            effectiveRange: nil
-                        ) as? NSColor ?? .clear
-                        let alternating = ts.attribute(
-                            MarkdownRenderAttribute.tableRowAlternating,
-                            at: range.location,
-                            effectiveRange: nil
-                        ) as? Bool ?? false
                         spans.table.append(DecorationSpan(
-                            charStart: range.location,
-                            charEnd: NSMaxRange(range),
-                            kind: .tableRow(alternating: alternating, bg: bg)
+                            charStart: lineRange.location,
+                            charEnd: NSMaxRange(lineRange),
+                            kind: .table(decoration: decoration)
+                        ))
+                    case .tableRow:
+                        let lineRange = nsString.lineRange(for: NSRange(location: range.location, length: 0))
+                        guard seenTableRows.insert(lineRange).inserted else { continue }
+                        guard let decoration = tableDecoration(in: ts, at: range.location, isHeader: false) else {
+                            continue
+                        }
+                        spans.table.append(DecorationSpan(
+                            charStart: lineRange.location,
+                            charEnd: NSMaxRange(lineRange),
+                            kind: .table(decoration: decoration)
                         ))
                     default:
                         break
@@ -481,6 +452,124 @@
         }
 
         // MARK: - Helpers
+
+        private func tableDecoration(
+            in textStorage: NSTextStorage,
+            at location: Int,
+            isHeader: Bool
+        ) -> TableDecoration? {
+            guard
+                let paragraphStyle = textStorage.attribute(
+                    .paragraphStyle,
+                    at: location,
+                    effectiveRange: nil
+                ) as? NSParagraphStyle
+            else { return nil }
+
+            let columnCount = textStorage.attribute(
+                MarkdownRenderAttribute.tableColumnCount,
+                at: location,
+                effectiveRange: nil
+            ) as? Int ?? 1
+            let isTerminalRow = textStorage.attribute(
+                MarkdownRenderAttribute.tableTerminalRow,
+                at: location,
+                effectiveRange: nil
+            ) as? Bool ?? false
+            let borderColor = textStorage.attribute(
+                MarkdownRenderAttribute.tableBorder,
+                at: location,
+                effectiveRange: nil
+            ) as? NSColor
+            let dividerOpacity = max(
+                0.0,
+                min(
+                    1.0,
+                    textStorage.attribute(
+                        MarkdownRenderAttribute.tableColumnDividerOpacity,
+                        at: location,
+                        effectiveRange: nil
+                    ) as? CGFloat ?? 0.45
+                )
+            )
+            let leadingInset = max(
+                TableLayoutMetrics.contentInset,
+                paragraphStyle.firstLineHeadIndent,
+                paragraphStyle.headIndent
+            )
+            let tabStopLocations = TableLayoutMetrics.tabStopLocations(
+                paragraphStyle: paragraphStyle,
+                columnCount: columnCount
+            )
+            let naturalWidth = TableLayoutMetrics.naturalTableWidth(
+                leadingInset: leadingInset,
+                dividerLocations: tabStopLocations,
+                columnCount: columnCount
+            )
+            let dividerLocations = TableLayoutMetrics.dividerLocations(
+                paragraphStyle: paragraphStyle,
+                columnCount: columnCount
+            )
+            let rowInsets = TableLayoutMetrics.rowInsets(
+                paragraphStyle: paragraphStyle,
+                isTerminalRow: isTerminalRow
+            )
+            let dividerColor = borderColor?.withAlphaComponent((borderColor?.alphaComponent ?? 0) * dividerOpacity)
+
+            return TableDecoration(
+                backgroundColor: resolvedTableBackground(in: textStorage, at: location, isHeader: isHeader),
+                borderColor: borderColor,
+                dividerColor: dividerColor,
+                naturalWidth: naturalWidth,
+                rowInsets: rowInsets,
+                drawsBottomEdge: isHeader || isTerminalRow,
+                dividerLocations: dividerLocations
+            )
+        }
+
+        private func resolvedTableBackground(
+            in textStorage: NSTextStorage,
+            at location: Int,
+            isHeader: Bool
+        ) -> NSColor? {
+            if isHeader {
+                return textStorage.attribute(
+                    MarkdownRenderAttribute.tableHeaderBackground,
+                    at: location,
+                    effectiveRange: nil
+                ) as? NSColor
+            }
+
+            if
+                let alternatingBackground = textStorage.attribute(
+                    MarkdownRenderAttribute.tableRowBackground,
+                    at: location,
+                    effectiveRange: nil
+                ) as? NSColor
+            {
+                return alternatingBackground
+            }
+
+            return textStorage.attribute(
+                MarkdownRenderAttribute.tableBodyBackground,
+                at: location,
+                effectiveRange: nil
+            ) as? NSColor
+        }
+
+        private func cachedUsedRect(
+            for span: DecorationSpan,
+            usedRects: inout [DecorationRangeKey: CGRect],
+            origin: NSPoint
+        ) -> CGRect {
+            if let cachedRect = usedRects[span.rangeKey] {
+                return cachedRect
+            }
+
+            let rect = unionUsedRect(charStart: span.charStart, charEnd: span.charEnd, origin: origin)
+            usedRects[span.rangeKey] = rect
+            return rect
+        }
 
         private func unionUsedRect(charStart: Int, charEnd: Int, origin: NSPoint) -> CGRect {
             let length = charEnd - charStart

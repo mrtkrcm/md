@@ -310,9 +310,9 @@ extension NativeThemePalette {
             link = Self.p3Color(r: 0.64, g: 0.48, b: 0.96)
             linkHover = Self.p3Color(r: 0.64, g: 0.48, b: 0.96)
             accent = Self.p3Color(r: 0.64, g: 0.48, b: 0.96)
-            heading = Self.p3Color(r: 0.25, g: 0.26, b: 0.35)
-            heading1 = Self.p3Color(r: 0.25, g: 0.26, b: 0.35)
-            heading2 = Self.p3Color(r: 0.25, g: 0.26, b: 0.35)
+            heading = Self.p3Color(r: 0.12, g: 0.13, b: 0.20)
+            heading1 = Self.p3Color(r: 0.12, g: 0.13, b: 0.20)
+            heading2 = Self.p3Color(r: 0.18, g: 0.19, b: 0.27)
             heading3 = Self.p3Color(r: 0.25, g: 0.26, b: 0.35)
             codeBackground = Self.p3Color(r: 0.96, g: 0.96, b: 0.97)
             codeBorder = Self.p3Color(r: 0.88, g: 0.88, b: 0.90)
@@ -591,6 +591,126 @@ extension NativeThemePalette {
             selectionBackground = Self.p3Color(r: 0.25, g: 0.50, b: 0.90, a: 0.4)
             selectionText = .white
 
+        // MARK: - Catppuccin Theme (Official Latte/Mocha)
+
+        case (.catppuccin, .light):
+            // Catppuccin Latte - official hex: Text #4c4f69, Subtext #5c5f77, Mauve #8839ef
+            textPrimary = Self.p3Color(r: 0.298, g: 0.310, b: 0.412)
+            textSecondary = Self.p3Color(r: 0.361, g: 0.373, b: 0.467)
+            textTertiary = Self.p3Color(r: 0.424, g: 0.435, b: 0.522, a: 0.7)
+            link = Self.p3Color(r: 0.118, g: 0.400, b: 0.961)
+            linkHover = Self.p3Color(r: 0.118, g: 0.400, b: 0.961)
+            accent = Self.p3Color(r: 0.533, g: 0.224, b: 0.937)
+            heading = Self.p3Color(r: 0.824, g: 0.059, b: 0.224)
+            heading1 = Self.p3Color(r: 0.824, g: 0.059, b: 0.224)
+            heading2 = Self.p3Color(r: 0.533, g: 0.224, b: 0.937)
+            heading3 = Self.p3Color(r: 0.251, g: 0.627, b: 0.169)
+            codeBackground = Self.p3Color(r: 0.937, g: 0.945, b: 0.961)
+            codeBorder = Self.p3Color(r: 0.800, g: 0.816, b: 0.855)
+            inlineCodeBackground = Self.p3Color(r: 0.533, g: 0.224, b: 0.937, a: 0.08)
+            codeText = Self.p3Color(r: 0.361, g: 0.373, b: 0.467)
+            blockquoteAccent = Self.p3Color(r: 0.251, g: 0.627, b: 0.169)
+            blockquoteBackground = Self.p3Color(r: 0.533, g: 0.224, b: 0.937, a: 0.05)
+            blockquoteText = Self.p3Color(r: 0.361, g: 0.373, b: 0.467)
+            tableHeaderBackground = Self.p3Color(r: 0.800, g: 0.816, b: 0.855)
+            tableBorder = Self.p3Color(r: 0.737, g: 0.753, b: 0.796)
+            tableRowAlternating = Self.p3Color(r: 0.0, g: 0.0, b: 0.0, a: 0.02)
+            listMarker = Self.p3Color(r: 0.533, g: 0.224, b: 0.937)
+            taskListUnchecked = Self.p3Color(r: 0.361, g: 0.373, b: 0.467)
+            taskListChecked = Self.p3Color(r: 0.251, g: 0.627, b: 0.169)
+            horizontalRule = Self.p3Color(r: 0.737, g: 0.753, b: 0.796)
+            selectionBackground = Self.p3Color(r: 0.533, g: 0.224, b: 0.937, a: 0.25)
+            selectionText = .black
+
+        case (.catppuccin, .dark):
+            // Catppuccin Mocha - official hex: Text #cdd6f4, Subtext #bac2de, Mauve #cba6f7
+            textPrimary = Self.p3Color(r: 0.804, g: 0.839, b: 0.957)
+            textSecondary = Self.p3Color(r: 0.729, g: 0.761, b: 0.871)
+            textTertiary = Self.p3Color(r: 0.651, g: 0.678, b: 0.784, a: 0.7)
+            link = Self.p3Color(r: 0.537, g: 0.706, b: 0.980)
+            linkHover = Self.p3Color(r: 0.537, g: 0.706, b: 0.980)
+            accent = Self.p3Color(r: 0.796, g: 0.651, b: 0.969)
+            heading = Self.p3Color(r: 0.953, g: 0.545, b: 0.659)
+            heading1 = Self.p3Color(r: 0.953, g: 0.545, b: 0.659)
+            heading2 = Self.p3Color(r: 0.796, g: 0.651, b: 0.969)
+            heading3 = Self.p3Color(r: 0.651, g: 0.890, b: 0.631)
+            codeBackground = Self.p3Color(r: 0.118, g: 0.118, b: 0.180)
+            codeBorder = Self.p3Color(r: 0.271, g: 0.278, b: 0.345)
+            inlineCodeBackground = Self.p3Color(r: 0.796, g: 0.651, b: 0.969, a: 0.10)
+            codeText = Self.p3Color(r: 0.729, g: 0.761, b: 0.871)
+            blockquoteAccent = Self.p3Color(r: 0.651, g: 0.890, b: 0.631)
+            blockquoteBackground = Self.p3Color(r: 0.796, g: 0.651, b: 0.969, a: 0.08)
+            blockquoteText = Self.p3Color(r: 0.729, g: 0.761, b: 0.871)
+            tableHeaderBackground = Self.p3Color(r: 0.271, g: 0.278, b: 0.345)
+            tableBorder = Self.p3Color(r: 0.345, g: 0.353, b: 0.424)
+            tableRowAlternating = Self.p3Color(r: 1.0, g: 1.0, b: 1.0, a: 0.03)
+            listMarker = Self.p3Color(r: 0.796, g: 0.651, b: 0.969)
+            taskListUnchecked = Self.p3Color(r: 0.729, g: 0.761, b: 0.871)
+            taskListChecked = Self.p3Color(r: 0.651, g: 0.890, b: 0.631)
+            horizontalRule = Self.p3Color(r: 0.345, g: 0.353, b: 0.424)
+            selectionBackground = Self.p3Color(r: 0.796, g: 0.651, b: 0.969, a: 0.40)
+            selectionText = .white
+
+        // MARK: - Rose Pine Theme (Official Dawn/Main)
+
+        case (.rosepine, .light):
+            // Rose Pine Dawn - official hex: Text #575279, Subtle #797593, Love #b4637a
+            textPrimary = Self.p3Color(r: 0.341, g: 0.322, b: 0.475)
+            textSecondary = Self.p3Color(r: 0.475, g: 0.459, b: 0.576)
+            textTertiary = Self.p3Color(r: 0.596, g: 0.576, b: 0.647, a: 0.7)
+            link = Self.p3Color(r: 0.157, g: 0.412, b: 0.514)
+            linkHover = Self.p3Color(r: 0.157, g: 0.412, b: 0.514)
+            accent = Self.p3Color(r: 0.565, g: 0.478, b: 0.663)
+            heading = Self.p3Color(r: 0.706, g: 0.388, b: 0.478)
+            heading1 = Self.p3Color(r: 0.706, g: 0.388, b: 0.478)
+            heading2 = Self.p3Color(r: 0.565, g: 0.478, b: 0.663)
+            heading3 = Self.p3Color(r: 0.157, g: 0.412, b: 0.514)
+            codeBackground = Self.p3Color(r: 0.980, g: 0.961, b: 0.941)
+            codeBorder = Self.p3Color(r: 0.949, g: 0.914, b: 0.882)
+            inlineCodeBackground = Self.p3Color(r: 0.565, g: 0.478, b: 0.663, a: 0.08)
+            codeText = Self.p3Color(r: 0.475, g: 0.459, b: 0.576)
+            blockquoteAccent = Self.p3Color(r: 0.157, g: 0.412, b: 0.514)
+            blockquoteBackground = Self.p3Color(r: 0.565, g: 0.478, b: 0.663, a: 0.05)
+            blockquoteText = Self.p3Color(r: 0.475, g: 0.459, b: 0.576)
+            tableHeaderBackground = Self.p3Color(r: 1.0, g: 0.980, b: 0.953)
+            tableBorder = Self.p3Color(r: 0.949, g: 0.914, b: 0.882)
+            tableRowAlternating = Self.p3Color(r: 0.0, g: 0.0, b: 0.0, a: 0.02)
+            listMarker = Self.p3Color(r: 0.565, g: 0.478, b: 0.663)
+            taskListUnchecked = Self.p3Color(r: 0.475, g: 0.459, b: 0.576)
+            taskListChecked = Self.p3Color(r: 0.157, g: 0.412, b: 0.514)
+            horizontalRule = Self.p3Color(r: 0.949, g: 0.914, b: 0.882)
+            selectionBackground = Self.p3Color(r: 0.706, g: 0.388, b: 0.478, a: 0.25)
+            selectionText = .black
+
+        case (.rosepine, .dark):
+            // Rose Pine Main - official hex: Text #e0def4, Subtle #908caa, Love #eb6f92
+            textPrimary = Self.p3Color(r: 0.878, g: 0.871, b: 0.957)
+            textSecondary = Self.p3Color(r: 0.565, g: 0.549, b: 0.663)
+            textTertiary = Self.p3Color(r: 0.431, g: 0.416, b: 0.525, a: 0.7)
+            link = Self.p3Color(r: 0.612, g: 0.812, b: 0.847)
+            linkHover = Self.p3Color(r: 0.612, g: 0.812, b: 0.847)
+            accent = Self.p3Color(r: 0.769, g: 0.655, b: 0.906)
+            heading = Self.p3Color(r: 0.922, g: 0.435, b: 0.573)
+            heading1 = Self.p3Color(r: 0.922, g: 0.435, b: 0.573)
+            heading2 = Self.p3Color(r: 0.769, g: 0.655, b: 0.906)
+            heading3 = Self.p3Color(r: 0.612, g: 0.812, b: 0.847)
+            codeBackground = Self.p3Color(r: 0.098, g: 0.090, b: 0.141)
+            codeBorder = Self.p3Color(r: 0.149, g: 0.137, b: 0.180)
+            inlineCodeBackground = Self.p3Color(r: 0.769, g: 0.655, b: 0.906, a: 0.10)
+            codeText = Self.p3Color(r: 0.565, g: 0.549, b: 0.663)
+            blockquoteAccent = Self.p3Color(r: 0.612, g: 0.812, b: 0.847)
+            blockquoteBackground = Self.p3Color(r: 0.769, g: 0.655, b: 0.906, a: 0.08)
+            blockquoteText = Self.p3Color(r: 0.565, g: 0.549, b: 0.663)
+            tableHeaderBackground = Self.p3Color(r: 0.122, g: 0.114, b: 0.180)
+            tableBorder = Self.p3Color(r: 0.149, g: 0.137, b: 0.180)
+            tableRowAlternating = Self.p3Color(r: 1.0, g: 1.0, b: 1.0, a: 0.03)
+            listMarker = Self.p3Color(r: 0.769, g: 0.655, b: 0.906)
+            taskListUnchecked = Self.p3Color(r: 0.565, g: 0.549, b: 0.663)
+            taskListChecked = Self.p3Color(r: 0.192, g: 0.455, b: 0.561)
+            horizontalRule = Self.p3Color(r: 0.149, g: 0.137, b: 0.180)
+            selectionBackground = Self.p3Color(r: 0.922, g: 0.435, b: 0.573, a: 0.40)
+            selectionText = .white
+
         @unknown default:
             textPrimary = .labelColor
             textSecondary = .secondaryLabelColor
@@ -719,8 +839,20 @@ extension NativeThemePalette {
             codeBackground: codeBackground,
             scheme: scheme
         )
+        formattedTableHeaderText = Self.derivedTableHeaderText(
+            base: heading,
+            textPrimary: textPrimary,
+            scheme: scheme
+        )
+        formattedTableBodySurface = Self.derivedTableBodyBackground(
+            header: tableHeaderBackground,
+            codeBackground: codeBackground,
+            rowAlternating: tableRowAlternating,
+            scheme: scheme
+        )
         formattedTableRowSurface = Self.derivedTableRowBackground(
             base: tableRowAlternating,
+            body: formattedTableBodySurface,
             inlineCodeBackground: inlineCodeBackground,
             scheme: scheme
         )
@@ -839,7 +971,7 @@ extension NativeThemePalette {
         case .github:
             themeBias = 0.04
 
-        case .solarized, .gruvbox, .dracula, .monokai, .nord, .onedark, .tokyonight:
+        case .solarized, .gruvbox, .dracula, .monokai, .nord, .onedark, .tokyonight, .catppuccin, .rosepine:
             themeBias = 0.08
 
         default:
@@ -856,17 +988,47 @@ extension NativeThemePalette {
         codeBackground: NSColor,
         scheme: ColorScheme
     ) -> NSColor {
-        let blendFraction: CGFloat = scheme == .dark ? 0.28 : 0.12
-        return base.blended(withFraction: blendFraction, of: codeBackground) ?? base
+        let blendFraction: CGFloat = scheme == .dark ? 0.14 : 0.18
+        let surface = base.blended(withFraction: blendFraction, of: codeBackground) ?? base
+        let alphaMultiplier: CGFloat = scheme == .dark ? 0.76 : 0.86
+        return surface.withAlphaComponent(surface.alphaComponent * alphaMultiplier)
+    }
+
+    fileprivate static func derivedTableHeaderText(
+        base: NSColor,
+        textPrimary: NSColor,
+        scheme: ColorScheme
+    ) -> NSColor {
+        let textBlend: CGFloat = scheme == .dark ? 0.52 : 0.34
+        return base.blended(withFraction: textBlend, of: textPrimary) ?? base
     }
 
     fileprivate static func derivedTableRowBackground(
         base: NSColor,
+        body: NSColor,
         inlineCodeBackground: NSColor,
         scheme: ColorScheme
     ) -> NSColor {
-        let blendFraction: CGFloat = scheme == .dark ? 0.10 : 0.06
-        return base.blended(withFraction: blendFraction, of: inlineCodeBackground) ?? base
+        let stripeBlend: CGFloat = scheme == .dark ? 0.60 : 0.24
+        let inlineBlend: CGFloat = scheme == .dark ? 0.08 : 0.04
+        let striped = body.blended(withFraction: stripeBlend, of: base) ?? body
+        let surface = striped.blended(withFraction: inlineBlend, of: inlineCodeBackground) ?? striped
+        let alphaMultiplier: CGFloat = scheme == .dark ? 0.78 : 0.84
+        return surface.withAlphaComponent(surface.alphaComponent * alphaMultiplier)
+    }
+
+    fileprivate static func derivedTableBodyBackground(
+        header: NSColor,
+        codeBackground: NSColor,
+        rowAlternating: NSColor,
+        scheme: ColorScheme
+    ) -> NSColor {
+        let headerBlend: CGFloat = scheme == .dark ? 0.40 : 0.12
+        let stripeBlend: CGFloat = scheme == .dark ? 0.24 : 0.05
+        let surfaced = codeBackground.blended(withFraction: headerBlend, of: header) ?? codeBackground
+        let surface = surfaced.blended(withFraction: stripeBlend, of: rowAlternating) ?? surfaced
+        let alphaMultiplier: CGFloat = scheme == .dark ? 0.68 : 0.78
+        return surface.withAlphaComponent(surface.alphaComponent * alphaMultiplier)
     }
 
     fileprivate static func derivedTableBorder(
@@ -877,6 +1039,7 @@ extension NativeThemePalette {
     ) -> NSColor {
         let accentForwardThemes: Set<AppTheme> = [
             .dracula, .monokai, .onedark, .tokyonight, .nord, .gruvbox, .solarized,
+            .catppuccin, .rosepine,
         ]
         var accentBlend: CGFloat = accentForwardThemes.contains(theme) ? 0.18 : 0.08
         if scheme == .dark {
@@ -908,8 +1071,16 @@ extension NativeThemePalette {
         formattedTableHeaderSurface
     }
 
+    func formattedTableHeaderTextColor() -> NSColor {
+        formattedTableHeaderText
+    }
+
     func formattedTableRowBackground() -> NSColor {
         formattedTableRowSurface
+    }
+
+    func formattedTableBodyBackground() -> NSColor {
+        formattedTableBodySurface
     }
 
     func formattedTableBorder() -> NSColor {
@@ -935,7 +1106,7 @@ extension NativeThemePalette {
             // Warm-toned retro palettes — moderate presence
             base = 0.40
 
-        case .dracula, .monokai, .onedark, .tokyonight, .nord:
+        case .dracula, .monokai, .onedark, .tokyonight, .nord, .catppuccin, .rosepine:
             // Vivid dark-first themes — borders carry more visual weight
             base = 0.55
         }

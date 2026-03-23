@@ -140,15 +140,6 @@
             // MARK: - Code Settings Tests
 
             @MainActor
-            func testSyntaxPaletteSetting() {
-                // Test all syntax palettes can be set
-                for palette in SyntaxPalette.allCases {
-                    preferences.syntaxPalette = palette
-                    XCTAssertEqual(preferences.syntaxPalette, palette)
-                }
-            }
-
-            @MainActor
             func testCodeFontSizeSetting() {
                 // Test all code font sizes can be set
                 for size in CodeFontSize.allCases {
@@ -195,7 +186,6 @@
                 preferences.readerColumnWidth = .wide
                 preferences.readerMode = .raw
                 preferences.sidebarMode = .folder
-                preferences.syntaxPalette = .sunset
                 preferences.codeFontSize = .large
                 preferences.largeFileThreshold = .mb10
 
@@ -208,7 +198,6 @@
                 XCTAssertEqual(preferences.readerColumnWidth, .wide)
                 XCTAssertEqual(preferences.readerMode, .raw)
                 XCTAssertEqual(preferences.sidebarMode, .folder)
-                XCTAssertEqual(preferences.syntaxPalette, .sunset)
                 XCTAssertEqual(preferences.codeFontSize, .large)
                 XCTAssertEqual(preferences.largeFileThreshold, .mb10)
             }

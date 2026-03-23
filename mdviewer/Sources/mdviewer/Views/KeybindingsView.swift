@@ -159,16 +159,10 @@ struct KeybindingsView: View {
                     description: "Reset to default text size"
                 ),
                 Keybinding(
-                    title: "Show Appearance Settings",
-                    key: "T",
-                    modifiers: [.command, .shift],
-                    description: "Open appearance popover"
-                ),
-                Keybinding(
                     title: "Toggle Settings",
                     key: ",",
                     modifiers: .command,
-                    description: "Open/close settings window"
+                    description: "Open app settings"
                 ),
             ]
         )
@@ -308,17 +302,22 @@ private struct KeyboardKeyView: View {
 
     var body: some View {
         Text(symbol)
-            .font(.system(size: 14, weight: .medium, design: .rounded))
+            .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium, design: .rounded))
             .frame(minWidth: 24, minHeight: 24)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+            .padding(.horizontal, DesignTokens.SpacingScale.xs)
+            .padding(.vertical, DesignTokens.Spacing.tight)
             .background(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small / 2)
                     .fill(Color(nsColor: .controlBackgroundColor))
-                    .shadow(color: .black.opacity(0.1), radius: 0.5, x: 0, y: 1)
+                    .shadow(
+                        color: Color(nsColor: .shadowColor).opacity(DesignTokens.Opacity.subtle),
+                        radius: DesignTokens.Shadow.radius / 4,
+                        x: 0,
+                        y: DesignTokens.SpacingScale.xxs
+                    )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small / 2)
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
             )
     }

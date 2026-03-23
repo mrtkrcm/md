@@ -17,7 +17,6 @@ internal import SwiftUI
         let readerFontSize: CGFloat
         let codeFontSize: CGFloat
         let appTheme: AppTheme
-        let syntaxPalette: SyntaxPalette
         let colorScheme: ColorScheme
         let textSpacing: ReaderTextSpacing
         let readableWidth: CGFloat
@@ -38,7 +37,6 @@ internal import SwiftUI
                 && readerFontSize == other.readerFontSize
                 && codeFontSize == other.codeFontSize
                 && appTheme == other.appTheme
-                && syntaxPalette == other.syntaxPalette
                 && colorScheme == other.colorScheme
                 && textSpacing == other.textSpacing
                 && showLineNumbers == other.showLineNumbers
@@ -53,7 +51,6 @@ internal import SwiftUI
                 String(format: "%.2f", readerFontSize),
                 String(format: "%.2f", codeFontSize),
                 appTheme.rawValue,
-                syntaxPalette.rawValue,
                 colorScheme == .dark ? "dark" : "light",
                 textSpacing.rawValue,
                 String(format: "%.0f", readableWidth),
@@ -63,6 +60,25 @@ internal import SwiftUI
 
             let digest = SHA256.hash(data: Data(payload.utf8))
             return digest.map { String(format: "%02x", $0) }.joined()
+        }
+
+        /// Cache key for parsed markdown structure, excluding theme-related properties.
+        /// Used to share parsed structure across windows and theme changes.
+        var structureCacheKey: String {
+            let prefsHash = typographyPreferences.hashValue
+            let payload = [
+                markdown,
+                readerFontFamily.rawValue,
+                String(format: "%.2f", readerFontSize),
+                String(format: "%.2f", codeFontSize),
+                textSpacing.rawValue,
+                String(format: "%.0f", readableWidth),
+                showLineNumbers ? "ln" : "no-ln",
+                String(prefsHash),
+            ].joined(separator: "|")
+
+            let digest = SHA256.hash(data: Data(payload.utf8))
+            return "struct:\(digest.map { String(format: "%02x", $0) }.joined())"
         }
     }
 

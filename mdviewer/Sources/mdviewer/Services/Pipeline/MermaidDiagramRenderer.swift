@@ -191,6 +191,10 @@ struct MermaidDiagramRenderer {
             return scheme == .dark ? .oneDark : .zincLight
         case .tokyonight:
             return scheme == .dark ? .tokyoNight : .tokyoNightLight
+        case .catppuccin:
+            return scheme == .dark ? .nord : .zincLight
+        case .rosepine:
+            return scheme == .dark ? .nord : .zincLight
         }
     }
 }

@@ -88,12 +88,18 @@ private final class FolderViewModel: ObservableObject {
     private var rootFolderURL: URL
     private var currentFolderURL: URL
     private var allItems: [FolderItem] = []
+    private var loadTask: Task<Void, Never>?
+    private var loadGeneration = 0
 
     init(fileURL: URL) {
         let initialFolder = fileURL.deletingLastPathComponent()
         rootFolderURL = initialFolder
         currentFolderURL = initialFolder
         loadContents()
+    }
+
+    deinit {
+        loadTask?.cancel()
     }
 
     func navigateUp() {
@@ -119,14 +125,18 @@ private final class FolderViewModel: ObservableObject {
     }
 
     private func loadContents() {
+        loadTask?.cancel()
+        loadGeneration += 1
+        let currentGeneration = loadGeneration
         isLoading = true
         errorMessage = nil
 
-        Task { @MainActor in
+        loadTask = Task { @MainActor in
             let folderURL = currentFolderURL
 
             // Check cache first
             if let cachedResult = await folderScanCache.get(for: folderURL) {
+                guard currentGeneration == loadGeneration, !Task.isCancelled else { return }
                 applyResult(cachedResult)
                 isLoading = false
                 return
@@ -136,14 +146,18 @@ private final class FolderViewModel: ObservableObject {
                 let result = try await Task.detached(priority: .userInitiated) {
                     try await scanFolderItems(at: folderURL)
                 }.value
+                guard currentGeneration == loadGeneration, !Task.isCancelled else { return }
                 applyResult(result)
                 await folderScanCache.set(result, for: folderURL)
             } catch {
+                guard currentGeneration == loadGeneration, !Task.isCancelled else { return }
                 allItems = []
                 rebuildRows()
                 errorMessage = error.localizedDescription
             }
-            isLoading = false
+            if currentGeneration == loadGeneration {
+                isLoading = false
+            }
         }
     }
 
@@ -171,7 +185,6 @@ struct FolderSidebarView: View {
     let onOpenFile: ((URL) -> Void)?
 
     @Environment(\.openDocument) private var openDocument
-    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var viewModel: FolderViewModel
 
     init(currentFileURL: URL, rootFileURL: URL? = nil, onOpenFile: ((URL) -> Void)? = nil) {
@@ -186,7 +199,6 @@ struct FolderSidebarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             headerView
-            Divider()
             contentView
         }
     }
@@ -194,27 +206,26 @@ struct FolderSidebarView: View {
     // MARK: - Subviews
 
     private var headerView: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.tight) {
-            HStack(spacing: DesignTokens.Spacing.compact) {
-                Image(systemName: "folder")
-                    .font(.system(size: DesignTokens.Typography.bodySmall))
-                    .foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: DesignTokens.Spacing.compact) {
+            Image(systemName: "folder.fill")
+                .font(.system(size: DesignTokens.Typography.bodySmall))
+                .foregroundStyle(Color(nsColor: .controlAccentColor))
 
-                Text(viewModel.currentFolderName)
-                    .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(.secondary)
+            Text(viewModel.currentFolderName)
+                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(.primary)
 
-                Spacer()
-            }
+            Spacer(minLength: DesignTokens.Component.Sidebar.rowTrailingSpacer)
 
-            Text(subtitleText)
-                .font(.system(size: DesignTokens.Typography.caption))
+            Text("\(viewModel.totalItemCount)")
+                .font(.system(size: DesignTokens.Typography.caption, weight: .medium))
                 .foregroundStyle(.tertiary)
+                .monospacedDigit()
         }
-        .padding(.horizontal, DesignTokens.Spacing.relaxed)
-        .padding(.vertical, DesignTokens.Spacing.comfortable)
+        .padding(.horizontal, DesignTokens.Component.Sidebar.contentInset)
+        .padding(.vertical, DesignTokens.Spacing.standard)
     }
 
     @ViewBuilder
@@ -236,18 +247,14 @@ struct FolderSidebarView: View {
     }
 
     private var emptyView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: DesignTokens.Spacing.compact) {
             Spacer()
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: DesignTokens.Typography.title))
-                .foregroundStyle(.tertiary)
             Text("No Markdown Files")
-                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: DesignTokens.Typography.bodySmall))
+                .foregroundStyle(.tertiary)
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, DesignTokens.Spacing.extraLarge)
     }
 
     private var loadingView: some View {
@@ -255,40 +262,22 @@ struct FolderSidebarView: View {
             Spacer()
             ProgressView()
                 .controlSize(.small)
-            Text("Loading…")
-                .font(.system(size: DesignTokens.Typography.bodySmall))
-                .foregroundStyle(.secondary)
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, DesignTokens.Spacing.extraLarge)
     }
 
     private func errorView(message: String) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: DesignTokens.Spacing.compact) {
             Spacer()
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: DesignTokens.Typography.title))
-                .foregroundStyle(.orange)
-            Text("Error Loading Folder")
-                .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
-                .foregroundStyle(.secondary)
             Text(message)
                 .font(.system(size: DesignTokens.Typography.caption))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, DesignTokens.Spacing.standard)
+                .padding(.horizontal, DesignTokens.Spacing.relaxed)
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, DesignTokens.Spacing.extraLarge)
-    }
-
-    // MARK: - Computed
-
-    private var subtitleText: String {
-        let count = viewModel.totalItemCount
-        return "\(count) item\(count == 1 ? "" : "s")"
     }
 
     // MARK: - Actions
@@ -395,7 +384,7 @@ struct FolderSidebarView: View {
     }
 
     private final class FolderSidebarCanvasView: NSView {
-        private static let rowHeight = max(DesignTokens.Spacing.extraLarge, DesignTokens.Spacing.extraWide)
+        private static let rowHeight = DesignTokens.Component.Sidebar.rowHeight
         private static let iconSize: CGFloat = 18
         private static let paragraphStyle: NSParagraphStyle = {
             let style = NSMutableParagraphStyle()
@@ -430,6 +419,8 @@ struct FolderSidebarView: View {
         private var rows: [FolderSidebarRow] = []
         private var currentFilePath: String = ""
         private var currentRowIndex: Int?
+        private var hoveredRowIndex: Int?
+        private var trackingArea: NSTrackingArea?
 
         init(onActivateRow: @escaping (FolderSidebarRow) -> Void) {
             self.onActivateRow = onActivateRow
@@ -444,6 +435,23 @@ struct FolderSidebarView: View {
         }
 
         override var acceptsFirstResponder: Bool { false }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+
+            if let trackingArea {
+                removeTrackingArea(trackingArea)
+            }
+
+            let nextTrackingArea = NSTrackingArea(
+                rect: .zero,
+                options: [.activeInKeyWindow, .inVisibleRect, .mouseMoved, .mouseEnteredAndExited],
+                owner: self,
+                userInfo: nil
+            )
+            addTrackingArea(nextTrackingArea)
+            trackingArea = nextTrackingArea
+        }
 
         func update(rows: [FolderSidebarRow], generation _: Int, currentFilePath: String, rowsChanged: Bool) {
             let previousCurrentRowIndex = currentRowIndex
@@ -474,6 +482,21 @@ struct FolderSidebarView: View {
             if let currentRowIndex, currentRowIndex != previousCurrentRowIndex {
                 setNeedsDisplay(rowRect(at: currentRowIndex))
             }
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            super.mouseMoved(with: event)
+            updateHoveredRow(with: event)
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            super.mouseEntered(with: event)
+            updateHoveredRow(with: event)
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            super.mouseExited(with: event)
+            setHoveredRow(nil)
         }
 
         override func draw(_ dirtyRect: NSRect) {
@@ -507,7 +530,11 @@ struct FolderSidebarView: View {
         private func drawRow(at rowIndex: Int) {
             let row = rows[rowIndex]
             let isCurrent = rowIndex == currentRowIndex
+            let isHovered = rowIndex == hoveredRowIndex
             let rowRect = rowRect(at: rowIndex)
+            let textAttributes = textAttributes(for: row, isCurrent: isCurrent)
+            let textHeight = ceil(row.displayName.size(withAttributes: textAttributes).height)
+            let accessorySymbol = accessorySymbol(for: row)
             let iconRect = NSRect(
                 x: DesignTokens.Spacing.relaxed,
                 y: rowRect.minY + floor((rowRect.height - Self.iconSize) / 2),
@@ -516,16 +543,31 @@ struct FolderSidebarView: View {
             )
 
             if isCurrent {
-                currentBackgroundPath(in: rowRect).fill()
+                let currentBackgroundPath = currentBackgroundPath(in: rowRect)
+                currentBackgroundPath.fill()
+                currentBackgroundPath.stroke()
+            } else if isHovered {
+                let hoverBackgroundPath = hoverBackgroundPath(in: rowRect)
+                hoverBackgroundPath.fill()
+                hoverBackgroundPath.stroke()
             }
 
             let trailingInset = DesignTokens.Spacing.wide
             let labelLeading = iconRect.maxX + DesignTokens.Spacing.compact
             let labelRect = NSRect(
                 x: labelLeading,
-                y: rowRect.minY + floor((rowRect.height - textHeight(for: row, isCurrent: isCurrent)) / 2),
-                width: max(0, rowRect.width - labelLeading - trailingInset),
-                height: textHeight(for: row, isCurrent: isCurrent)
+                y: rowRect.minY + floor((rowRect.height - textHeight) / 2),
+                width: max(
+                    0,
+                    rowRect.width - labelLeading - trailingInset - trailingAccessoryWidth(for: accessorySymbol)
+                ),
+                height: textHeight
+            )
+            let accessoryRect = NSRect(
+                x: rowRect.maxX - trailingInset - DesignTokens.Component.Sidebar.accessoryWidth,
+                y: rowRect.minY + floor((rowRect.height - DesignTokens.Component.Sidebar.accessoryWidth) / 2),
+                width: DesignTokens.Component.Sidebar.accessoryWidth,
+                height: DesignTokens.Component.Sidebar.accessoryWidth
             )
 
             let iconColor = iconColor(for: row, isCurrent: isCurrent)
@@ -540,12 +582,29 @@ struct FolderSidebarView: View {
 
             row.displayName.draw(
                 in: labelRect,
-                withAttributes: textAttributes(for: row, isCurrent: isCurrent)
+                withAttributes: textAttributes
             )
+
+            if
+                let accessorySymbol, let accessoryImage = Self.cachedSymbolImage(
+                    named: accessorySymbol,
+                    color: accessoryColor(for: row, isCurrent: isCurrent)
+                )
+            {
+                accessoryImage.draw(
+                    in: accessoryRect,
+                    from: .zero,
+                    operation: .sourceOver,
+                    fraction: 1
+                )
+            }
         }
 
         private func iconColor(for row: FolderSidebarRow, isCurrent: Bool) -> NSColor {
-            row.isDirectoryLike ? .controlAccentColor : (isCurrent ? .controlAccentColor : .secondaryLabelColor)
+            if row.isDirectoryLike {
+                return NSColor.controlAccentColor
+            }
+            return isCurrent ? NSColor.labelColor : .secondaryLabelColor
         }
 
         private func textAttributes(for row: FolderSidebarRow, isCurrent: Bool) -> [NSAttributedString.Key: Any] {
@@ -564,15 +623,8 @@ struct FolderSidebarView: View {
             )
         }
 
-        private func textHeight(for row: FolderSidebarRow, isCurrent: Bool) -> CGFloat {
-            ceil(row.displayName.size(withAttributes: textAttributes(for: row, isCurrent: isCurrent)).height)
-        }
-
         private func currentBackgroundPath(in bounds: NSRect) -> NSBezierPath {
-            NSColor.selectedContentBackgroundColor
-                .withAlphaComponent(DesignTokens.Opacity.medium)
-                .setFill()
-            return NSBezierPath(
+            let path = NSBezierPath(
                 roundedRect: bounds.insetBy(
                     dx: DesignTokens.Component.Sidebar.rowHorizontalInset,
                     dy: DesignTokens.Component.Sidebar.rowVerticalInset / 4
@@ -580,6 +632,74 @@ struct FolderSidebarView: View {
                 xRadius: DesignTokens.Component.Sidebar.rowCornerRadius,
                 yRadius: DesignTokens.Component.Sidebar.rowCornerRadius
             )
+            NSColor.controlAccentColor.withAlphaComponent(0.10).setFill()
+            NSColor.controlAccentColor.withAlphaComponent(0.18).setStroke()
+            path.lineWidth = DesignTokens.Component.Sidebar.hoverRingWidth
+            return path
+        }
+
+        private func hoverBackgroundPath(in bounds: NSRect) -> NSBezierPath {
+            let path = NSBezierPath(
+                roundedRect: bounds.insetBy(
+                    dx: DesignTokens.Component.Sidebar.rowHorizontalInset,
+                    dy: DesignTokens.Component.Sidebar.rowVerticalInset / 4
+                ),
+                xRadius: DesignTokens.Component.Sidebar.rowCornerRadius,
+                yRadius: DesignTokens.Component.Sidebar.rowCornerRadius
+            )
+            NSColor.labelColor.withAlphaComponent(0.04).setFill()
+            NSColor.separatorColor.withAlphaComponent(0.08).setStroke()
+            path.lineWidth = DesignTokens.Component.Sidebar.hoverRingWidth
+            return path
+        }
+
+        private func updateHoveredRow(with event: NSEvent) {
+            let point = convert(event.locationInWindow, from: nil)
+            let rowIndex = row(at: point)
+            setHoveredRow(rowIndex >= 0 ? rowIndex : nil)
+        }
+
+        private func setHoveredRow(_ rowIndex: Int?) {
+            guard hoveredRowIndex != rowIndex else { return }
+            let previousRowIndex = hoveredRowIndex
+            hoveredRowIndex = rowIndex
+
+            if let previousRowIndex {
+                setNeedsDisplay(rowRect(at: previousRowIndex))
+            }
+            if let hoveredRowIndex {
+                setNeedsDisplay(rowRect(at: hoveredRowIndex))
+            }
+        }
+
+        private func row(at point: NSPoint) -> Int {
+            let rowIndex = Int(point.y / Self.rowHeight)
+            guard rowIndex >= 0, rowIndex < rows.count else { return -1 }
+            return rowIndex
+        }
+
+        private func accessorySymbol(for row: FolderSidebarRow) -> String? {
+            if row.isParentRow {
+                return "chevron.up"
+            }
+            if row.isDirectoryLike {
+                return "chevron.right"
+            }
+            return nil
+        }
+
+        private func accessoryColor(for row: FolderSidebarRow, isCurrent: Bool) -> NSColor {
+            if isCurrent {
+                return NSColor.controlAccentColor
+            }
+            if row.isDirectoryLike {
+                return .tertiaryLabelColor
+            }
+            return .tertiaryLabelColor
+        }
+
+        private func trailingAccessoryWidth(for accessorySymbol: String?) -> CGFloat {
+            accessorySymbol == nil ? 0 : DesignTokens.Component.Sidebar.accessoryWidth + DesignTokens.Spacing.compact
         }
 
         private static func cachedSymbolImage(named name: String, color: NSColor) -> NSImage? {

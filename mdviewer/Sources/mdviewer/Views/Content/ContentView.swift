@@ -43,12 +43,13 @@ struct ContentView: View {
     @State private var openErrorMessage: String?
     @State private var showMetadataInspector = false
     @State private var sidebarMode: SidebarMode = .toc
-    @State private var showAppearancePopover = false
     @State private var sidebarWidth: CGFloat = DesignTokens.Component.Sidebar.idealWidth
     @State private var parseDebounceTask: Task<Void, Never>?
     @State private var activeFileURL: URL?
     @State private var sidebarRootFileURL: URL?
     @State private var parsedMarkdown: ParsedMarkdown?
+    @State private var debouncedTheme: AppTheme?
+    @State private var themeDebounceTask: Task<Void, Never>?
     @SceneStorage("windowReaderMode") private var windowReaderModeRaw = ReaderMode.rendered.rawValue
 
     private let logger = Logger(subsystem: "mdviewer", category: "ui")
@@ -56,6 +57,12 @@ struct ContentView: View {
     private var windowReaderMode: ReaderMode {
         get { ReaderMode.from(rawValue: windowReaderModeRaw) }
         nonmutating set { windowReaderModeRaw = newValue.rawValue }
+    }
+
+    /// Effective theme with debouncing for rapid changes.
+    /// Uses debouncedTheme when available, otherwise falls back to preferences.theme.
+    private var effectiveTheme: AppTheme {
+        debouncedTheme ?? preferences.theme
     }
 
     /// Effective parsed document state, ensures we always have a valid result
@@ -96,8 +103,7 @@ struct ContentView: View {
                     object: nil,
                     userInfo: ["lineIndex": lineIndex]
                 )
-            },
-            showAppearanceSettings: { showAppearancePopover = true }
+            }
         )
     }
 
@@ -172,6 +178,16 @@ struct ContentView: View {
                 preferences.sidebarMode = newMode
             }
         }
+        .onChange(of: preferences.theme) { _, newTheme in
+            // Debounce theme changes to prevent rapid re-renders when cycling themes.
+            // This improves performance across multiple windows.
+            themeDebounceTask?.cancel()
+            themeDebounceTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
+                debouncedTheme = newTheme
+            }
+        }
         .toolbar {
             contentToolbar(parsed: parsed)
         }
@@ -195,19 +211,12 @@ struct ContentView: View {
             if sidebarRootFileURL == nil {
                 sidebarRootFileURL = fileURL
             }
+            // Initialize debounced theme to match current preference
+            if debouncedTheme == nil {
+                debouncedTheme = preferences.theme
+            }
             FolderSidebarPreloader.prewarmIfNeeded(fileURL: activeFileURL)
         }
-        .popover(isPresented: $showAppearancePopover, arrowEdge: .top) {
-            AppearancePopover(
-                preferences: preferences
-            )
-            .transition(.popupScale)
-        }
-        .accessibleAnimation(
-            .spring(response: 0.28, dampingFraction: 0.82),
-            value: showAppearancePopover,
-            reduceMotion: reduceMotion
-        )
         .alert("Unable to Open Document", isPresented: errorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -219,7 +228,6 @@ struct ContentView: View {
     private func contentToolbar(parsed: ParsedMarkdown) -> some ToolbarContent {
         ContentToolbar(
             readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
-            showAppearancePopover: $showAppearancePopover,
             showMetadataInspector: $showMetadataInspector,
             sidebarMode: $sidebarMode,
             documentText: document.text,
@@ -312,7 +320,8 @@ struct ContentView: View {
                     readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
                     colorScheme: colorScheme,
                     reduceMotion: reduceMotion,
-                    onScroll: { _, _, _ in }
+                    onScroll: { _, _, _ in },
+                    appTheme: effectiveTheme
                 )
                 .transition(.opacity)
             }
@@ -343,6 +352,7 @@ private struct ReaderContentView: View {
     let colorScheme: ColorScheme
     let reduceMotion: Bool
     let onScroll: (CGFloat, CGFloat, CGFloat) -> Void
+    let appTheme: AppTheme
 
     /// Namespace for matched geometry effects between modes
     @Namespace private var animationNamespace
@@ -390,8 +400,7 @@ private struct ReaderContentView: View {
             readerFontFamily: preferences.readerFontFamily,
             readerFontSize: preferences.readerFontSize.points,
             codeFontSize: preferences.codeFontSize.points,
-            appTheme: preferences.theme,
-            syntaxPalette: preferences.syntaxPalette,
+            appTheme: appTheme,
             colorScheme: preferences.effectiveColorScheme ?? colorScheme,
             textSpacing: preferences.readerTextSpacing,
             readableWidth: min(
@@ -446,34 +455,6 @@ private struct ReaderContentView: View {
     }
 }
 
-/// Appearance popover wrapper that creates bindings from preferences.
-private struct AppearancePopover: View {
-    let preferences: AppPreferences
-
-    var body: some View {
-        AppearancePopoverView(
-            selectedTheme: preferenceBinding(\.theme),
-            readerFontSize: preferenceBinding(\.readerFontSize),
-            readerFontFamily: preferenceBinding(\.readerFontFamily),
-            syntaxPalette: preferenceBinding(\.syntaxPalette),
-            codeFontSize: preferenceBinding(\.codeFontSize),
-            appearanceMode: preferenceBinding(\.appearanceMode),
-            readerTextSpacing: preferenceBinding(\.readerTextSpacing),
-            readerColumnWidth: preferenceBinding(\.readerColumnWidth),
-            readerContentPadding: preferenceBinding(\.readerContentPadding),
-            showLineNumbers: preferenceBinding(\.showLineNumbers),
-            typographyPreferences: preferenceBinding(\.typographyPreferences)
-        )
-    }
-
-    private func preferenceBinding<T>(_ keyPath: ReferenceWritableKeyPath<AppPreferences, T>) -> Binding<T> {
-        Binding(
-            get: { preferences[keyPath: keyPath] },
-            set: { preferences[keyPath: keyPath] = $0 }
-        )
-    }
-}
-
 /// Unified inspector sidebar that handles metadata and folder views.
 /// Uses static content rendering for immediate appearance.
 private struct InspectorSidebar: View {
@@ -484,6 +465,7 @@ private struct InspectorSidebar: View {
     let currentFileURL: URL?
     let folderRootFileURL: URL?
     let onOpenFile: (URL) -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Cache document stats to avoid recomputing on every render
     @State private var cachedDocumentStats: DocumentStats?
@@ -502,13 +484,11 @@ private struct InspectorSidebar: View {
             maxHeight: .infinity,
             alignment: .top
         )
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(sidebarPanelBackground)
         .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor))
-                .frame(width: DesignTokens.Component.Sidebar.borderLineWidth)
-                .opacity(DesignTokens.Opacity.veryHigh)
+            sidebarLeadingEdge
         }
+        .clipShape(sidebarClipShape)
         .task(id: documentText) {
             await computeStats(text: documentText, url: currentFileURL)
         }
@@ -552,14 +532,81 @@ private struct InspectorSidebar: View {
                 .accessibilityHint("Close the inspector panel")
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, DesignTokens.Spacing.extraWide)
-            .padding(.top, DesignTokens.Spacing.standard)
-            .padding(.bottom, DesignTokens.Spacing.relaxed)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .padding(.horizontal, DesignTokens.Component.Sidebar.contentInset)
+            .padding(.top, DesignTokens.Component.Sidebar.contentInset)
+            .padding(.bottom, DesignTokens.Component.Sidebar.headerBottomPadding)
+            .background(headerBackground)
 
-            Divider()
+            Rectangle()
+                .fill(sidebarDividerColor)
+                .frame(height: DesignTokens.Component.Sidebar.borderLineWidth)
+                .padding(.horizontal, DesignTokens.Component.Sidebar.contentInset)
+                .padding(.bottom, DesignTokens.Spacing.tight)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var headerBackground: some View {
+        RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
+            .fill(.thinMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
+                    .fill(sidebarTintColor.opacity(DesignTokens.Opacity.verySubtle))
+            }
+    }
+
+    private var sidebarPanelBackground: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
+                .fill(.regularMaterial)
+
+            RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
+                .fill(sidebarSurfaceColor.opacity(DesignTokens.Opacity.light))
+
+            RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
+                .stroke(sidebarStrokeColor, lineWidth: DesignTokens.Component.Sidebar.borderLineWidth)
+        }
+        .padding(
+            EdgeInsets(
+                top: DesignTokens.Component.Sidebar.contentInset,
+                leading: 0,
+                bottom: DesignTokens.Component.Sidebar.contentInset,
+                trailing: DesignTokens.Component.Sidebar.contentInset
+            )
+        )
+    }
+
+    private var sidebarLeadingEdge: some View {
+        RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.panelCornerRadius, style: .continuous)
+            .fill(sidebarDividerColor)
+            .frame(width: DesignTokens.Component.Sidebar.borderLineWidth)
+            .padding(.vertical, DesignTokens.Component.Sidebar.contentInset)
+    }
+
+    private var sidebarClipShape: some Shape {
+        UnevenRoundedRectangle(
+            topLeadingRadius: DesignTokens.CornerRadius.small,
+            bottomLeadingRadius: DesignTokens.CornerRadius.small,
+            bottomTrailingRadius: DesignTokens.Component.Sidebar.panelCornerRadius,
+            topTrailingRadius: DesignTokens.Component.Sidebar.panelCornerRadius,
+            style: .continuous
+        )
+    }
+
+    private var sidebarSurfaceColor: Color {
+        Color(nsColor: colorScheme == .dark ? .windowBackgroundColor : .controlBackgroundColor)
+    }
+
+    private var sidebarTintColor: Color {
+        Color(nsColor: .controlAccentColor)
+    }
+
+    private var sidebarStrokeColor: Color {
+        Color(nsColor: .separatorColor).opacity(colorScheme == .dark ? 0.3 : 0.5)
+    }
+
+    private var sidebarDividerColor: Color {
+        Color(nsColor: .separatorColor).opacity(colorScheme == .dark ? 0.2 : 0.35)
     }
 
     private func computeStats(text: String, url: URL?) async {
@@ -613,6 +660,7 @@ private struct InspectorSidebar: View {
 private struct InspectorSidebarModeControl: View {
     @Binding var sidebarMode: SidebarMode
     @State private var hoveredMode: SidebarMode?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: DesignTokens.Spacing.tight) {
@@ -621,10 +669,7 @@ private struct InspectorSidebarModeControl: View {
             modeButton(.folder, title: "Folder", systemImage: "folder", accessibilityLabel: "Folder View")
         }
         .padding(DesignTokens.Spacing.tight)
-        .background(
-            RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
+        .background(modeControlBackground)
     }
 
     private func modeButton(
@@ -644,12 +689,16 @@ private struct InspectorSidebarModeControl: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, DesignTokens.Spacing.standard)
-                .padding(.vertical, DesignTokens.Spacing.standard)
+                .padding(.vertical, DesignTokens.Spacing.comfortable)
                 .frame(minWidth: 0)
-                .foregroundStyle(isSelected ? .primary : .secondary)
+                .foregroundStyle(isSelected ? selectedForegroundColor : .secondary)
                 .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small, style: .continuous)
+                    RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.medium, style: .continuous)
                         .fill(backgroundColor(isSelected: isSelected, isHovered: isHovered))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.medium, style: .continuous)
+                                .stroke(borderColor(isSelected: isSelected), lineWidth: DesignTokens.Component.Sidebar.borderLineWidth)
+                        }
                 )
         }
         .buttonStyle(.plain)
@@ -661,14 +710,35 @@ private struct InspectorSidebarModeControl: View {
 
     private func backgroundColor(isSelected: Bool, isHovered: Bool) -> Color {
         if isSelected {
-            return Color(nsColor: .selectedContentBackgroundColor)
-                .opacity(DesignTokens.Opacity.mediumHigh)
+            return Color(nsColor: .controlAccentColor).opacity(colorScheme == .dark ? 0.18 : 0.12)
         }
         if isHovered {
-            return Color(nsColor: .selectedContentBackgroundColor)
-                .opacity(DesignTokens.Opacity.medium)
+            return Color(nsColor: .labelColor).opacity(colorScheme == .dark ? 0.06 : 0.04)
         }
         return Color.clear
+    }
+
+    private func borderColor(isSelected: Bool) -> Color {
+        if isSelected {
+            return Color(nsColor: .controlAccentColor).opacity(colorScheme == .dark ? 0.22 : 0.18)
+        }
+        return Color.clear
+    }
+
+    private var selectedForegroundColor: Color {
+        .primary
+    }
+
+    private var modeControlBackground: some View {
+        RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.standard, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay {
+                RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.standard, style: .continuous)
+                    .stroke(
+                        Color(nsColor: .separatorColor).opacity(colorScheme == .dark ? 0.2 : 0.3),
+                        lineWidth: DesignTokens.Component.Sidebar.borderLineWidth
+                    )
+            }
     }
 }
 
@@ -678,24 +748,24 @@ private struct InspectorSidebarIconButton: View {
     let action: () -> Void
 
     @State private var isHovered = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: DesignTokens.Typography.bodySmall, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(iconColor)
                 .frame(
                     width: DesignTokens.Component.Button.heightSmall,
                     height: DesignTokens.Component.Button.heightSmall
                 )
                 .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small, style: .continuous)
-                        .fill(
-                            isHovered
-                                ? Color(nsColor: .selectedContentBackgroundColor)
-                                .opacity(DesignTokens.Opacity.medium)
-                                : Color.clear
-                        )
+                    Circle()
+                        .fill(backgroundColor)
+                        .overlay {
+                            Circle()
+                                .stroke(borderColor, lineWidth: DesignTokens.Component.Sidebar.borderLineWidth)
+                        }
                 )
         }
         .buttonStyle(.plain)
@@ -703,6 +773,21 @@ private struct InspectorSidebarIconButton: View {
             isHovered = hovering
         }
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var iconColor: Color {
+        isHovered ? .primary : .secondary
+    }
+
+    private var backgroundColor: Color {
+        if isHovered {
+            return Color(nsColor: .labelColor).opacity(colorScheme == .dark ? 0.08 : 0.05)
+        }
+        return Color.clear
+    }
+
+    private var borderColor: Color {
+        Color(nsColor: .separatorColor).opacity(colorScheme == .dark ? 0.15 : 0.2)
     }
 }
 

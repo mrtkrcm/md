@@ -15,18 +15,18 @@
         // MARK: - ReaderTextSpacing.lineSpacing(for:)
 
         func testLineSpacingCompactAt16pt() {
-            // compact: 16 * 1.08 - 16 = 1.28
-            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 1.28, accuracy: 0.001)
+            // compact: 16 * 1.25 - 16 = 4.0
+            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 4.0, accuracy: 0.001)
         }
 
         func testLineSpacingBalancedAt16pt() {
-            // balanced: 16 * 1.14 - 16 = 2.24
-            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 2.24, accuracy: 0.001)
+            // balanced: 16 * 1.50 - 16 = 8.0
+            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 8.0, accuracy: 0.001)
         }
 
         func testLineSpacingRelaxedAt16pt() {
-            // relaxed: 16 * 1.22 - 16 = 3.52
-            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 3.52, accuracy: 0.001)
+            // relaxed: 16 * 1.75 - 16 = 12.0
+            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 12.0, accuracy: 0.001)
         }
 
         func testLineSpacingNeverNegative() {
@@ -61,18 +61,18 @@
         // MARK: - ReaderTextSpacing.paragraphSpacing(for:)
 
         func testParagraphSpacingCompactAt16pt() {
-            // 16*1.08=17.28; 17.28*0.5=8.64
-            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 8.64, accuracy: 0.001)
+            // 16*1.25=20; 20*0.5=10.0
+            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 10.0, accuracy: 0.001)
         }
 
         func testParagraphSpacingBalancedAt16pt() {
-            // 16*1.14=18.24; 18.24*0.75=13.68
-            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 13.68, accuracy: 0.001)
+            // 16*1.50=24; 24*0.75=18.0
+            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 18.0, accuracy: 0.001)
         }
 
         func testParagraphSpacingRelaxedAt16pt() {
-            // 16*1.22=19.52; 19.52*1.0=19.52
-            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 19.52, accuracy: 0.001)
+            // 16*1.75=28; 28*1.0=28.0
+            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 28.0, accuracy: 0.001)
         }
 
         func testParagraphSpacingOrderPreserved() {
@@ -195,69 +195,7 @@
             }
         }
 
-        // MARK: - SyntaxPalette exhaustive
-
-        func testSyntaxPaletteFromAllRawValues() {
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "Sundell's Colors"), .sundellsColors)
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "Midnight"), .midnight)
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "Sunset"), .sunset)
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "Presentation"), .presentation)
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "WWDC 2017"), .wwdc17)
-            XCTAssertEqual(SyntaxPalette.from(rawValue: "WWDC 2018"), .wwdc18)
-        }
-
-        func testWWDCPaletteRawValuesAreStable() {
-            XCTAssertEqual(SyntaxPalette.wwdc17.rawValue, "WWDC 2017")
-            XCTAssertEqual(SyntaxPalette.wwdc18.rawValue, "WWDC 2018")
-            XCTAssertEqual(SyntaxPalette.presentation.rawValue, "Presentation")
-        }
-
         #if os(macOS)
-            func testAllPalettesProduceNonTransparentColors() {
-                for palette in SyntaxPalette.allCases {
-                    let style = palette.nativeSyntax
-                    let colors: [NSColor] = [
-                        style.keyword, style.string, style.type,
-                        style.number, style.comment, style.call,
-                    ]
-                    for color in colors {
-                        var alpha: CGFloat = 0
-                        color.getRed(nil, green: nil, blue: nil, alpha: &alpha)
-                        XCTAssertGreaterThan(
-                            alpha,
-                            0,
-                            "\(palette.rawValue) palette produced a fully transparent color"
-                        )
-                    }
-                }
-            }
-
-            func testPalettesHaveDistinctKeywordColors() {
-                let keywordColors = SyntaxPalette.allCases.map(\.nativeSyntax.keyword)
-                // Convert to device RGB for comparison
-                var distinctColors: [NSColor] = []
-                for color in keywordColors {
-                    guard let rgb = color.usingColorSpace(.deviceRGB) else {
-                        distinctColors.append(color)
-                        continue
-                    }
-                    let isDuplicate = distinctColors.contains { existing in
-                        guard let existingRGB = existing.usingColorSpace(.deviceRGB) else { return false }
-                        return abs(existingRGB.redComponent - rgb.redComponent) < 0.01
-                            && abs(existingRGB.greenComponent - rgb.greenComponent) < 0.01
-                            && abs(existingRGB.blueComponent - rgb.blueComponent) < 0.01
-                    }
-                    if !isDuplicate {
-                        distinctColors.append(rgb)
-                    }
-                }
-                XCTAssertGreaterThanOrEqual(
-                    distinctColors.count,
-                    4,
-                    "At least 4 distinct keyword colors expected across all palettes, got \(distinctColors.count)"
-                )
-            }
-
             func testAllFontFamiliesResolveToNonNilFont() {
                 for family in ReaderFontFamily.allCases {
                     let font = family.nsFont(size: 16)

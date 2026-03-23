@@ -16,8 +16,9 @@ struct InteractiveModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .scaleEffect(isPressed ? 0.97 : (isHovered ? 1.02 : 1.0))
-            .opacity(isPressed ? 0.8 : 1.0)
+            .scaleEffect(isPressed ? DesignTokens.FocusRing
+                .pressedScale : (isHovered ? DesignTokens.FocusRing.hoverScale : 1.0))
+            .opacity(isPressed ? DesignTokens.Interaction.pressedOpacity : 1.0)
             .onHover { hovering in
                 withAnimation(DesignTokens.AnimationPreset.fast) {
                     isHovered = hovering
@@ -56,9 +57,9 @@ struct ElevationModifier: ViewModifier {
 
     private var shadowOpacity: Double {
         switch level {
-        case .subtle: return 0.05
-        case .standard: return 0.10
-        case .elevated: return 0.15
+        case .subtle: return DesignTokens.ShadowOpacity.subtle
+        case .standard: return DesignTokens.ShadowOpacity.standard
+        case .elevated: return DesignTokens.ShadowOpacity.elevated
         }
     }
 
@@ -104,7 +105,7 @@ struct FocusRingModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.medium)
                     .stroke(
                         focusColor,
-                        lineWidth: isFocused ? 2.5 : 0
+                        lineWidth: isFocused ? DesignTokens.FocusRing.standardWidth : 0
                     )
                     .animation(
                         isFocused
@@ -113,7 +114,7 @@ struct FocusRingModifier: ViewModifier {
                         value: isFocused
                     )
             )
-            .scaleEffect(isFocused ? 1.01 : 1.0)
+            .scaleEffect(isFocused ? DesignTokens.FocusRing.subtleScale : 1.0)
             .animation(DesignTokens.AnimationPreset.spring(response: 0.2, damping: 0.85), value: isFocused)
     }
 }
@@ -140,14 +141,14 @@ struct EnhancedFocusRingModifier: ViewModifier {
                 ZStack {
                     // Outer glow
                     RoundedRectangle(cornerRadius: cornerRadius + 2)
-                        .stroke(glowColor, lineWidth: isFocused ? 4 : 0)
+                        .stroke(glowColor, lineWidth: isFocused ? DesignTokens.FocusRing.thickWidth : 0)
                         .blur(radius: isFocused ? 4 : 0)
 
                     // Inner stroke
                     RoundedRectangle(cornerRadius: cornerRadius)
                         .stroke(
                             accentColor,
-                            lineWidth: isFocused ? 2 : 0
+                            lineWidth: isFocused ? DesignTokens.FocusRing.thinWidth : 0
                         )
                 }
                 .animation(
@@ -188,7 +189,7 @@ struct LoadingModifier: ViewModifier {
         ZStack {
             content
                 .disabled(isLoading)
-                .opacity(isLoading ? 0.6 : 1.0)
+                .opacity(isLoading ? DesignTokens.Interaction.loadingOpacity : 1.0)
 
             if isLoading {
                 ProgressView()

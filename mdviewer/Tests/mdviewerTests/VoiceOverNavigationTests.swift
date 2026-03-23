@@ -225,7 +225,6 @@
             func testContentToolbarAccessibility() {
                 let toolbar = ContentToolbar(
                     readerMode: .constant(.rendered),
-                    showAppearancePopover: .constant(false),
                     showMetadataInspector: .constant(false),
                     sidebarMode: .constant(.metadata),
                     documentText: "test content",
@@ -260,7 +259,6 @@
                     readerFontSize: 15,
                     codeFontSize: 14,
                     appTheme: .github,
-                    syntaxPalette: .midnight,
                     colorScheme: .light,
                     textSpacing: .balanced,
                     readableWidth: 720,

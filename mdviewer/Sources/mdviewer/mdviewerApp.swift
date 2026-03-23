@@ -103,13 +103,6 @@ struct mdviewerApp: App {
                         }
                         .keyboardShortcut(KeyboardShortcut("0", modifiers: .command))
                     }
-
-                    Divider()
-
-                    Button("Show Appearance Settings") {
-                        sendEditorAction(\.showAppearanceSettings)
-                    }
-                    .keyboardShortcut("t", modifiers: [.command, .shift])
                 }
 
                 // Help Menu with keybindings
@@ -158,9 +151,8 @@ struct mdviewerApp: App {
         #if os(macOS)
             Settings {
                 SettingsView()
-                    .frame(minWidth: 520, minHeight: 480)
             }
-            .defaultSize(width: 520, height: 480)
+            .defaultSize(width: DesignTokens.Layout.settingsWidth, height: DesignTokens.Layout.settingsHeight)
         #endif
     }
 
@@ -207,15 +199,11 @@ struct mdviewerApp: App {
                 configureWindow(window)
             }
 
-            // Pre-warm services asynchronously to trigger lazy initializations
-            // without blocking the main thread during first window appearance
-            Task.detached(priority: .userInitiated) {
-                // Accessing MainActor singleton from detached task requires await
-                let _ = await AppPreferences.shared
-
-                // MarkdownRenderService is an actor
-                let renderService = MarkdownRenderService.shared
-                _ = await renderService.snapshotStats()
+            // Yield the first frame, then prewarm heavy services at utility priority.
+            Task(priority: .utility) {
+                try? await Task.sleep(for: .seconds(PerformanceConstants.startupPrewarmDelay))
+                let _ = AppPreferences.shared
+                await MarkdownRenderService.shared.prewarm()
 
                 // Pre-compile syntax highlighting regexes for common languages
                 _ = LanguageRegistry.definition(for: "swift")

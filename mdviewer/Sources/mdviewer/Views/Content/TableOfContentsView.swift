@@ -17,8 +17,6 @@ struct TableOfContentsView: View {
 
     @State private var headings: [Heading] = []
     @State private var isLoading = false
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
         Group {
             if isLoading {
@@ -42,21 +40,28 @@ struct TableOfContentsView: View {
     }
 
     private func loadAndParseHeadings() async {
-        guard let url = documentURL else { return }
+        guard let url = documentURL else {
+            headings = []
+            isLoading = false
+            return
+        }
         isLoading = true
 
         do {
             let parsed = try await Task.detached(priority: .utility) {
                 let text = try String(contentsOf: url, encoding: .utf8)
-                return await parseHeadings(from: text)
+                return Self.parseHeadings(from: text)
             }.value
 
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 headings = parsed
                 isLoading = false
             }
         } catch {
+            guard !Task.isCancelled else { return }
             await MainActor.run {
+                headings = []
                 isLoading = false
             }
         }
@@ -64,83 +69,89 @@ struct TableOfContentsView: View {
 
     @ViewBuilder
     private var headingsList: some View {
-        #if os(macOS)
-            TableOfContentsTableView(headings: headings, onSelectHeading: onSelectHeading)
-        #else
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: DesignTokens.Spacing.tight) {
-                    ForEach(headings) { heading in
-                        HeadingRow(heading: heading) {
-                            onSelectHeading(heading)
+        if headings.isEmpty {
+            EmptyToCState()
+                .padding(.horizontal, DesignTokens.Component.Sidebar.contentInset)
+                .padding(.top, DesignTokens.Spacing.extraLarge)
+        } else {
+            #if os(macOS)
+                TableOfContentsTableView(headings: headings, onSelectHeading: onSelectHeading)
+            #else
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: DesignTokens.Spacing.tight) {
+                        ForEach(headings) { heading in
+                            HeadingRow(heading: heading) {
+                                onSelectHeading(heading)
+                            }
                         }
                     }
+                    .padding(.vertical, DesignTokens.Spacing.standard)
                 }
-                .padding(.vertical, DesignTokens.Spacing.standard)
-            }
-        #endif
+            #endif
+        }
     }
 
     // MARK: - Parsing
 
     struct Heading: Identifiable, Equatable {
-        let id = UUID()
+        let id: String
         let text: String
         let level: Int
         let headingIndex: Int
         let lineIndex: Int
     }
 
-    private func parseHeadings(from text: String) async -> [Heading] {
-        await Task.detached {
-            var results: [Heading] = []
-            let lines = text.components(separatedBy: .newlines)
-            var inCodeBlock = false
-            var headingIndex = 0
+    private nonisolated static func parseHeadings(from text: String) -> [Heading] {
+        var results: [Heading] = []
+        let lines = text.components(separatedBy: .newlines)
+        var inCodeBlock = false
+        var headingIndex = 0
 
-            for (index, line) in lines.enumerated() {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
+        for (index, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
 
-                // Track code blocks to ignore headings inside them
-                if trimmed.hasPrefix("```") {
-                    inCodeBlock.toggle()
-                    continue
-                }
-                if inCodeBlock { continue }
+            // Track code blocks to ignore headings inside them
+            if trimmed.hasPrefix("```") {
+                inCodeBlock.toggle()
+                continue
+            }
+            if inCodeBlock { continue }
 
-                if trimmed.hasPrefix("#") {
-                    // Count hashes
-                    var level = 0
-                    for char in trimmed {
-                        if char == "#" {
-                            level += 1
-                        } else {
-                            break
-                        }
+            if trimmed.hasPrefix("#") {
+                // Count hashes
+                var level = 0
+                for char in trimmed {
+                    if char == "#" {
+                        level += 1
+                    } else {
+                        break
                     }
+                }
 
-                    // Validate level (1-6) and ensure space after hashes
-                    if level >= 1, level <= 6 {
-                        let contentIndex = line.index(line.startIndex, offsetBy: level)
-                        if contentIndex < line.endIndex {
-                            let suffix = line[contentIndex...]
-                            if suffix.hasPrefix(" ") {
-                                let headingText = suffix.trimmingCharacters(in: .whitespaces)
-                                results.append(
-                                    Heading(
-                                        text: headingText,
-                                        level: level,
-                                        headingIndex: headingIndex,
-                                        lineIndex: index
-                                    )
+                // Validate level (1-6) and ensure space after hashes
+                if level >= 1, level <= 6 {
+                    let contentIndex = line.index(line.startIndex, offsetBy: level)
+                    if contentIndex < line.endIndex {
+                        let suffix = line[contentIndex...]
+                        if suffix.hasPrefix(" ") {
+                            let headingText = suffix.trimmingCharacters(in: .whitespaces)
+                            results.append(
+                                Heading(
+                                    id: "\(index)-\(headingIndex)-\(headingText)",
+                                    text: headingText,
+                                    level: level,
+                                    headingIndex: headingIndex,
+                                    lineIndex: index
                                 )
-                                headingIndex += 1
-                            }
+                            )
+                            headingIndex += 1
                         }
                     }
                 }
             }
-            return results
-        }.value
+        }
+
+        return results
     }
 }
 
@@ -172,7 +183,7 @@ struct TableOfContentsView: View {
             tableView.allowsEmptySelection = true
             tableView.focusRingType = .none
             tableView.selectionHighlightStyle = .none
-            tableView.rowHeight = DesignTokens.Spacing.extraLarge
+            tableView.rowHeight = DesignTokens.Component.Sidebar.rowHeight
 
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("ToCColumn"))
             column.resizingMask = .autoresizingMask
@@ -324,7 +335,7 @@ struct TableOfContentsView: View {
     private final class HeadingCellView: NSTableCellView {
         static let reuseIdentifier = NSUserInterfaceItemIdentifier("HeadingCellView")
 
-        private static let rowHeight = DesignTokens.Spacing.extraLarge
+        private static let rowHeight = DesignTokens.Component.Sidebar.rowHeight
         private static let baseIndent = DesignTokens.Spacing.relaxed
         private static let paragraphStyle: NSParagraphStyle = {
             let style = NSMutableParagraphStyle()
@@ -375,33 +386,104 @@ struct TableOfContentsView: View {
 
             guard let currentHeading else { return }
 
-            let backgroundRect = bounds.insetBy(dx: DesignTokens.Spacing.standard, dy: DesignTokens.Spacing.tight / 2)
+            let backgroundRect = bounds.insetBy(
+                dx: DesignTokens.Component.Sidebar.rowHorizontalInset,
+                dy: DesignTokens.Component.Sidebar.rowVerticalInset / 2
+            )
             if isHovered {
-                NSColor.selectedContentBackgroundColor.withAlphaComponent(DesignTokens.Opacity.medium).setFill()
-                NSBezierPath(
-                    roundedRect: backgroundRect,
-                    xRadius: DesignTokens.CornerRadius.small,
-                    yRadius: DesignTokens.CornerRadius.small
-                ).fill()
+                let hoverPath = hoverBackgroundPath(in: backgroundRect)
+                hoverPath.fill()
+                hoverPath.stroke()
             }
 
             let indent = CGFloat(max(currentHeading.level - 1, 0)) * Self.baseIndent
+            let railRect = NSRect(
+                x: DesignTokens.Component.Sidebar.rowHorizontalInset + indent,
+                y: rowRectMidYAligned(in: backgroundRect, height: backgroundRect.height - DesignTokens.Spacing.tight),
+                width: DesignTokens.Component.Sidebar.hierarchyRailWidth,
+                height: backgroundRect.height - DesignTokens.Spacing.tight
+            )
             let textRect = NSRect(
-                x: DesignTokens.Spacing.wide + indent,
+                x: railRect.maxX + DesignTokens.Spacing.standard,
                 y: floor((bounds.height - DesignTokens.Typography.standard) / 2) - 1,
                 width: max(0, bounds.width - (DesignTokens.Spacing.extraWide * 2) - indent),
                 height: bounds.height
             )
 
+            hierarchyRailColor(for: currentHeading.level).setFill()
+            let hierarchyPath = NSBezierPath(
+                roundedRect: railRect,
+                xRadius: DesignTokens.Component.Sidebar.hierarchyRailWidth,
+                yRadius: DesignTokens.Component.Sidebar.hierarchyRailWidth
+            )
+            hierarchyPath.fill()
+
             currentHeading.text.draw(
                 with: textRect,
                 options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: [
-                    .font: NSFont.systemFont(ofSize: DesignTokens.Typography.standard),
-                    .foregroundColor: isHovered ? NSColor.labelColor : NSColor.secondaryLabelColor,
-                    .paragraphStyle: Self.paragraphStyle,
-                ]
+                attributes: textAttributes(for: currentHeading)
             )
+        }
+
+        private func rowRectMidYAligned(in bounds: NSRect, height: CGFloat) -> CGFloat {
+            bounds.minY + floor((bounds.height - height) / 2)
+        }
+
+        private func hoverBackgroundPath(in rect: NSRect) -> NSBezierPath {
+            let path = NSBezierPath(
+                roundedRect: rect,
+                xRadius: DesignTokens.Component.Sidebar.rowCornerRadius,
+                yRadius: DesignTokens.Component.Sidebar.rowCornerRadius
+            )
+            let fillColor = NativeThemePalette.p3Color(r: 0.92, g: 0.95, b: 0.99, a: 0.12)
+            let strokeColor = NativeThemePalette.p3Color(r: 0.78, g: 0.84, b: 0.94, a: 0.18)
+            fillColor.setFill()
+            strokeColor.setStroke()
+            path.lineWidth = DesignTokens.Component.Sidebar.hoverRingWidth
+            return path
+        }
+
+        private func hierarchyRailColor(for level: Int) -> NSColor {
+            switch level {
+            case 1:
+                return NSColor.controlAccentColor.withAlphaComponent(0.82)
+            case 2:
+                return NSColor.controlAccentColor.withAlphaComponent(0.58)
+            case 3:
+                return NativeThemePalette.p3Color(r: 0.66, g: 0.76, b: 0.88, a: 0.40)
+            default:
+                return NativeThemePalette.p3Color(r: 0.72, g: 0.79, b: 0.88, a: 0.28)
+            }
+        }
+
+        private func textAttributes(for heading: TableOfContentsView.Heading) -> [NSAttributedString.Key: Any] {
+            [
+                .font: font(for: heading.level),
+                .foregroundColor: isHovered ? NSColor.labelColor : textColor(for: heading.level),
+                .paragraphStyle: Self.paragraphStyle,
+            ]
+        }
+
+        private func font(for level: Int) -> NSFont {
+            switch level {
+            case 1:
+                return NSFont.systemFont(ofSize: DesignTokens.Typography.standard, weight: .semibold)
+            case 2:
+                return NSFont.systemFont(ofSize: DesignTokens.Typography.standard, weight: .medium)
+            default:
+                return NSFont.systemFont(ofSize: DesignTokens.Typography.bodySmall, weight: .regular)
+            }
+        }
+
+        private func textColor(for level: Int) -> NSColor {
+            switch level {
+            case 1:
+                return NSColor.labelColor
+            case 2:
+                return NSColor.secondaryLabelColor
+            default:
+                return NSColor.tertiaryLabelColor
+            }
         }
     }
 #endif
@@ -414,33 +496,88 @@ private struct HeadingRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 0) {
-                // Indentation based on level
-                Color.clear
-                    .frame(width: CGFloat(heading.level - 1) * 12)
+                RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.hierarchyRailWidth, style: .continuous)
+                    .fill(railColor)
+                    .frame(
+                        width: DesignTokens.Component.Sidebar.hierarchyRailWidth,
+                        height: DesignTokens.Component.Sidebar.rowHeight - DesignTokens.Spacing.standard
+                    )
+                    .padding(.leading, CGFloat(max(heading.level - 1, 0)) * DesignTokens.Spacing.relaxed)
+                    .padding(.trailing, DesignTokens.Spacing.standard)
 
                 Text(heading.text)
-                    .font(.system(size: DesignTokens.Typography.standard))
+                    .font(font)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .foregroundStyle(isHovered ? .primary : .secondary)
+                    .foregroundStyle(isHovered ? .primary : foregroundStyle)
 
                 Spacer()
             }
-            .padding(.horizontal, DesignTokens.Spacing.wide)
-            .padding(.vertical, 6)
+            .padding(.horizontal, DesignTokens.Component.Sidebar.rowHorizontalInset)
+            .frame(height: DesignTokens.Component.Sidebar.rowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .background(
-            RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.small)
-                .fill(isHovered ? Color.secondary.opacity(0.1) : Color.clear)
-                .padding(.horizontal, DesignTokens.Spacing.standard)
+            RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.rowCornerRadius, style: .continuous)
+                .fill(isHovered ? hoverFillColor : Color.clear)
+                .overlay {
+                    RoundedRectangle(cornerRadius: DesignTokens.Component.Sidebar.rowCornerRadius, style: .continuous)
+                        .stroke(
+                            isHovered ? hoverStrokeColor : Color.clear,
+                            lineWidth: DesignTokens.Component.Sidebar.hoverRingWidth
+                        )
+                }
+                .padding(.horizontal, DesignTokens.Component.Sidebar.rowHorizontalInset)
         )
         .onHover { hovering in
             isHovered = hovering
         }
         .accessibilityLabel("\(heading.text), level \(heading.level)")
         .accessibilityHint("Jump to this heading")
+    }
+
+    private var font: Font {
+        switch heading.level {
+        case 1:
+            return .system(size: DesignTokens.Typography.standard, weight: .semibold)
+        case 2:
+            return .system(size: DesignTokens.Typography.standard, weight: .medium)
+        default:
+            return .system(size: DesignTokens.Typography.bodySmall)
+        }
+    }
+
+    private var foregroundStyle: Color {
+        switch heading.level {
+        case 1:
+            return .primary
+        case 2:
+            return .secondary
+        default:
+            return Color(nsColor: .tertiaryLabelColor)
+        }
+    }
+
+    private var railColor: Color {
+        switch heading.level {
+        case 1:
+            return Color(nsColor: NSColor.controlAccentColor.withAlphaComponent(0.82))
+        case 2:
+            return Color(nsColor: NSColor.controlAccentColor.withAlphaComponent(0.58))
+        case 3:
+            return Color(nsColor: NativeThemePalette.p3Color(r: 0.66, g: 0.76, b: 0.88, a: 0.40))
+        default:
+            return Color(nsColor: NativeThemePalette.p3Color(r: 0.72, g: 0.79, b: 0.88, a: 0.28))
+        }
+    }
+
+    private var hoverFillColor: Color {
+        Color(nsColor: NativeThemePalette.p3Color(r: 0.92, g: 0.95, b: 0.99, a: 0.12))
+    }
+
+    private var hoverStrokeColor: Color {
+        Color(nsColor: NativeThemePalette.p3Color(r: 0.78, g: 0.84, b: 0.94, a: 0.18))
     }
 }
 

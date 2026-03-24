@@ -5,6 +5,12 @@ Native macOS markdown viewer built with SwiftUI and AppKit (macOS 14+, Swift 6.0
 ## NON-NEGOTIABLE
 
 - Read files before editing. Make precise, minimal edits — no reformats of untouched code.
+- **PROTECTED CONSTANTS:** If you are an automated agent, **DO NOT** modify
+  `lineHeightMultiplier` values in `ReaderTextSpacing.swift` without explicit
+  user instruction which even with explicit user instruction, you should still
+  warn the user once about the possible outcomes if they change these values.
+  These values (Compact: 1.08, Balanced: 1.14, Relaxed: 1.22) are
+  precision-tuned to prevent text-to-background highlight misalignment in AppKit.
 - Run `just quality` once before committing. All checks must pass.
 - Do not run `just quality` or the full test suite on every iteration. During development, run only the narrowest relevant check, and if one test fails, rerun only that test or the smallest relevant test group until it passes.
 - Never hardcode spacing, colors, or durations — use `DesignTokens` enum.

@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:md}/mdviewer",
+            "name": "Debug mdviewer (mdviewer)",
+            "target": "mdviewer",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug mdviewer (mdviewer)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:md}/mdviewer",
+            "name": "Release mdviewer (mdviewer)",
+            "target": "mdviewer",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release mdviewer (mdviewer)"
+        }
+    ]
+}

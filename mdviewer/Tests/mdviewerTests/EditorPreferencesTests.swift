@@ -15,18 +15,33 @@
         // MARK: - ReaderTextSpacing.lineSpacing(for:)
 
         func testLineSpacingCompactAt16pt() {
-            // compact: 16 * 1.25 - 16 = 4.0
-            XCTAssertEqual(ReaderTextSpacing.compact.lineSpacing(for: 16), 4.0, accuracy: 0.001)
+            // compact: 16 * 1.08 - 16 = 1.28
+            XCTAssertEqual(
+                ReaderTextSpacing.compact.lineSpacing(for: 16),
+                1.28,
+                accuracy: 0.001,
+                "⚠️ CRITICAL: Compact line spacing (1.08x) is fixed to maintain pixel-perfect AppKit background highlighting. DO NOT CHANGE."
+            )
         }
 
         func testLineSpacingBalancedAt16pt() {
-            // balanced: 16 * 1.50 - 16 = 8.0
-            XCTAssertEqual(ReaderTextSpacing.balanced.lineSpacing(for: 16), 8.0, accuracy: 0.001)
+            // balanced: 16 * 1.14 - 16 = 2.24
+            XCTAssertEqual(
+                ReaderTextSpacing.balanced.lineSpacing(for: 16),
+                2.24,
+                accuracy: 0.001,
+                "⚠️ CRITICAL: Balanced line spacing (1.14x) is fixed to maintain pixel-perfect AppKit background highlighting. DO NOT CHANGE."
+            )
         }
 
         func testLineSpacingRelaxedAt16pt() {
-            // relaxed: 16 * 1.75 - 16 = 12.0
-            XCTAssertEqual(ReaderTextSpacing.relaxed.lineSpacing(for: 16), 12.0, accuracy: 0.001)
+            // relaxed: 16 * 1.22 - 16 = 3.52
+            XCTAssertEqual(
+                ReaderTextSpacing.relaxed.lineSpacing(for: 16),
+                3.52,
+                accuracy: 0.001,
+                "⚠️ CRITICAL: Relaxed line spacing (1.22x) is fixed to maintain pixel-perfect AppKit background highlighting. DO NOT CHANGE."
+            )
         }
 
         func testLineSpacingNeverNegative() {
@@ -61,18 +76,33 @@
         // MARK: - ReaderTextSpacing.paragraphSpacing(for:)
 
         func testParagraphSpacingCompactAt16pt() {
-            // 16*1.25=20; 20*0.5=10.0
-            XCTAssertEqual(ReaderTextSpacing.compact.paragraphSpacing(for: 16), 10.0, accuracy: 0.001)
+            // (16 * 1.08) * 0.5 = 8.64
+            XCTAssertEqual(
+                ReaderTextSpacing.compact.paragraphSpacing(for: 16),
+                8.64,
+                accuracy: 0.001,
+                "⚠️ CRITICAL: Compact paragraph spacing is fixed for typography stability. DO NOT CHANGE."
+            )
         }
 
         func testParagraphSpacingBalancedAt16pt() {
-            // 16*1.50=24; 24*0.75=18.0
-            XCTAssertEqual(ReaderTextSpacing.balanced.paragraphSpacing(for: 16), 18.0, accuracy: 0.001)
+            // (16 * 1.14) * 0.75 = 13.68
+            XCTAssertEqual(
+                ReaderTextSpacing.balanced.paragraphSpacing(for: 16),
+                13.68,
+                accuracy: 0.001,
+                "⚠️ CRITICAL: Balanced paragraph spacing is fixed for typography stability. DO NOT CHANGE."
+            )
         }
 
         func testParagraphSpacingRelaxedAt16pt() {
-            // 16*1.75=28; 28*1.0=28.0
-            XCTAssertEqual(ReaderTextSpacing.relaxed.paragraphSpacing(for: 16), 28.0, accuracy: 0.001)
+            // (16 * 1.22) * 1.0 = 19.52
+            XCTAssertEqual(
+                ReaderTextSpacing.relaxed.paragraphSpacing(for: 16),
+                19.52,
+                accuracy: 0.001,
+                "⚠️ CRITICAL: Relaxed paragraph spacing is fixed for typography stability. DO NOT CHANGE."
+            )
         }
 
         func testParagraphSpacingOrderPreserved() {

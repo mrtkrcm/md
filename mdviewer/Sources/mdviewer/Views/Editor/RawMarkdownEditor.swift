@@ -120,12 +120,18 @@ private struct RawEditorRepresentable: NSViewRepresentable {
         // Avoid forcing full-document layout while scrolling large files.
         textView.layoutManager?.allowsNonContiguousLayout = true
 
-        // Layout
+        // Layout constraints to fix infinite wrapping loops in AppKit for long lines
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
+        
+        // Explicitly set text container width tracking to prevent NSLayoutManager hangs
+        if let textContainer = textView.textContainer {
+            textContainer.widthTracksTextView = true
+            textContainer.containerSize = NSSize(width: scrollView.contentSize.width, height: .greatestFiniteMagnitude)
+        }
 
         // Store configuration
         textView.fontSize = fontSize

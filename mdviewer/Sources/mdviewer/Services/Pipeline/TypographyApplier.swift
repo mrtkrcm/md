@@ -481,13 +481,9 @@ struct TypographyApplier: TypographyApplying {
     }
 
     private func applyParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
-        // Increased paragraph spacing for better visual separation (1.1x for more breathing room)
         let style = createBaseParagraphStyle(
             lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
-            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize) * DesignTokens
-                .TypographySpacing.bodyParagraphMultiplier,
-            paragraphSpacingBefore: request.textSpacing.paragraphSpacingBefore(for: request.readerFontSize) * DesignTokens
-                .TypographySpacing.bodyParagraphBeforeMultiplier,
+            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize),
             hyphenationFactor: request.typographyPreferences.hyphenation ? max(
                 0,
                 request.textSpacing.hyphenationFactor - 0.05
@@ -498,14 +494,12 @@ struct TypographyApplier: TypographyApplying {
     }
 
     private func applyListParagraphStyle(to text: NSMutableAttributedString, range: NSRange, request: RenderRequest) {
-        let lineHeight = request.readerFontSize * request.textSpacing.lineHeightMultiplier
-        // Tighter spacing for lists: 0.375× line height (between xs and sm)
         let style = createBaseParagraphStyle(
             lineSpacing: request.textSpacing.lineSpacing(for: request.readerFontSize),
-            paragraphSpacing: lineHeight * 0.375,
+            paragraphSpacing: request.textSpacing.paragraphSpacing(for: request.readerFontSize) * 0.5,
             alignment: request.typographyPreferences.justification.nsAlignment
         )
-        style.headIndent = DesignTokens.Component.List.headIndent
+        style.headIndent = 24
         style.firstLineHeadIndent = 0
         text.addAttribute(.paragraphStyle, value: style, range: range)
     }
@@ -599,25 +593,12 @@ struct TypographyApplier: TypographyApplying {
         level: Int
     ) {
         let headingSize = fontSizeForHeader(level: level, baseSize: request.readerFontSize)
-        let lineHeight = headingSize * request.textSpacing.lineHeightMultiplier
-
-        // Space before: larger headings get more space (section breaks)
-        // H1: 1.5×, H2: 1.25×, H3: 1.0×, H4+: 0.75×
-        let spaceBeforeMultiplier: CGFloat
-        switch level {
-        case 1: spaceBeforeMultiplier = 1.5
-        case 2: spaceBeforeMultiplier = 1.25
-        case 3: spaceBeforeMultiplier = 1.0
-        default: spaceBeforeMultiplier = 0.75
-        }
-
-        // Space after: half of space before (connects heading to content)
-        let spaceAfterMultiplier = spaceBeforeMultiplier * 0.5
-
+        let baseSpacing = request.textSpacing.paragraphSpacing(for: headingSize)
+        let mult: CGFloat = level == 1 ? 0.72 : (level == 2 ? 0.62 : (level == 3 ? 0.54 : 0.46))
         text.addAttribute(.paragraphStyle, value: createBaseParagraphStyle(
             lineSpacing: request.textSpacing.lineSpacing(for: headingSize),
-            paragraphSpacing: lineHeight * spaceAfterMultiplier,
-            paragraphSpacingBefore: lineHeight * spaceBeforeMultiplier,
+            paragraphSpacing: baseSpacing * mult,
+            paragraphSpacingBefore: baseSpacing * mult,
             alignment: request.typographyPreferences.justification.nsAlignment
         ), range: range)
     }
@@ -666,7 +647,7 @@ struct TypographyApplier: TypographyApplying {
                     .font: font!,
                     .backgroundColor: palette.inlineCodeBackground,
                     .foregroundColor: palette.codeText,
-                    .baselineOffset: round(request.readerFontSize * 0.06),
+                    .baselineOffset: 0, // Set to 0 to fix alignment with background highlight
                 ],
                 range: range
             )

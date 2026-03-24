@@ -189,7 +189,71 @@ struct ContentView: View {
             }
         }
         .toolbar {
-            contentToolbar(parsed: parsed)
+            // Centered Mode Switcher
+            ToolbarItem(id: "mode", placement: .principal) {
+                HStack(spacing: 16) {
+                    Button { windowReaderMode = .rendered } label: {
+                        Image(systemName: "doc.text.image")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(windowReaderMode == .rendered ? Color.accentColor : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Rendered Mode")
+
+                    Button { windowReaderMode = .raw } label: {
+                        Image(systemName: "doc.plaintext")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(windowReaderMode == .raw ? Color.accentColor : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Raw Mode")
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .fixedSize()
+            }
+
+            // Trailing Action Pill - Refined positioning and symmetric icons
+            ToolbarItem(id: "actions", placement: .primaryAction) {
+                HStack(spacing: 14) {
+                    Button {
+                        if canShowSidebar(parsed: parsed) {
+                            if !showMetadataInspector {
+                                if sidebarMode == .folder, activeFileURL == nil, parsed.frontmatter != nil {
+                                    sidebarMode = .metadata
+                                } else if sidebarMode == .metadata, parsed.frontmatter == nil, activeFileURL != nil {
+                                    sidebarMode = .folder
+                                }
+                            }
+                            showMetadataInspector.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "sidebar.right")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 16, height: 16) // Exact square frame for symmetry
+                            .foregroundStyle(showMetadataInspector ? Color.accentColor : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(sidebarHelpText(parsed: parsed))
+                    .disabled(!canShowSidebar(parsed: parsed))
+                    .opacity(canShowSidebar(parsed: parsed) ? 1.0 : 0.5)
+
+                    ShareLink(item: document.text) {
+                        Image(systemName: "square.and.arrow.up")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 16, height: 16) // Exact square frame for symmetry
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                // The following padding acts as a margin from the window edge
+                .padding(.trailing, 4)
+                .fixedSize()
+            }
         }
         .focusedSceneValue(\.editorActions, editorActions)
         .onAppear {
@@ -224,16 +288,20 @@ struct ContentView: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private func contentToolbar(parsed: ParsedMarkdown) -> some ToolbarContent {
-        ContentToolbar(
-            readerMode: Binding(get: { windowReaderMode }, set: { windowReaderMode = $0 }),
-            showMetadataInspector: $showMetadataInspector,
-            sidebarMode: $sidebarMode,
-            documentText: document.text,
-            hasFrontmatter: parsed.frontmatter != nil,
-            fileURL: activeFileURL
-        )
+    // MARK: - Toolbar Helpers
+
+    private func canShowSidebar(parsed: ParsedMarkdown) -> Bool {
+        parsed.frontmatter != nil || activeFileURL != nil
+    }
+
+    private func sidebarHelpText(parsed: ParsedMarkdown) -> String {
+        if !canShowSidebar(parsed: parsed) {
+            return "No metadata or folder available"
+        }
+        if showMetadataInspector {
+            return "Hide Sidebar"
+        }
+        return "Show Sidebar"
     }
 
     // MARK: - File Opening

@@ -73,12 +73,12 @@ spacing via `NSParagraphStyle` (never literal newlines).
 - Swift 6 strict concurrency; `@MainActor` for all UI.
 - 4-space indent, 120-char max line (SwiftFormat enforced).
 - File headers — two spaces after `//`:
-  ```swift
+  `````swift
   //
   //  FileName.swift
   //  mdviewer
   //
-  ```
+  `````
 - `internal` is the default access level; only add `public`/`private`/`fileprivate` when meaningful.
 
 ## SwiftLint / SwiftFormat

@@ -584,7 +584,16 @@ private final class RawLineNumberRulerView: NSRulerView {
 
         // Get the visible glyph range
         let visibleRect = scrollView?.documentVisibleRect ?? rect
-        let visibleGlyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
+        
+        // Offset the bounding rect for glyph calculation to account for the top padding
+        let layoutRect = NSRect(
+            x: visibleRect.origin.x,
+            y: visibleRect.origin.y - textView.textContainerInset.height,
+            width: visibleRect.width,
+            height: visibleRect.height
+        )
+        
+        let visibleGlyphRange = layoutManager.glyphRange(forBoundingRect: layoutRect, in: textContainer)
 
         // Get the character range for visible glyphs
         let visibleCharRange = layoutManager.characterRange(forGlyphRange: visibleGlyphRange, actualGlyphRange: nil)
@@ -597,7 +606,9 @@ private final class RawLineNumberRulerView: NSRulerView {
             guard let self else { return }
 
             // Convert to ruler coordinates
-            let rulerY = lineRect.minY - visibleRect.minY
+            // lineRect is relative to text container. 
+            // textView draws text container at textContainerInset.height.
+            let rulerY = (lineRect.minY + textView.textContainerInset.height) - visibleRect.minY
 
             // Draw line number
             let numberString = "\(lineNumber)" as NSString

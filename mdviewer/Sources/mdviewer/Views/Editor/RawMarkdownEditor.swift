@@ -113,8 +113,9 @@ private struct RawEditorRepresentable: NSViewRepresentable {
         textView.isAutomaticLinkDetectionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
 
-        // Apply adjustable horizontal padding from preferences.
-        textView.textContainerInset = NSSize(width: contentPadding, height: 0)
+        // Apply adjustable horizontal padding from preferences and vertical padding for title bar clearance.
+        let verticalPadding = DesignTokens.TypographyRhythm.xxxl
+        textView.textContainerInset = NSSize(width: contentPadding, height: verticalPadding)
         textView.textContainer?.lineFragmentPadding = 4
 
         // Avoid forcing full-document layout while scrolling large files.
@@ -177,7 +178,8 @@ private struct RawEditorRepresentable: NSViewRepresentable {
         textView.fontSize = fontSize
         textView.colorScheme = colorScheme
         let previousInset = textView.textContainerInset.width
-        textView.textContainerInset = NSSize(width: contentPadding, height: 0)
+        let verticalPadding = DesignTokens.TypographyRhythm.xxxl
+        textView.textContainerInset = NSSize(width: contentPadding, height: verticalPadding)
         textView.textContainer?.lineFragmentPadding = 4
         if abs(previousInset - contentPadding) > 0.5, let textContainer = textView.textContainer {
             textView.layoutManager?.ensureLayout(for: textContainer)

@@ -113,19 +113,26 @@ private struct RawEditorRepresentable: NSViewRepresentable {
         textView.isAutomaticLinkDetectionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
 
-        // Apply adjustable horizontal padding from preferences.
-        textView.textContainerInset = NSSize(width: contentPadding, height: 0)
+        // Apply adjustable horizontal padding from preferences and vertical padding for title bar clearance.
+        let verticalPadding = DesignTokens.TypographyRhythm.xxxl
+        textView.textContainerInset = NSSize(width: contentPadding, height: verticalPadding)
         textView.textContainer?.lineFragmentPadding = 4
 
         // Avoid forcing full-document layout while scrolling large files.
         textView.layoutManager?.allowsNonContiguousLayout = true
 
-        // Layout
+        // Layout constraints to fix infinite wrapping loops in AppKit for long lines
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
+        
+        // Explicitly set text container width tracking to prevent NSLayoutManager hangs
+        if let textContainer = textView.textContainer {
+            textContainer.widthTracksTextView = true
+            textContainer.containerSize = NSSize(width: scrollView.contentSize.width, height: .greatestFiniteMagnitude)
+        }
 
         // Store configuration
         textView.fontSize = fontSize
@@ -171,7 +178,8 @@ private struct RawEditorRepresentable: NSViewRepresentable {
         textView.fontSize = fontSize
         textView.colorScheme = colorScheme
         let previousInset = textView.textContainerInset.width
-        textView.textContainerInset = NSSize(width: contentPadding, height: 0)
+        let verticalPadding = DesignTokens.TypographyRhythm.xxxl
+        textView.textContainerInset = NSSize(width: contentPadding, height: verticalPadding)
         textView.textContainer?.lineFragmentPadding = 4
         if abs(previousInset - contentPadding) > 0.5, let textContainer = textView.textContainer {
             textView.layoutManager?.ensureLayout(for: textContainer)
@@ -576,7 +584,16 @@ private final class RawLineNumberRulerView: NSRulerView {
 
         // Get the visible glyph range
         let visibleRect = scrollView?.documentVisibleRect ?? rect
-        let visibleGlyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
+        
+        // Offset the bounding rect for glyph calculation to account for the top padding
+        let layoutRect = NSRect(
+            x: visibleRect.origin.x,
+            y: visibleRect.origin.y - textView.textContainerInset.height,
+            width: visibleRect.width,
+            height: visibleRect.height
+        )
+        
+        let visibleGlyphRange = layoutManager.glyphRange(forBoundingRect: layoutRect, in: textContainer)
 
         // Get the character range for visible glyphs
         let visibleCharRange = layoutManager.characterRange(forGlyphRange: visibleGlyphRange, actualGlyphRange: nil)
@@ -589,7 +606,9 @@ private final class RawLineNumberRulerView: NSRulerView {
             guard let self else { return }
 
             // Convert to ruler coordinates
-            let rulerY = lineRect.minY - visibleRect.minY
+            // lineRect is relative to text container. 
+            // textView draws text container at textContainerInset.height.
+            let rulerY = (lineRect.minY + textView.textContainerInset.height) - visibleRect.minY
 
             // Draw line number
             let numberString = "\(lineNumber)" as NSString

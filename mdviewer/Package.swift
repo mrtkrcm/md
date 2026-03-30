@@ -11,7 +11,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/nicklockwood/SwiftFormat", from: "0.58.7"),
-        .package(url: "https://github.com/lukilabs/beautiful-mermaid-swift", from: "0.1.1"),
+        .package(url: "https://github.com/lukilabs/beautiful-mermaid-swift", from: "1.0.1"),
     ],
     targets: [
         .executableTarget(
